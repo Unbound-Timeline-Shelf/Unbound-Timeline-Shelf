@@ -82,6 +82,14 @@ def test_rejections_table_upgrade_and_a_downgrade_that_never_drops_decisions():
                     )
             finally:
                 engine.dispose()
+            # deleting a user cascades through an index, not a table scan
+            assert connection.execute(
+                "SELECT indexdef FROM pg_indexes WHERE schemaname = %s AND indexname = %s",
+                (schema, "ix_game_metadata_rejections_user_id"),
+            ).fetchone() == (
+                f"CREATE INDEX ix_game_metadata_rejections_user_id ON {schema}"
+                ".game_metadata_rejections USING btree (user_id)",
+            )
             connection.execute(
                 "INSERT INTO game_metadata_rejections "
                 "(id, user_id, game_id, namespace, identity, created_at) "

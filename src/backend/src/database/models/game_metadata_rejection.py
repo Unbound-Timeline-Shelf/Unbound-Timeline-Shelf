@@ -2,7 +2,8 @@
 
 A refresh candidate is described by the provider ids its sources reported. Rejecting it stores
 each id the game did not already hold; a later refresh whose candidate reports any of them is
-answered `rejected` and changes nothing."""
+answered `rejected` and changes nothing. A rejection is forgotten one id at a time or all at
+once (DELETE /api/game/{id}/metadata/rejections)."""
 
 from uuid import UUID, uuid4
 
@@ -23,7 +24,10 @@ class GameMetadataRejection(Base):
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     game_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("games.id", ondelete="CASCADE"), nullable=False

@@ -519,7 +519,7 @@ export type RefreshMetadataResult =
   | "conflict"
   // the candidate carries an id the user rejected for this game
   | "rejected"
-  // a title-only match that is applied only with confirmTitleMatch
+  // a title-only match, applied only when its previewed candidate is confirmed
   | "needs-confirmation"
   | "error";
 
@@ -527,6 +527,12 @@ export type RefreshMetadataResult =
 // holds) or "title" (title only, applied only once confirmed)
 export type RefreshMetadataMatch =
   "id" | "title" | "conflict" | "rejected" | "none";
+
+// a title-only match is confirmed by sending its candidate's providerIds back
+export interface RefreshMetadataCandidate {
+  title: string | null;
+  providerIds: Record<string, string>;
+}
 
 export interface RefreshMetadataOutcome {
   status: RefreshMetadataResult;
@@ -554,6 +560,7 @@ export const DEFAULT_REFRESH_OPTIONS: RefreshMetadataOptions = {
 export interface RefreshMetadataPreview {
   status: RefreshMetadataResult;
   match: RefreshMetadataMatch;
+  candidate: RefreshMetadataCandidate | null;
   provider: string | null;
   providerErrors: string[];
   changedFields: string[];
@@ -566,6 +573,10 @@ export interface RefreshMetadataPreview {
 interface BackendMetadataRefreshResponse {
   status: RefreshMetadataResult;
   match?: RefreshMetadataMatch;
+  candidate?: {
+    title: string | null;
+    provider_ids: Record<string, string>;
+  } | null;
   provider: string | null;
   provider_errors: string[];
   changed_fields: string[];
@@ -579,7 +590,7 @@ async function requestGameMetadataRefresh(
   game: Game,
   options: RefreshMetadataOptions,
   dryRun: boolean,
-  confirmTitleMatch = false,
+  confirmCandidate: Record<string, string> | null = null,
 ): Promise<BackendMetadataRefreshResponse> {
   const response = await fetch(`/api/game/${game.id}/metadata/refresh`, {
     method: "POST",
@@ -590,7 +601,7 @@ async function requestGameMetadataRefresh(
       update_text: options.updateText,
       fill_missing_art: options.fillMissingArt,
       overwrite_existing_art: options.overwriteExistingArt,
-      ...(confirmTitleMatch ? { confirm_title_match: true } : {}),
+      ...(confirmCandidate ? { confirm_candidate: confirmCandidate } : {}),
       ...(dryRun || game.updatedAt === undefined
         ? {}
         : { expected_updated_at: game.updatedAt }),
@@ -605,17 +616,17 @@ async function requestGameMetadataRefresh(
   return await response.json();
 }
 
-// confirmTitleMatch: the user saw a title-only preview and chose to apply it
+// confirmCandidate: the previewed title-only candidate's ids the user accepted
 export async function applyGameMetadataRefresh(
   game: Game,
   options: RefreshMetadataOptions = DEFAULT_REFRESH_OPTIONS,
-  confirmTitleMatch = false,
+  confirmCandidate: Record<string, string> | null = null,
 ): Promise<RefreshMetadataOutcome> {
   const raw = await requestGameMetadataRefresh(
     game,
     options,
     false,
-    confirmTitleMatch,
+    confirmCandidate,
   );
   return {
     status: raw.status,
@@ -632,10 +643,10 @@ export async function applyGameMetadataRefresh(
 export async function refreshGameMetadata(
   game: Game,
   options: RefreshMetadataOptions = DEFAULT_REFRESH_OPTIONS,
-  confirmTitleMatch = false,
+  confirmCandidate: Record<string, string> | null = null,
 ): Promise<RefreshMetadataOutcome> {
   try {
-    return await applyGameMetadataRefresh(game, options, confirmTitleMatch);
+    return await applyGameMetadataRefresh(game, options, confirmCandidate);
   } catch {
     return {
       status: "error",
@@ -659,6 +670,12 @@ export async function previewGameMetadataRefresh(
     return {
       status: raw.status,
       match: raw.match ?? "none",
+      candidate: raw.candidate
+        ? {
+            title: raw.candidate.title,
+            providerIds: raw.candidate.provider_ids ?? {},
+          }
+        : null,
       provider: raw.provider,
       providerErrors: raw.provider_errors ?? [],
       changedFields: raw.changed_fields ?? [],
@@ -671,6 +688,7 @@ export async function previewGameMetadataRefresh(
     return {
       status: "error",
       match: "none",
+      candidate: null,
       provider: null,
       providerErrors: [],
       changedFields: [],

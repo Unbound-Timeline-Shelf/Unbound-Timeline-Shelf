@@ -403,10 +403,100 @@ async def test_a_game_without_ids_is_matched_by_title_for_preview_only(owner, pr
     game = await stored(game_id)
     assert (game.description, game.provider_ids) == (None, {})
 
-    confirmed = await refresh(client, game_id, confirm_title_match=True)
+    # the old boolean flag no longer confirms anything
+    flagged = await refresh(client, game_id, confirm_title_match=True)
+    assert flagged["status"] == "needs-confirmation"
+    # neither does a confirmation of some other candidate
+    other = await refresh(client, game_id, confirm_candidate={"igdb": "100"})
+    assert other["status"] == "needs-confirmation"
+    assert other["candidate"] == {"title": "Celeste", "provider_ids": {"igdb": "99"}}
+    assert any("changed after the preview" in error for error in other["provider_errors"])
+    game = await stored(game_id)
+    assert (game.description, game.provider_ids) == (None, {})
+
+    confirmed = await refresh(
+        client, game_id, confirm_candidate=preview["candidate"]["provider_ids"]
+    )
     assert (confirmed["status"], confirmed["match"]) == ("updated", "title")
     game = await stored(game_id)
     assert (game.description, game.provider_ids) == ("A climbing game.", {"igdb": "99"})
+
+
+async def test_a_title_match_that_changed_after_the_preview_is_not_applied(
+    owner, providers, client
+):
+    """Two games share a title (a remake): the preview shows one, the apply finds the other."""
+    user_id, _ = owner
+    original = MetadataCandidate(
+        title="Celeste", provider="core.igdb", external_id="99", provider_ids={"igdb": "99"}
+    )
+    remake = MetadataCandidate(
+        title="Celeste", provider="core.igdb", external_id="500", provider_ids={"igdb": "500"}
+    )
+    descriptions = {"99": "A climbing game.", "500": "The remake."}
+
+    def respond(candidate):
+        identity = candidate.provider_ids.get("igdb") if candidate else None
+        if identity not in descriptions:
+            return None
+        return MetadataPatch(description=descriptions[identity], provider_ids={"igdb": identity})
+
+    igdb = StandInProvider("core.igdb", "igdb", respond, search_results=(original,))
+    providers(igdb)
+    game_id = await add_game(user_id, title="Celeste")
+
+    preview = await refresh(client, game_id, dry_run=True)
+    assert (preview["match"], preview["candidate"]["provider_ids"]) == ("title", {"igdb": "99"})
+
+    # the provider now ranks the remake for the same title (a new revision: not a cached search)
+    igdb.search_results = (remake,)
+    igdb.revision = "test-reranked"
+    applied = await refresh(client, game_id, confirm_candidate=preview["candidate"]["provider_ids"])
+
+    assert (applied["status"], applied["match"]) == ("needs-confirmation", "title")
+    assert applied["candidate"] == {"title": "Celeste", "provider_ids": {"igdb": "500"}}
+    game = await stored(game_id)
+    assert (game.description, game.provider_ids) == (None, {})
+    assert await game_count(user_id) == 1
+
+    # confirming what is now shown applies it
+    confirmed = await refresh(
+        client, game_id, confirm_candidate=applied["candidate"]["provider_ids"]
+    )
+    assert confirmed["status"] == "updated"
+    game = await stored(game_id)
+    assert (game.description, game.provider_ids) == ("The remake.", {"igdb": "500"})
+
+
+async def test_a_provider_naming_two_ids_for_one_namespace_is_a_conflict(owner, providers, client):
+    """A search candidate and the same provider's metadata patch disagree: nothing is adopted."""
+    user_id, _ = owner
+    found = MetadataCandidate(
+        title="Celeste", provider="core.igdb", external_id="99", provider_ids={"igdb": "99"}
+    )
+
+    def respond(candidate):
+        if candidate is None or "igdb" not in candidate.provider_ids:
+            return None
+        return MetadataPatch(description="Which one?", provider_ids={"igdb": "100"})
+
+    providers(StandInProvider("core.igdb", "igdb", respond, search_results=(found,)))
+    game_id = await add_game(user_id, title="Celeste")
+
+    result = await refresh(client, game_id, confirm_candidate={"igdb": "99"})
+
+    assert result["status"] == "conflict"
+    assert result["conflicts"] == [
+        {
+            "namespace": "igdb",
+            "candidates": [
+                {"value": "100", "sources": ["core.igdb"]},
+                {"value": "99", "sources": ["core.igdb"]},
+            ],
+        }
+    ]
+    game = await stored(game_id)
+    assert (game.description, game.provider_ids) == (None, {})
 
 
 async def test_a_title_that_differs_without_shared_ids_is_no_match(owner, providers, client):
@@ -418,7 +508,7 @@ async def test_a_title_that_differs_without_shared_ids_is_no_match(owner, provid
     providers(StandInProvider("core.igdb", "igdb", other_game))
     game_id = await add_game(user_id, title="Steam app 12345", provider_ids={"steam": "12345"})
 
-    result = await refresh(client, game_id, confirm_title_match=True)
+    result = await refresh(client, game_id, confirm_candidate={"igdb": "71"})
 
     assert result["status"] == "no-match"
     assert (await stored(game_id)).provider_ids == {"steam": "12345"}
@@ -466,10 +556,38 @@ async def test_a_rejected_candidate_is_refused_until_the_rejection_is_forgotten(
     assert listed.json() == {"rejected": [{"namespace": "atlas", "identity": ATLAS_ID}]}
     forgotten = await client.delete(f"/api/game/{game_id}/metadata/rejections")
     assert forgotten.status_code == 204
+    async with SessionLocal() as db:
+        remaining = await db.scalar(
+            select(func.count()).where(GameMetadataRejection.game_id == game_id)
+        )
+    assert remaining == 0
 
     applied = await refresh(client, game_id)
     assert applied["status"] == "updated"
     assert (await stored(game_id)).provider_ids == {"steam": "12345", "atlas": ATLAS_ID}
+
+
+async def test_one_rejection_can_be_forgotten_and_the_others_stay(owner, providers, client):
+    del providers
+    game_id = await add_game(owner[0], provider_ids={"steam": "12345"})
+    rejections = f"/api/game/{game_id}/metadata/rejections"
+    created = await client.post(rejections, json={"provider_ids": {"atlas": ATLAS_ID, "igdb": "7"}})
+    assert created.status_code == 200, created.text
+
+    half = await client.delete(rejections, params={"namespace": "atlas"})
+    assert half.status_code == 422
+    one = await client.delete(rejections, params={"namespace": "atlas", "identity": ATLAS_ID})
+    assert one.status_code == 204
+
+    async with SessionLocal() as db:
+        rows = (
+            await db.execute(
+                select(GameMetadataRejection.namespace, GameMetadataRejection.identity).where(
+                    GameMetadataRejection.game_id == game_id
+                )
+            )
+        ).all()
+    assert rows == [("igdb", "7")]
 
 
 async def test_rejections_are_scoped_to_the_owner(owner, providers, client):
@@ -628,6 +746,10 @@ async def test_a_lock_set_during_the_lookup_is_respected(owner, providers, clien
         ({}, {"core.igdb": {"igdb": "9"}}, "Same™", "title"),
         ({}, {}, None, "none"),
         ({}, {"x": {"atlas": "a"}, "y": {"atlas": "b"}}, "Same", "conflict"),
+        # one source naming two ids for one namespace disagrees with itself
+        ({}, {"x": {"igdb": ["9", "10"]}}, "Same", "conflict"),
+        ({"igdb": "9"}, {"x": {"igdb": ["9", "10"]}}, "Same", "conflict"),
+        ({"igdb": "9"}, {"x": {"igdb": ["9"]}}, None, "id"),
     ],
 )
 def test_classify(saved, claims, reported, tier):
@@ -650,6 +772,8 @@ def test_classify_rejection_ignores_ids_the_game_holds():
         ).tier
         == "id"
     )
+    # refused although steam:1 confirms the game: the rejected source's fields are merged into
+    # the same record, so none of it can be applied without applying the rejected candidate
     rejected = classify(
         {"steam": "1"}, claims, game_title="G", reported_title=None, rejected=[("atlas", "a")]
     )
