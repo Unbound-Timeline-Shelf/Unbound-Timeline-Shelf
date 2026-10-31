@@ -587,6 +587,36 @@ class MetadataHandler:
             used.update(session.asset_providers.get((asset["kind"], asset["url"]), ()))
         return sorted(used & {provider.id for provider in session.providers})
 
+    @staticmethod
+    def provider_id_claims(session: SearchSession, group_id: str | None) -> dict[str, dict]:
+        """The ids each registered provider itself reported for this result.
+
+        A record's `provider_ids` also carries the ids the caller supplied, so it cannot tell
+        a provider's confirmation from an echo of the request. A provider's claims are the
+        ids in its own search candidate and metadata patches, already confined to the
+        namespaces it owns."""
+        namespaces = {
+            provider.id: provider.declaration.identifier_namespace for provider in session.providers
+        }
+        claims: dict[str, dict[str, str]] = {}
+        for key in session.groups.get(group_id or "", ()):
+            source = session.sources[key]
+            owner = source.candidate.provider
+            if owner in namespaces:
+                # A focused search result also carries its provider's own id under the
+                # provider id (`identities`); the declared namespace already holds it.
+                reported = {
+                    namespace: value
+                    for namespace, value in source.candidate.provider_ids.items()
+                    if namespace != owner or namespaces[owner] in (None, owner)
+                }
+                if reported:
+                    claims.setdefault(owner, {}).update(reported)
+            for provider_id, patch in source.metadata.items():
+                if provider_id in namespaces and patch.provider_ids:
+                    claims.setdefault(provider_id, {}).update(patch.provider_ids)
+        return claims
+
     def _rank(self, session: SearchSession) -> None:
         previous, previous_groups = session.candidates, session.groups
         session.candidates, session.groups = {}, {}
@@ -868,7 +898,11 @@ class MetadataHandler:
             session.emit("provider_failed", message="Metadata providers are unavailable")
         record = session.candidates.get(session.selected or "", {})
         if record:
-            record = {**record, "contributors": self.contributors(session, session.selected)}
+            record = {
+                **record,
+                "contributors": self.contributors(session, session.selected),
+                "provider_id_claims": self.provider_id_claims(session, session.selected),
+            }
         failures = list(
             dict.fromkeys(
                 event["message"] for event in session.events if event["event"] == "provider_failed"
