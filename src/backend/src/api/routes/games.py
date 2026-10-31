@@ -80,7 +80,6 @@ from src.api.routes.game_metadata import (
     MetadataRefreshRequest,
     MetadataSearchResponse,
     _metadata_value_is_present,
-    _normalize_metadata_title,
     refresh_game_metadata,
     search_metadata,
 )
@@ -139,6 +138,7 @@ from src.api.schemas.game import (
     GameUpdate,
 )
 from src.core.auth import AuthenticatedActor, app_grant, get_current_actor, get_current_user
+from src.core.titles import normalize_metadata_title as _normalize_metadata_title
 from src.database.models.game import Game, GameLink, GameStatus
 from src.database.models.game_field_change import GameFieldChange
 from src.database.models.game_identity_tracking import FieldValueOrigin
