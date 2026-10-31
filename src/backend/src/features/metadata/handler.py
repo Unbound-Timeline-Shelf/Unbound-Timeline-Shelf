@@ -588,17 +588,27 @@ class MetadataHandler:
         return sorted(used & {provider.id for provider in session.providers})
 
     @staticmethod
-    def provider_id_claims(session: SearchSession, group_id: str | None) -> dict[str, dict]:
+    def provider_id_claims(
+        session: SearchSession, group_id: str | None
+    ) -> dict[str, dict[str, list[str]]]:
         """The ids each registered provider itself reported for this result.
 
         A record's `provider_ids` also carries the ids the caller supplied, so it cannot tell
         a provider's confirmation from an echo of the request. A provider's claims are the
         ids in its own search candidate and metadata patches, already confined to the
-        namespaces it owns."""
+        namespaces it owns. Every distinct value is kept, so a provider that names two ids for
+        one namespace (a candidate and a patch disagreeing) reaches the refresh as a conflict."""
         namespaces = {
             provider.id: provider.declaration.identifier_namespace for provider in session.providers
         }
-        claims: dict[str, dict[str, str]] = {}
+        claims: dict[str, dict[str, list[str]]] = {}
+
+        def claim(provider_id: str, ids: dict[str, str]) -> None:
+            for namespace, value in ids.items():
+                values = claims.setdefault(provider_id, {}).setdefault(namespace, [])
+                if value and value not in values:
+                    values.append(value)
+
         for key in session.groups.get(group_id or "", ()):
             source = session.sources[key]
             owner = source.candidate.provider
@@ -611,11 +621,14 @@ class MetadataHandler:
                     if namespace != owner or namespaces[owner] in (None, owner)
                 }
                 if reported:
-                    claims.setdefault(owner, {}).update(reported)
+                    claim(owner, reported)
             for provider_id, patch in source.metadata.items():
                 if provider_id in namespaces and patch.provider_ids:
-                    claims.setdefault(provider_id, {}).update(patch.provider_ids)
-        return claims
+                    claim(provider_id, patch.provider_ids)
+        return {
+            provider_id: {namespace: values for namespace, values in ids.items() if values}
+            for provider_id, ids in claims.items()
+        }
 
     def _rank(self, session: SearchSession) -> None:
         previous, previous_groups = session.candidates, session.groups

@@ -39,13 +39,14 @@ describe("game metadata refresh service", () => {
     );
   });
 
-  it("reports how a preview matched and confirms a title-only match only when asked", async () => {
+  it("confirms a title-only match with the previewed candidate's ids only", async () => {
     const fetchMock = vi.fn().mockImplementation(
       async () =>
         new Response(
           JSON.stringify({
             status: "preview",
             match: "title",
+            candidate: { title: "Celeste", provider_ids: { igdb: "99" } },
             provider: "IGDB",
             provider_errors: [],
             changed_fields: ["description"],
@@ -61,18 +62,26 @@ describe("game metadata refresh service", () => {
 
     const preview = await previewGameMetadataRefresh(game);
     expect(preview.match).toBe("title");
+    expect(preview.candidate).toEqual({
+      title: "Celeste",
+      providerIds: { igdb: "99" },
+    });
     const previewBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(previewBody.confirm_title_match).toBeUndefined();
+    expect(previewBody.confirm_candidate).toBeUndefined();
 
     await applyGameMetadataRefresh(game);
     expect(
-      JSON.parse(fetchMock.mock.calls[1][1].body).confirm_title_match,
+      JSON.parse(fetchMock.mock.calls[1][1].body).confirm_candidate,
     ).toBeUndefined();
 
-    await applyGameMetadataRefresh(game, undefined, true);
-    expect(
-      JSON.parse(fetchMock.mock.calls[2][1].body).confirm_title_match,
-    ).toBe(true);
+    await applyGameMetadataRefresh(
+      game,
+      undefined,
+      preview.candidate?.providerIds,
+    );
+    const applyBody = JSON.parse(fetchMock.mock.calls[2][1].body);
+    expect(applyBody.confirm_candidate).toEqual({ igdb: "99" });
+    expect(applyBody.confirm_title_match).toBeUndefined();
   });
 
   it("surfaces a stale preview conflict instead of silently applying it", async () => {

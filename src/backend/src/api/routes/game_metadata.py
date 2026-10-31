@@ -85,6 +85,10 @@ class MetadataSearchResponse(BaseModel):
     results: list[dict]
 
 
+_Namespace = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")]
+_Identity = Annotated[str, Field(min_length=1, max_length=512)]
+
+
 class MetadataRefreshRequest(BaseModel):
     __module__ = "src.api.routes.games"
     dry_run: bool = False
@@ -93,17 +97,16 @@ class MetadataRefreshRequest(BaseModel):
     overwrite_existing_art: bool = False
     expected_updated_at: int | None = None
     # A result that matches only by title (no reported provider id is one the game holds) is
-    # applied only when the person confirms it after a preview (CONTRACTS-v1 C4.4 rule 3).
-    confirm_title_match: bool = False
+    # applied only when the person confirms it after a preview (CONTRACTS-v1 C4.4 rule 3). The
+    # confirmation is the previewed `candidate.provider_ids`: the apply looks the game up again,
+    # and a candidate with any other ids is answered `needs-confirmation`, never applied.
+    confirm_candidate: dict[_Namespace, _Identity] | None = Field(default=None, max_length=32)
 
 
 class MetadataRejectionRequest(BaseModel):
     __module__ = "src.api.routes.games"
     # the `candidate.provider_ids` of a refresh response the person says is not this game
-    provider_ids: dict[
-        Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")],
-        Annotated[str, Field(min_length=1, max_length=512)],
-    ] = Field(min_length=1, max_length=32)
+    provider_ids: dict[_Namespace, _Identity] = Field(min_length=1, max_length=32)
 
 
 # Parallel routes/models intentionally share this shape.
@@ -282,7 +285,7 @@ def _refresh_outcome(
         "would_add_banner": False,
         "game_updated_at": game.updated_at,
         # "id" (a reported id the game holds), "title" (title only: apply needs
-        # `confirm_title_match`), "conflict", "rejected" or "none"
+        # `confirm_candidate`), "conflict", "rejected" or "none"
         "match": decision.tier if decision else "none",
         "candidate": None,
         "conflicts": decision.conflict_candidates() if decision else [],
@@ -380,10 +383,18 @@ async def refresh_game_metadata(
             decision,
             {"candidate": candidate, "provider": match.get("provider")},
         )
-    # A title-only match is previewed; it is applied only once the person confirms it.
+    # A title-only match is previewed; it is applied only once the person confirms this very
+    # candidate. The lookup above ran again, so a different candidate with the same title (a
+    # remake, a re-ranked provider) is offered for confirmation instead of being saved.
     needs_confirmation = (
-        decision.tier == "title" and not payload.dry_run and not payload.confirm_title_match
+        decision.tier == "title"
+        and not payload.dry_run
+        and payload.confirm_candidate != decision.offered
     )
+    if needs_confirmation and payload.confirm_candidate is not None:
+        provider_errors.append(
+            "The title-only match changed after the preview; confirm the new candidate to apply it."
+        )
     preview_only = payload.dry_run or needs_confirmation
 
     field_values: dict[str, object] = {
@@ -632,13 +643,27 @@ async def reject_metadata_candidate(
     return {"rejected": [{"namespace": ns, "identity": value} for ns, value in stored.items()]}
 
 
+_NAMESPACE_QUERY = Query(default=None, min_length=1, max_length=128)
+_IDENTITY_QUERY = Query(default=None, min_length=1, max_length=512)
+
+
 @router.delete("/{game_id}/metadata/rejections", status_code=status.HTTP_204_NO_CONTENT)
 async def forget_metadata_rejections(
     game_id: UUID,
+    namespace: str | None = _NAMESPACE_QUERY,
+    identity: str | None = _IDENTITY_QUERY,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> None:
-    """Forget every rejection for this game; the next refresh may match those ids again."""
+    """Forget one rejection (`?namespace=&identity=`), or every rejection for this game.
+
+    The next refresh may match the forgotten ids again."""
+    if (namespace is None) != (identity is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Give both namespace and identity to forget one rejection, or neither.",
+        )
     game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
-    await refresh_match.forget_rejections(db, game.id)
+    only = (namespace, identity) if namespace is not None and identity is not None else None
+    await refresh_match.forget_rejections(db, game.id, only=only)
     await db.commit()

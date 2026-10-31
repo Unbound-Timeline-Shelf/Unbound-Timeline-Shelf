@@ -14,12 +14,18 @@ the request supplied (a record echoes those back):
 4. A source contradicts an id the game holds, or two sources disagree about one namespace:
    `conflict`. Nothing is applied.
 
-A result that reports an id the person rejected for this game is `rejected`.
+A result that reports an id the person rejected for this game is `rejected`, even when another
+reported id confirms the game: the record merges every source's fields, so the rejected source's
+values cannot be told apart from the rest, and applying any of it would apply the rejected
+candidate's data. Forgetting that one rejection lets the next refresh apply again.
+
+A title-only match is confirmed by the candidate's ids, not by a flag: the route applies it only
+when the person's confirmation equals `offered` for the lookup it just ran.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 from uuid import UUID
@@ -69,18 +75,26 @@ class RefreshMatch:
         ]
 
 
-def _reported(claims: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str, list[str]]]:
+# a source's claim for one namespace: one value, or every value it reported when it disagreed
+# with itself (for example a search candidate and a metadata patch naming different ids)
+Claim = str | Sequence[str]
+
+
+def _reported(claims: Mapping[str, Mapping[str, Claim]]) -> dict[str, dict[str, list[str]]]:
     values: dict[str, dict[str, list[str]]] = {}
     for source, ids in sorted(claims.items()):
-        for namespace, value in ids.items():
-            if value:
-                values.setdefault(namespace, {}).setdefault(str(value), []).append(source)
+        for namespace, claim in ids.items():
+            for value in [claim] if isinstance(claim, str) else claim:
+                if value:
+                    sources = values.setdefault(namespace, {}).setdefault(str(value), [])
+                    if source not in sources:
+                        sources.append(source)
     return values
 
 
 def classify(
     saved: Mapping[str, str],
-    claims: Mapping[str, Mapping[str, str]],
+    claims: Mapping[str, Mapping[str, Claim]],
     *,
     game_title: str,
     reported_title: str | None,
@@ -159,8 +173,15 @@ async def reject(db: AsyncSession, game: Game, provider_ids: Mapping[str, str]) 
     return new
 
 
-async def forget_rejections(db: AsyncSession, game_id: UUID) -> int:
-    result = await db.execute(
-        delete(GameMetadataRejection).where(GameMetadataRejection.game_id == game_id)
-    )
-    return int(result.rowcount or 0)
+async def forget_rejections(
+    db: AsyncSession, game_id: UUID, *, only: tuple[str, str] | None = None
+) -> int:
+    """Forget every rejection for the game, or only the one `(namespace, identity)`."""
+    statement = delete(GameMetadataRejection).where(GameMetadataRejection.game_id == game_id)
+    if only is not None:
+        statement = statement.where(
+            GameMetadataRejection.namespace == only[0],
+            GameMetadataRejection.identity == only[1],
+        )
+    result = await db.execute(statement)
+    return int(getattr(result, "rowcount", 0) or 0)
