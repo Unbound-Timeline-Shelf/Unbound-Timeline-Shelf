@@ -3,7 +3,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Integer, String, Text, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -23,6 +33,12 @@ class Achievement(Base):
     and cheap at the achievement-list scale these APIs return."""
 
     __tablename__ = "achievements"
+    # one row per achievement: a sync and the catalogue both upsert on this key
+    __table_args__ = (
+        UniqueConstraint(
+            "game_id", "provider", "external_id", name="uq_achievements_game_provider_external_id"
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     game_id: Mapped[UUID] = mapped_column(
