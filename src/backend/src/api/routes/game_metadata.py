@@ -510,7 +510,9 @@ async def refresh_game_metadata(
         try:
             label, catalogue, _errors = await fetch_catalogue(db, current_user.id, game)
             if catalogue:
-                await store_catalogue(db, game.id, label, catalogue)
+                # a savepoint: a failed catalogue store must not undo the metadata update
+                async with db.begin_nested():
+                    await store_catalogue(db, game.id, label, catalogue)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             provider_errors.append(f"Achievements: {type(exc).__name__}")
 
