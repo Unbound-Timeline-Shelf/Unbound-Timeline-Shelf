@@ -57,8 +57,9 @@ def apply_manual_progress(
 ) -> list[Achievement]:
     """Overlay user-selected progress without changing provider-owned records.
 
-    Atlas catalogue ids remain stable when linked to a platform achievement, so an
-    override stored against a catalogue row is also applied to its linked progress row.
+    An override stored against a catalogue row is also applied to its linked progress row.
+    Catalogue external ids can change when a provider re-identifies an achievement;
+    ``store_catalogue`` then moves the override with the row (``achievement_rekey``).
     """
     saved = list(rows)
     for row in saved:
