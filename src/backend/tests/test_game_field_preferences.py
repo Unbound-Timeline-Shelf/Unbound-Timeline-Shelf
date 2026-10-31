@@ -215,8 +215,8 @@ def _refresh_with(monkeypatch, provider, **fields):
 async def _refresh(client, game_id):
     done = await client.post(
         f"/api/game/{game_id}/metadata/refresh",
-        # a title-only match (the game has no provider ids) is applied once confirmed
-        json={"fill_missing_art": False, "confirm_title_match": True},
+        # a title-only match (no provider ids on either side) is applied once confirmed
+        json={"fill_missing_art": False, "confirm_candidate": {}},
     )
     assert done.status_code == 200, done.text
     return done.json()

@@ -20,6 +20,7 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 _TABLE = "game_metadata_rejections"
+_USER_INDEX = "ix_game_metadata_rejections_user_id"
 
 
 def upgrade() -> None:
@@ -38,6 +39,8 @@ def upgrade() -> None:
             "game_id", "namespace", "identity", name="uq_game_metadata_rejections_game_identity"
         ),
     )
+    # deleting a user cascades here; without an index that is a scan of the whole table
+    h.create_index_if_missing(_USER_INDEX, _TABLE, ["user_id"])
 
 
 def downgrade() -> None:
@@ -45,4 +48,5 @@ def downgrade() -> None:
     # identity again without saying so.
     h.refuse_if_populated(_TABLE, "metadata refresh rejections")
     if h.has_table(_TABLE):
+        h.drop_index_if_exists(_USER_INDEX, _TABLE)
         op.drop_table(_TABLE)

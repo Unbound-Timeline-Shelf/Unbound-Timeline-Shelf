@@ -89,7 +89,7 @@ function refreshResultLabel(result: RefreshMetadataResult): string {
     case "rejected":
       return "a rejected match, nothing changed";
     case "needs-confirmation":
-      return "matched by title only, not confirmed";
+      return "the title-only match changed since the preview, not applied";
     default:
       return "failed";
   }
@@ -130,6 +130,8 @@ const previewing = ref(false);
 const previewResults = ref<PreviewEntry[]>([]);
 const showPreviewDialog = ref(false);
 const previewError = ref<string | null>(null);
+// title-only matches the user ticked in the preview; none is applied unticked
+const confirmedTitleMatches = ref<Set<string>>(new Set());
 
 // a dry run answers "preview" for a game it matched
 function previewMatched(preview: RefreshMetadataPreview): boolean {
@@ -144,6 +146,32 @@ const previewWithChanges = computed(() =>
         e.preview.wouldAddKeyArt ||
         e.preview.wouldAddBanner),
   ),
+);
+function isTitleOnly(entry: PreviewEntry): boolean {
+  return entry.preview.match === "title";
+}
+
+function toggleTitleMatch(entry: PreviewEntry, confirmed: boolean) {
+  const next = new Set(confirmedTitleMatches.value);
+  if (confirmed) next.add(entry.game.id);
+  else next.delete(entry.game.id);
+  confirmedTitleMatches.value = next;
+}
+
+function candidateIds(preview: RefreshMetadataPreview): string {
+  return Object.entries(preview.candidate?.providerIds ?? {})
+    .map(([namespace, identity]) => `${namespace}:${identity}`)
+    .join(", ");
+}
+
+// what "Apply" sends: id matches, plus the title-only matches the user ticked
+const previewToApply = computed(() =>
+  previewWithChanges.value.filter(
+    (e) => !isTitleOnly(e) || confirmedTitleMatches.value.has(e.game.id),
+  ),
+);
+const previewTitleOnly = computed(
+  () => previewWithChanges.value.filter(isTitleOnly).length,
 );
 const previewUnchanged = computed(
   () =>
@@ -184,6 +212,7 @@ async function previewRefresh() {
     return;
   }
   previewResults.value = [];
+  confirmedTitleMatches.value = new Set();
   let taskId: string | null = null;
   try {
     const games = await fetchGames();
@@ -219,8 +248,9 @@ async function applyPreviewedRefresh() {
   // only the games the preview actually flagged as changing, the button
   // itself is labeled "Apply to N games" using this same count, so applying
   // to every previewed game (including no-match/already-up-to-date/error
-  // ones) would silently do more than what was shown and confirmed
-  const entries = previewWithChanges.value;
+  // ones) would silently do more than what was shown and confirmed. A
+  // title-only match is included only when the user ticked it.
+  const entries = previewToApply.value;
 
   refreshing.value = true;
   refreshResults.value = [];
@@ -236,11 +266,14 @@ async function applyPreviewedRefresh() {
 
     await runInBatches(entries, REFRESH_CONCURRENCY, async (entry) => {
       const game = entry.game;
-      // applying a previewed title-only match is the user's confirmation of it
+      // a ticked title-only match is confirmed by the exact candidate shown;
+      // the server refuses it if the lookup now finds a different one
       const outcome: RefreshMetadataOutcome = await refreshGameMetadata(
         game,
         options,
-        entry.preview.match === "title",
+        isTitleOnly(entry)
+          ? (entry.preview.candidate?.providerIds ?? {})
+          : null,
       );
       refreshResults.value.push({ title: game.title, result: outcome.status });
       if (outcome.keyArtAdded) imagesAddedCount.value++;
@@ -556,12 +589,41 @@ async function restoreGameById(game: TrashedGame) {
         title, {{ previewRefused }} have conflicting or rejected provider ids,
         {{ previewErrors }} failed to check.
       </p>
+      <p v-if="previewTitleOnly" class="section-hint">
+        {{ previewTitleOnly }} matched by title only, not by a provider id the
+        game already has. Tick each one that is the right game; unticked ones
+        are left alone.
+      </p>
       <ul v-if="previewWithChanges.length" class="preview-change-list">
-        <li v-for="entry in previewWithChanges" :key="entry.game.id">
-          <span class="preview-change-title">{{ entry.game.title }}</span>
-          <span class="preview-change-fields">{{
-            previewChangeSummary(entry.preview)
+        <li
+          v-for="entry in previewWithChanges"
+          :key="entry.game.id"
+          :class="{ 'preview-title-only': isTitleOnly(entry) }"
+        >
+          <label v-if="isTitleOnly(entry)" class="preview-title-confirm">
+            <input
+              type="checkbox"
+              :checked="confirmedTitleMatches.has(entry.game.id)"
+              :aria-label="`Apply the title-only match for ${entry.game.title}`"
+              @change="
+                toggleTitleMatch(
+                  entry,
+                  ($event.target as HTMLInputElement).checked,
+                )
+              "
+            />
+            <span class="preview-change-title">{{ entry.game.title }}</span>
+            <span class="preview-title-badge">title only</span>
+          </label>
+          <span v-else class="preview-change-title">{{
+            entry.game.title
           }}</span>
+          <span class="preview-change-fields">
+            {{ previewChangeSummary(entry.preview) }}
+            <template v-if="isTitleOnly(entry) && candidateIds(entry.preview)">
+              <br />would link {{ candidateIds(entry.preview) }}
+            </template>
+          </span>
         </li>
       </ul>
       <p v-else class="section-hint" style="margin-top: 10px">
@@ -578,11 +640,11 @@ async function restoreGameById(game: TrashedGame) {
         <button
           type="button"
           class="primary-button"
-          :disabled="!previewWithChanges.length"
+          :disabled="!previewToApply.length"
           @click="applyPreviewedRefresh"
         >
-          Apply to {{ previewWithChanges.length }} game{{
-            previewWithChanges.length === 1 ? "" : "s"
+          Apply to {{ previewToApply.length }} game{{
+            previewToApply.length === 1 ? "" : "s"
           }}
         </button>
       </div>
@@ -782,6 +844,20 @@ async function restoreGameById(game: TrashedGame) {
   border-radius: var(--ui-radius-control);
   padding: 8px 10px;
   font-size: 12.5px;
+}
+.preview-title-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.preview-title-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--ui-radius-control);
+  border: 1px solid var(--ui-border-soft);
+  color: var(--ui-muted);
+  white-space: nowrap;
 }
 .preview-change-title {
   color: var(--ui-text);
