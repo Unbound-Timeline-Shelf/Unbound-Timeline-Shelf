@@ -390,6 +390,8 @@ async def test_metadata_refresh_uses_public_image_validation_for_both_art_kinds(
             "update_text": False,
             "fill_missing_art": True,
             "overwrite_existing_art": True,
+            # a title-only match (the game has no provider ids) is applied once confirmed
+            "confirm_title_match": True,
         },
     )
     assert response.status_code == 200, response.text

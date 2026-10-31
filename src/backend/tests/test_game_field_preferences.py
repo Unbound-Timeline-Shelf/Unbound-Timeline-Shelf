@@ -200,7 +200,9 @@ async def test_clearing_a_preference_keeps_the_value(users, api):
 
 def _refresh_with(monkeypatch, provider, **fields):
     async def resolve(*_args, **_kwargs):
-        return {"providers": [provider], "contributors": []}, []
+        # the provider reported the saved title; the game has no provider ids (title-only match)
+        record = {"title": "Hades", "provider": provider}
+        return {**record, "providers": [provider], "contributors": []}, []
 
     monkeypatch.setattr(game_metadata, "resolve_library_record", resolve)
     monkeypatch.setattr(
@@ -212,7 +214,9 @@ def _refresh_with(monkeypatch, provider, **fields):
 
 async def _refresh(client, game_id):
     done = await client.post(
-        f"/api/game/{game_id}/metadata/refresh", json={"fill_missing_art": False}
+        f"/api/game/{game_id}/metadata/refresh",
+        # a title-only match (the game has no provider ids) is applied once confirmed
+        json={"fill_missing_art": False, "confirm_title_match": True},
     )
     assert done.status_code == 200, done.text
     return done.json()

@@ -72,7 +72,9 @@ async def test_refresh_fills_available_categories_but_preserves_manual_estimates
         AsyncMock(return_value=({"title": "Flow", "metadata": {"title": "Flow", **TIMES}}, [])),
     )
     refreshed = await flow.client.post(
-        f"{flow.game}/metadata/refresh", json={"fill_missing_art": False}
+        f"{flow.game}/metadata/refresh",
+        # a title-only match (the game has no provider ids) is applied once confirmed
+        json={"fill_missing_art": False, "confirm_title_match": True},
     )
     assert refreshed.status_code == 200, refreshed.text
     assert "time_to_beat_completionist_hours" in refreshed.json()["skipped_locked_fields"]
