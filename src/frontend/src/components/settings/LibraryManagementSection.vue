@@ -80,6 +80,21 @@ const unresolvedResults = computed(() =>
   refreshResults.value.filter((r) => r.result !== "updated"),
 );
 
+function refreshResultLabel(result: RefreshMetadataResult): string {
+  switch (result) {
+    case "no-match":
+      return "no match";
+    case "conflict":
+      return "conflicting provider ids, nothing changed";
+    case "rejected":
+      return "a rejected match, nothing changed";
+    case "needs-confirmation":
+      return "matched by title only, not confirmed";
+    default:
+      return "failed";
+  }
+}
+
 function currentOptions(): RefreshMetadataOptions {
   return {
     updateText: refreshUpdateText.value,
@@ -116,10 +131,15 @@ const previewResults = ref<PreviewEntry[]>([]);
 const showPreviewDialog = ref(false);
 const previewError = ref<string | null>(null);
 
+// a dry run answers "preview" for a game it matched
+function previewMatched(preview: RefreshMetadataPreview): boolean {
+  return preview.status === "preview" || preview.status === "updated";
+}
+
 const previewWithChanges = computed(() =>
   previewResults.value.filter(
     (e) =>
-      e.preview.status === "updated" &&
+      previewMatched(e.preview) &&
       (e.preview.changedFields.length ||
         e.preview.wouldAddKeyArt ||
         e.preview.wouldAddBanner),
@@ -128,8 +148,7 @@ const previewWithChanges = computed(() =>
 const previewUnchanged = computed(
   () =>
     previewResults.value.filter(
-      (e) =>
-        e.preview.status === "updated" && !previewWithChanges.value.includes(e),
+      (e) => previewMatched(e.preview) && !previewWithChanges.value.includes(e),
     ).length,
 );
 const previewNoMatch = computed(
@@ -138,6 +157,13 @@ const previewNoMatch = computed(
 );
 const previewErrors = computed(
   () => previewResults.value.filter((e) => e.preview.status === "error").length,
+);
+// conflicting provider ids, or a candidate the user rejected: never applied
+const previewRefused = computed(
+  () =>
+    previewResults.value.filter(
+      (e) => e.preview.status === "conflict" || e.preview.status === "rejected",
+    ).length,
 );
 
 function previewChangeSummary(preview: RefreshMetadataPreview): string {
@@ -194,7 +220,7 @@ async function applyPreviewedRefresh() {
   // itself is labeled "Apply to N games" using this same count, so applying
   // to every previewed game (including no-match/already-up-to-date/error
   // ones) would silently do more than what was shown and confirmed
-  const games = previewWithChanges.value.map((e) => e.game);
+  const entries = previewWithChanges.value;
 
   refreshing.value = true;
   refreshResults.value = [];
@@ -204,14 +230,17 @@ async function applyPreviewedRefresh() {
 
   let taskId: string | null = null;
   try {
-    refreshProgress.value = { done: 0, total: games.length };
-    taskId = startTask("Refreshing metadata", games.length);
+    refreshProgress.value = { done: 0, total: entries.length };
+    taskId = startTask("Refreshing metadata", entries.length);
     let doneCount = 0;
 
-    await runInBatches(games, REFRESH_CONCURRENCY, async (game: Game) => {
+    await runInBatches(entries, REFRESH_CONCURRENCY, async (entry) => {
+      const game = entry.game;
+      // applying a previewed title-only match is the user's confirmation of it
       const outcome: RefreshMetadataOutcome = await refreshGameMetadata(
         game,
         options,
+        entry.preview.match === "title",
       );
       refreshResults.value.push({ title: game.title, result: outcome.status });
       if (outcome.keyArtAdded) imagesAddedCount.value++;
@@ -224,7 +253,7 @@ async function applyPreviewedRefresh() {
           taskId,
           outcome.status === "updated"
             ? `${game.title} updated`
-            : `${game.title}: no match`,
+            : `${game.title}: ${refreshResultLabel(outcome.status)}`,
         );
       }
     });
@@ -440,8 +469,8 @@ async function restoreGameById(game: TrashedGame) {
 
     <div v-if="!refreshing && refreshResults.length" class="refresh-summary">
       <p>
-        {{ updatedCount }} updated, {{ noMatchCount }} skipped (no exact title
-        match), {{ errorCount }} failed.
+        {{ updatedCount }} updated, {{ noMatchCount }} skipped (no match),
+        {{ errorCount }} failed.
         <template v-if="imagesAddedCount">
           {{ imagesAddedCount }} image{{ imagesAddedCount === 1 ? "" : "s" }}
           {{
@@ -454,7 +483,7 @@ async function restoreGameById(game: TrashedGame) {
       <ul v-if="unresolvedResults.length" class="refresh-list">
         <li v-for="entry in unresolvedResults" :key="entry.title">
           {{ entry.title }}:
-          {{ entry.result === "no-match" ? "no exact match" : "failed" }}
+          {{ refreshResultLabel(entry.result) }}
         </li>
       </ul>
     </div>
@@ -523,7 +552,8 @@ async function restoreGameById(game: TrashedGame) {
           previewWithChanges.length === 1 ? "" : "s"
         }}
         would actually change, {{ previewUnchanged }} matched but are already up
-        to date, {{ previewNoMatch }} have no exact title match,
+        to date, {{ previewNoMatch }} have no match by provider id or exact
+        title, {{ previewRefused }} have conflicting or rejected provider ids,
         {{ previewErrors }} failed to check.
       </p>
       <ul v-if="previewWithChanges.length" class="preview-change-list">
