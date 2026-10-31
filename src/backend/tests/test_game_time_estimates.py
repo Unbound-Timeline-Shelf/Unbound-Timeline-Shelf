@@ -73,8 +73,8 @@ async def test_refresh_fills_available_categories_but_preserves_manual_estimates
     )
     refreshed = await flow.client.post(
         f"{flow.game}/metadata/refresh",
-        # a title-only match (the game has no provider ids) is applied once confirmed
-        json={"fill_missing_art": False, "confirm_title_match": True},
+        # a title-only match (no provider ids on either side) is applied once confirmed
+        json={"fill_missing_art": False, "confirm_candidate": {}},
     )
     assert refreshed.status_code == 200, refreshed.text
     assert "time_to_beat_completionist_hours" in refreshed.json()["skipped_locked_fields"]

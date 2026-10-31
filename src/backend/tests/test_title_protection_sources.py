@@ -176,8 +176,8 @@ async def test_game_refresh_endpoint_respects_protection_for_api_actor(
             "/api/auth/login", json={"username_or_email": username, "password": "Test-password!9"}
         )
         key = (await client.post("/api/auth/api-keys", json={"name": "Refresh"})).json()["api_key"]
-        # a title-only match (the game has no provider ids) is applied once confirmed
-        body = {"fill_missing_art": False, "confirm_title_match": True}
+        # a title-only match (no provider ids on either side) is applied once confirmed
+        body = {"fill_missing_art": False, "confirm_candidate": {}}
         if preview_state != "omitted":
             body["expected_updated_at"] = updated_at - (preview_state == "stale")
         response = await client.post(
@@ -227,7 +227,7 @@ async def test_game_refresh_reloads_protection_changed_during_provider_lookup(ow
         pending = asyncio.create_task(
             client.post(
                 f"/api/game/{identity}/metadata/refresh",
-                json={"fill_missing_art": False, "confirm_title_match": True},
+                json={"fill_missing_art": False, "confirm_candidate": {}},
             )
         )
         try:
