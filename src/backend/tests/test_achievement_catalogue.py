@@ -86,6 +86,8 @@ def test_rows_are_never_unlocked_and_deduplicated_by_external_id():
     rows = catalogue_rows(record)
     assert [r["external_id"] for r in rows] == ["ACH_1", "ACH_2"]
     assert all(r["unlocked"] is False for r in rows) and rows[1]["hidden"] is True
+    platinum = catalogue_rows({"metadata": {"achievements": [{**ITEM, "tier": "platinum"}]}})
+    assert platinum[0]["medal"] == "platinum"
     assert achievement_catalogue.provider_label(record) == "Atlas"
     assert achievement_catalogue.provider_label({}) == "Metadata providers"
     assert catalogue_rows({}) == [] and catalogue_rows({"metadata": {"achievements": None}}) == []
