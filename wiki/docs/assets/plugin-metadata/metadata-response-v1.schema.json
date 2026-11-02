@@ -134,7 +134,8 @@
               "enum": [
                 "bronze",
                 "silver",
-                "gold"
+                "gold",
+                "platinum"
               ],
               "type": "string"
             },

@@ -63,10 +63,9 @@ describe("mapAchievements", () => {
     expect(a.unlockedAt).toBeNull();
   });
 
-  it("ignores an unknown medal", () => {
-    expect(
-      mapAchievements([{ ...raw, medal: "platinum" }])[0].tierOverride,
-    ).toBeNull();
+  it("maps Platinum medals and ignores unknown medals", () => {
+    expect(mapAchievements([{ ...raw, medal: "platinum" }])[0].tierOverride).toBe("platinum");
+    expect(mapAchievements([{ ...raw, medal: "diamond" }])[0].tierOverride).toBeNull();
   });
 
   it("marks progress that was manually overridden", () => {
