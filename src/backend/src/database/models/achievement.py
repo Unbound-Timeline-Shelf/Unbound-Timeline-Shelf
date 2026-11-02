@@ -52,7 +52,7 @@ class Achievement(Base):
     # what exists, never what the user earned. ``source_provider`` names that metadata provider,
     # ``source_ids`` the ids the same achievement has on the platforms (``{"steam": "ACH_X"}``),
     # which is how a catalogue row is matched to the progress a platform sync stored.
-    # bronze/silver/gold as the provider rates it (``tier`` above is the kind, not this)
+    # bronze/silver/gold/platinum as the provider rates it (``tier`` above is the kind, not this)
     medal: Mapped[str | None] = mapped_column(String(10), nullable=True)
     points: Mapped[int | None] = mapped_column(Integer, nullable=True)
     locked_icon_url: Mapped[str | None] = mapped_column(Text, nullable=True)
