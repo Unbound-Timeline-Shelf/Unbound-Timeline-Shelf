@@ -37,6 +37,8 @@ def test_contract_accepts_catalogues_and_the_achievements_resource():
         achievements=[ITEM, {"name": "Secret", "external_id": "s", "hidden": True}]
     )
     assert patch.achievements[0].global_percent == 40.5 and patch.achievements[1].hidden is True
+    platinum = MetadataPatch(achievements=[{**ITEM, "tier": "platinum"}])
+    assert platinum.achievements[0].tier == "platinum"
     request = MetadataProviderRequest(
         request_id=uuid.uuid4(), user_id=uuid.uuid4(), query="x", resource="achievements"
     )
@@ -62,6 +64,7 @@ def test_contract_accepts_catalogues_and_the_achievements_resource():
         {"name": "n", "external_id": "x", "icon_url": "javascript:alert(1)"},
         {"name": "n", "external_id": "x", "unlocked": True},
         {"name": "x" * 201, "external_id": "x"},
+        {"name": "n", "external_id": "x", "tier": "diamond"},
     ],
 )
 def test_contract_rejects_bad_achievement_definitions(bad):
