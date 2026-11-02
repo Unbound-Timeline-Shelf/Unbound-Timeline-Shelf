@@ -8,7 +8,7 @@ export type GameStatus =
   | "dropped"
   | "mastered";
 
-export type AchievementTier = "bronze" | "silver" | "gold";
+export type AchievementTier = "bronze" | "silver" | "gold" | "platinum";
 
 // how a provider classifies an achievement (RetroAchievements is the only
 // one that does today)
