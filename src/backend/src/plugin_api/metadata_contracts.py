@@ -157,7 +157,7 @@ class MetadataAchievement(MetadataModel):
     # A hidden entry whose real text the provider did not reveal arrives as a placeholder.
     hidden: bool = False
     kind: Literal["progression", "missable", "win_condition"] | None = None
-    tier: Literal["bronze", "silver", "gold"] | None = None
+    tier: Literal["bronze", "silver", "gold", "platinum"] | None = None
     points: int | None = Field(default=None, ge=0, le=100_000)
     global_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     icon_url: AnyHttpUrl | None = None
