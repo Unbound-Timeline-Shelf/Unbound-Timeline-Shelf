@@ -14,6 +14,11 @@ A person's own decisions always win:
 
 Series and collection membership point at an umbrella, which provider ids cannot name yet, so
 those references only wait. Everything stored here is re-derived by the next refresh.
+
+The same table also remembers a merge a refresh could not follow (C4.4 rule 2): a provider said
+the game's id moved to one another tracked game already holds. That reference has kind
+``same_game``; it never becomes an edge, the duplicate review (``features/game_duplicates``)
+shows the two games instead, and the person decides (C4.4: never merged automatically).
 """
 
 from __future__ import annotations
@@ -38,6 +43,8 @@ from src.features.game_identity.provider_ids import find_provider_id_conflicts
 from src.plugin_api.vocab import RELATION_TYPES
 
 MEMBERSHIP_KINDS = frozenset({"series_member", "collection_member"})
+# a provider merged this game's id into one another tracked game holds (duplicate review)
+MERGED_KIND = "same_game"
 
 
 async def _pair_is_decided(db: AsyncSession, user_id: UUID, kind: str, a: UUID, b: UUID) -> bool:
@@ -115,7 +122,8 @@ async def _remember(
             set_={"last_seen_at": statement.excluded.last_seen_at},
         )
     )
-    return len(rows)
+    # one relation, however many ids name its target
+    return 1
 
 
 async def _trim(db: AsyncSession, game_id: UUID) -> None:
@@ -148,28 +156,65 @@ async def _forget(db: AsyncSession, game_id: UUID, kind: str, ids: Mapping[str, 
 
 
 async def _resolve_waiting(db: AsyncSession, game: Game) -> int:
-    """References other games made to this one, now that it holds the ids they named."""
+    """References other games made to this one, now that it holds the ids they named.
+
+    The same rules as a reported relation: the referring game must be in the library (not
+    trashed), and exactly one tracked game must hold the named id, or the reference keeps
+    waiting (which game is meant is the person's call). A resolved reference is removed whether
+    or not an edge was added: when ``_link`` refuses, the person's own answer for the pair (or
+    their removal of this edge) stands, and the provider reports the relation again anyway.
+    Returns the number of edges added."""
     held = [(namespace, value) for namespace, value in (game.provider_ids or {}).items() if value]
     if not held:
         return 0
     waiting = list(
         await db.scalars(
-            select(GamePendingRelationship).where(
+            select(GamePendingRelationship)
+            .join(
+                Game,
+                and_(
+                    Game.id == GamePendingRelationship.game_id,
+                    Game.user_id == GamePendingRelationship.user_id,
+                ),
+            )
+            .where(
                 GamePendingRelationship.user_id == game.user_id,
                 GamePendingRelationship.game_id != game.id,
-                GamePendingRelationship.kind.not_in(MEMBERSHIP_KINDS),
+                Game.deleted_at.is_(None),
+                GamePendingRelationship.kind.not_in(MEMBERSHIP_KINDS | {MERGED_KIND}),
                 tuple_(GamePendingRelationship.namespace, GamePendingRelationship.external_id).in_(
                     held
                 ),
+            )
+            .order_by(
+                GamePendingRelationship.game_id,
+                GamePendingRelationship.kind,
+                GamePendingRelationship.namespace,
             )
         )
     )
     added = 0
     for row in waiting:
+        named = {row.namespace: row.external_id}
+        if await _targets(db, game.user_id, row.game_id, named) != {game.id}:
+            continue
         if await _link(db, game.user_id, row.kind, row.game_id, game.id):
             added += 1
         await db.delete(row)
     return added
+
+
+async def record_merged_ids(db: AsyncSession, game: Game, moved: Mapping[str, str]) -> None:
+    """Remember the merges a refresh could not follow (namespace -> live id another game holds),
+    replacing what the previous refresh remembered, so the duplicate review shows the pairs."""
+    await db.execute(
+        delete(GamePendingRelationship).where(
+            GamePendingRelationship.game_id == game.id,
+            GamePendingRelationship.kind == MERGED_KIND,
+        )
+    )
+    if moved:
+        await _remember(db, game, MERGED_KIND, moved, unix_timestamp())
 
 
 async def ingest_relations(

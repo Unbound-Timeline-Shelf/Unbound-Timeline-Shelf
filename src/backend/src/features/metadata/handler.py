@@ -28,7 +28,7 @@ from .configuration import UNRANKED
 from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
-from .provider_reports import provider_identities, provider_relations
+from .provider_reports import is_unassignable, provider_identities, provider_relations
 from .providers import Operation, PluginMetadataProvider
 from .refresh_identity import provider_id_claims, unverified_providers, verified_record
 
@@ -414,6 +414,8 @@ class MetadataHandler:
                 (priorities.get(provider_id, source.priority), provider_id, patch)
                 for source in members
                 for provider_id, patch in source.metadata.items()
+                # an ambiguous lookup named several games; none of its fields are this one's
+                if not is_unassignable(patch)
             ),
             key=lambda item: (item[0], item[1]),
         )
@@ -596,9 +598,13 @@ class MetadataHandler:
         namespaces = {
             provider.id: provider.declaration.identifier_namespace for provider in session.providers
         }
+        # the contract each plugin declared; a host-owned provider has none
+        contracts = {
+            provider.id: getattr(provider, "api_contract", None) for provider in session.providers
+        }
         return {
             "provider_identities": provider_identities(session.sources, group, namespaces),
-            "provider_relations": provider_relations(session.sources, group, namespaces),
+            "provider_relations": provider_relations(session.sources, group, namespaces, contracts),
         }
 
     def _rank(self, session: SearchSession) -> None:
