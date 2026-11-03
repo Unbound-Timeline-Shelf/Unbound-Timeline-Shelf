@@ -14,6 +14,15 @@ to each `games.import` item (see [artwork and release dates](plugin-game-imports
 A plugin that sends them declares `api_contract_version` 1.1.19, so an older host refuses it at
 install instead of rejecting its syncs as unknown fields.
 
+v1.1.20 adds partial and regional release dates (`first_release`, `releases`), the identity
+verdict of a lookup (`identity`), achievement `aliases` and the `platinum` achievement tier to
+metadata provider responses, and the host now stores crossplay as `yes`, `partial`, `no` or
+unknown. Every field is listed in
+[metadata providers](metadata-providers.md#plugin-api-1120-releases-identity-and-relations).
+The host holds each plugin to the contract its manifest declares: a 1.1.20 field or value from a
+plugin that declares 1.1.19 or older is an `invalid_response`, and an older plugin that sends none
+of them works exactly as before.
+
 v1.1.2 protects notification transport behind core-issued delivery work. Generic
 plugin/UI actions cannot authorize Discord delivery. Notification provider
 registration and live capability grants remain required; providers receive the
