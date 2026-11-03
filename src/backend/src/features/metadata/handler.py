@@ -28,6 +28,7 @@ from .configuration import UNRANKED
 from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
+from .provider_reports import provider_identities, provider_relations
 from .providers import Operation, PluginMetadataProvider
 
 logger = logging.getLogger(__name__)
@@ -630,6 +631,18 @@ class MetadataHandler:
             for provider_id, ids in claims.items()
         }
 
+    @staticmethod
+    def provider_reports(session: SearchSession, group_id: str | None) -> dict[str, Any]:
+        """Identity verdicts and game relations, per registered provider (Plugin API 1.1.20)."""
+        group = session.groups.get(group_id or "", ())
+        namespaces = {
+            provider.id: provider.declaration.identifier_namespace for provider in session.providers
+        }
+        return {
+            "provider_identities": provider_identities(session.sources, group, namespaces),
+            "provider_relations": provider_relations(session.sources, group, namespaces),
+        }
+
     def _rank(self, session: SearchSession) -> None:
         previous, previous_groups = session.candidates, session.groups
         session.candidates, session.groups = {}, {}
@@ -915,6 +928,7 @@ class MetadataHandler:
                 **record,
                 "contributors": self.contributors(session, session.selected),
                 "provider_id_claims": self.provider_id_claims(session, session.selected),
+                **self.provider_reports(session, session.selected),
             }
         failures = list(
             dict.fromkeys(
