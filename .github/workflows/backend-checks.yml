@@ -163,7 +163,8 @@ jobs:
             tools/tests/test_plugin_acceptance_acquisition.py \
             tools/tests/test_environment_reference.py \
             tools/tests/test_backend_test_shards.py \
-            tools/tests/test_plugin_integration_ref_policy.py 2>&1 \
+            tools/tests/test_plugin_integration_ref_policy.py \
+            tools/tests/test_vocab_check.py 2>&1 \
             | tee repository-pytest-output.txt
 
       - name: Upload test diagnostics
