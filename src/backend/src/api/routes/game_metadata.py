@@ -37,12 +37,12 @@ from src.features.achievement_catalogue import (
     store_catalogue,
 )
 from src.features.game_identity import field_preferences, field_provenance, names, refresh_match
-from src.features.game_identity.ingest_relations import ingest_relations
+from src.features.game_identity.ingest_relations import ingest_relations, record_merged_ids
 from src.features.game_identity.provider_ids import (
     find_provider_id_conflicts,
     merge_provider_ids,
 )
-from src.features.metadata.game_releases import add_release_updates, release_of
+from src.features.metadata.game_releases import add_release_updates, release_for
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import (
     game_result,
@@ -256,11 +256,13 @@ async def _follow_moved_ids(
     decision: refresh_match.RefreshMatch,
     saved: dict[str, str],
     provider_errors: list[str],
-) -> dict[str, str]:
-    """The saved ids with every id a provider moved (C4.4 rule 2) replaced by the live one."""
+) -> tuple[dict[str, str], dict[str, str]]:
+    """The saved ids with every id a provider moved (C4.4 rule 2) replaced by the live one, and
+    the moves another game blocks (namespace -> live id), which go to the duplicate review."""
     if not decision.followed:
-        return saved
+        return saved, {}
     moved = {namespace: move["to"] for namespace, move in decision.followed.items()}
+    blocked: dict[str, str] = {}
     taken = await find_provider_id_conflicts(db, game.user_id, game.id, moved)
     for namespace, live, _other in taken:
         provider_errors.append(
@@ -268,7 +270,8 @@ async def _follow_moved_ids(
             "ID was kept. Review duplicates to merge the two games."
         )
         moved.pop(namespace, None)
-    return {**saved, **moved}
+        blocked[namespace] = live
+    return {**saved, **moved}, blocked
 
 
 def _reported_title(record: dict) -> str | None:
@@ -422,7 +425,7 @@ async def refresh_game_metadata(
         "tags": match.get("tags"),
         "features": match.get("features"),
         "age_rating": match.get("age_rating"),
-        "release_date": release_of(match)[0],
+        "release_date": release_for(game, match)[0],
         "time_to_beat_hours": match.get("time_to_beat_hours"),
         "time_to_beat_extras_hours": match.get("time_to_beat_extras_hours"),
         "time_to_beat_completionist_hours": match.get("time_to_beat_completionist_hours"),
@@ -495,12 +498,14 @@ async def refresh_game_metadata(
 
     existing_provider_ids = game.provider_ids or {}
     provider_ids_to_save = existing_provider_ids
+    # None: the provider_ids lock kept rule 2 from being considered, so the review is unchanged
+    merged_ids: dict[str, str] | None = None
     if "provider_ids" in game.locked_fields:
         skipped_locked.append("provider_ids")
     else:
         # rule 2: a provider moved a saved id (a merge or redirect); follow it unless another
         # game already holds the live id, which the duplicate review is for
-        existing_provider_ids = await _follow_moved_ids(
+        existing_provider_ids, merged_ids = await _follow_moved_ids(
             db, game, decision, existing_provider_ids, provider_errors
         )
         # only ids the sources reported themselves; the record also echoes the request's ids
@@ -571,6 +576,9 @@ async def refresh_game_metadata(
         )
 
     game.provider_ids = provider_ids_to_save
+    if merged_ids is not None:
+        # games whose provider ids merged are flagged through the duplicate review (C4.4)
+        await record_merged_ids(db, game, merged_ids)
     relations = {"added": 0, "pending": 0}
     if payload.update_text:
         _record_field_changes(game, updates, db)

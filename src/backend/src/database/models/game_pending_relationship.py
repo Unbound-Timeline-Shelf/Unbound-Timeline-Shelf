@@ -52,7 +52,8 @@ class GamePendingRelationship(Base):
     user_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     # the game the provider described; the edge runs from it to the referenced game
     game_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
-    # a vocabulary relation type (contracts/vocab-v1.json relation_type)
+    # a vocabulary relation type (contracts/vocab-v1.json relation_type), or ``same_game``: a
+    # provider merged this game's id into one another tracked game holds (duplicate review)
     kind: Mapped[str] = mapped_column(String(40), nullable=False)
     # the referenced game, as the provider identifies it
     namespace: Mapped[str] = mapped_column(String(128), nullable=False)
