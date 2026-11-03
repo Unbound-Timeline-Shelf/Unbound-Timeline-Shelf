@@ -55,15 +55,20 @@ def test_provider_values_fill_an_unconfirmed_game():
     assert provider_play_compatibility(match, None) == {
         "min_players": 1,
         "max_players": 4,
-        "crossplay": True,
+        "crossplay": "yes",
         "source": "provider",
     }
 
 
-@pytest.mark.parametrize("crossplay", ["no", "partial", None])
-def test_only_an_explicit_yes_enables_crossplay(crossplay):
+@pytest.mark.parametrize("crossplay", ["yes", "partial", "no", None])
+def test_crossplay_is_stored_as_the_provider_said_it(crossplay):
     match = {"players_min": 2, "players_max": 2, "crossplay": crossplay}
-    assert provider_play_compatibility(match, None)["crossplay"] is False
+    assert provider_play_compatibility(match, None)["crossplay"] == crossplay
+
+
+def test_silence_about_crossplay_is_unknown_not_no():
+    stored = provider_play_compatibility({"players_min": 2, "players_max": 2}, None)
+    assert stored["crossplay"] is None
 
 
 @pytest.mark.parametrize(
@@ -91,7 +96,7 @@ def test_earlier_provider_values_are_refreshed_and_keep_the_duration():
     old = {
         "min_players": 1,
         "max_players": 2,
-        "crossplay": False,
+        "crossplay": None,  # unknown, as stored since host 1.1.20
         "source": "provider",
         "duration_minutes": 90,
     }

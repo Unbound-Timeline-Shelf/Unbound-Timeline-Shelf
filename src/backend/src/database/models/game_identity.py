@@ -673,6 +673,8 @@ class GameSourceObservation(Base):
     observed_platform: Mapped[str | None] = mapped_column(String(50), nullable=True)
     observed_edition: Mapped[str | None] = mapped_column(String(100), nullable=True)
     observed_release_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # "year", "month" or "day" (Plugin API 1.1.20 partial dates); NULL is a day, as before
+    observed_release_precision: Mapped[str | None] = mapped_column(String(5), nullable=True)
     observed_provider_ids: Mapped[dict[str, str]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )

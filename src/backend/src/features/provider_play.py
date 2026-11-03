@@ -2,6 +2,8 @@
 
 from typing import Any, TypeGuard
 
+from src.plugin_api.vocab import CROSSPLAY
+
 PROVIDER_SOURCE = "provider"
 MAX_CUSTOM_FIELDS = 64
 
@@ -31,8 +33,8 @@ def provider_play_compatibility(
     """The play_compatibility a refresh should store, or None to leave the game unchanged.
 
     Provider values are only used when both limits are known, and never replace details the user
-    confirmed (those carry no ``source``). Crossplay is stored as true only when a provider says
-    "yes": "no", "partial" and silence all stay false because the stored flag cannot express them.
+    confirmed (those carry no ``source``). Crossplay is stored as the provider's vocabulary value
+    ("yes", "partial" or "no"); silence is unknown (None), never a "no" (CONTRACTS-v1 C7.2).
     """
     low, high = match.get("players_min"), match.get("players_max")
     if not (_is_count(low) and _is_count(high)) or not 1 <= low <= high <= 32:
@@ -42,7 +44,7 @@ def provider_play_compatibility(
     value: dict[str, Any] = {
         "min_players": low,
         "max_players": high,
-        "crossplay": match.get("crossplay") == "yes",
+        "crossplay": crossplay if (crossplay := match.get("crossplay")) in CROSSPLAY else None,
         "source": PROVIDER_SOURCE,
     }
     if current and current.get("duration_minutes") is not None:

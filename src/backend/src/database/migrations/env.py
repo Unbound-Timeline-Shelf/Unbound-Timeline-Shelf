@@ -35,6 +35,7 @@ from src.database.models import (
     game_identity_tracking,  # noqa: F401
     game_metadata_rejection,  # noqa: F401
     game_note_detail,  # noqa: F401
+    game_pending_relationship,  # noqa: F401
     game_profile,  # noqa: F401
     game_profile_stat_snapshot,  # noqa: F401
     inbox_item,  # noqa: F401
