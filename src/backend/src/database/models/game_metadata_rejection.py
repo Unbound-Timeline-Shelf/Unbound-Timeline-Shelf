@@ -15,6 +15,8 @@ from src.database.base import Base, owner_user_id_column, unix_timestamp
 
 
 class GameMetadataRejection(Base):
+    # The owner column is declared like every other per-user table's.
+    # pylint: disable=duplicate-code
     __tablename__ = "game_metadata_rejections"
     __table_args__ = (
         UniqueConstraint(
