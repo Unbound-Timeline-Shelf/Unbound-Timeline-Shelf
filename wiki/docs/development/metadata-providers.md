@@ -84,7 +84,7 @@ is stale, and `python tools/vocab_check.py compare` checks it against the file A
 
 | Field | Shape | What the host does with it |
 |---|---|---|
-| `MetadataPatch.first_release` | a release (below) | The game's first release at its real precision. `games.release_date` is set to the first day of the period (`"2011"` → 2011-01-01) and `release_date_precision` to `year` or `month` (null is a day). Its `platform`, `region` and `edition` are ignored. A day `first_release` must equal `release_date` when both are sent. When another source of the same result reports a day inside the same year or month, that more precise day is stored. |
+| `MetadataPatch.first_release` | a release (below) | The game's first release at its real precision. `games.release_date` is set to the first day of the period (`"2011"` → 2011-01-01) and `release_date_precision` to `year` or `month` (null is a day). Its `platform`, `region` and `edition` are ignored. A day `first_release` must equal `release_date` when both are sent. When another source of the same result reports a day inside the same year or month, or the game already holds one, that more precise date is kept. Only a `full` or `early_access` first release is a release date; another category is ignored. |
 | `MetadataPatch.releases` | up to **5** releases, unique on `(platform, region, edition, category)` | Stored as `games.releases`, replaced by each refresh that reports releases. |
 | `MetadataPatch.identity` | `{match, previous_ids}` | `match` is `id`, `redirect`, `crosswalk`, `exact`, `conflict` or `ambiguous`; `previous_ids` maps up to 8 namespaces to ids the provider no longer uses for this record. See the identity rules below. |
 | `MetadataAchievement.aliases` | up to 32 ids | Earlier ids of the same achievement. A stored catalogue row listed here keeps its id instead of being replaced (re-key step 3), so manual progress stays attached. |
@@ -112,13 +112,17 @@ makes it a day again. The game API returns `release_date_precision` and `release
   `crosswalk` and its `previous_ids` holds the id the game has saved in that namespace, the
   result is the game, and the saved id is rewritten to the one live id the provider reported.
   The response lists it under `followed_ids`. If another game already holds the live id, the
-  saved id is kept and the refresh says so: the two games are for the duplicate review, never
-  merged automatically. A provider can only move ids in its own namespaces;
+  saved id is kept and the refresh says so. The duplicate review then lists the two games (as a
+  provider identity match) until the person merges them or keeps both; they are never merged
+  automatically. A provider can only move ids in its own namespaces;
 - refuses a result any provider called `conflict` (rule 4): the response is `status: "conflict"`
   with what that provider reported beside the saved ids, and nothing is applied;
-- treats the ids of a provider that answered `ambiguous` as no evidence.
+- ignores everything a provider that answered `ambiguous` reported (its ids, fields, dates,
+  releases and relations): an ambiguous lookup named several games.
 
-**Game relations.** A relation whose `relation` is one of `version_of`, `remake_of`,
+**Game relations.** Relations are read only from plugins that declare Plugin API 1.1.20 or later,
+only from entries in the `related` group, and never from a provider that answered `ambiguous` or
+`conflict`. A relation whose `relation` is one of `version_of`, `remake_of`,
 `remaster_of`, `port_of`, `dlc_of`, `expansion_of`, `standalone_expansion_of`, `mod_of`,
 `modpack_of`, `total_conversion_of`, `series_member` or `collection_member` runs **from the
 refreshed game to the related one**. The related game is named by the candidate's
@@ -126,7 +130,8 @@ refreshed game to the related one**. The related game is named by the candidate'
 or its namespace), by `external_id` in the provider's namespace. When exactly one game in the
 library holds one of those ids, the refresh adds a relationship with origin `ingest`. When none
 does, the reference waits (at most 200 per game) and becomes a relationship on a later refresh of
-either game. The host never adds an edge between two games the person already related, never
+either game, once exactly one game in the library holds the id and the referring game is not in
+the trash. The host never adds an edge between two games the person already related, never
 re-adds one the person ended, never ends one because a provider stopped reporting it, and never
 lets a provider make a relationship circular. Series and collection membership point at an
 umbrella, which ids cannot name yet, so those references only wait. The refresh response reports

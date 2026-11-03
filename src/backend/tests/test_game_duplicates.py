@@ -156,20 +156,28 @@ async def test_review_excludes_trash_and_rejects_foreign_or_same_game_decisions(
 
 
 async def test_response_is_bounded_and_queries_do_not_grow_per_game(flow):
+    async def measured() -> tuple[dict, int]:
+        statements = []
+
+        def record(_connection, _cursor, statement, _parameters, _context, _executemany):
+            if statement.startswith("SELECT"):
+                statements.append(statement)
+
+        async with SessionLocal() as db:
+            event.listen(db.bind.sync_engine, "before_cursor_execute", record)
+            try:
+                result = await suggestions(db, flow.user_id, 2)
+            finally:
+                event.remove(db.bind.sync_engine, "before_cursor_execute", record)
+        return result, len(statements)
+
     for _ in range(6):
         await add_game(flow.user_id)
-    statements = []
-
-    def record(_connection, _cursor, statement, _parameters, _context, _executemany):
-        if statement.startswith("SELECT"):
-            statements.append(statement)
-
-    async with SessionLocal() as db:
-        event.listen(db.bind.sync_engine, "before_cursor_execute", record)
-        try:
-            result = await suggestions(db, flow.user_id, 2)
-        finally:
-            event.remove(db.bind.sync_engine, "before_cursor_execute", record)
+    result, queries = await measured()
     assert len(result["pairs"]) == 2 and result["has_more"]
-    assert len(statements) == 2
+    # the games, the person's decisions and the provider-reported merges: one query each
+    assert queries == 3
+    for _ in range(6):
+        await add_game(flow.user_id)
+    assert (await measured())[1] == queries
     assert (await flow.client.get("/api/game-duplicates?limit=101")).status_code == 422
