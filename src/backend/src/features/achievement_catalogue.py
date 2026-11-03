@@ -49,6 +49,9 @@ def catalogue_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
                 "medal": item.get("tier"),
                 "points": item.get("points"),
                 "source_ids": dict(item.get("source_ids") or {}) or None,
+                # Plugin API 1.1.20: earlier ids of this achievement, for the sticky re-key step;
+                # not a stored field (``achievement_rekey.incoming`` takes them off)
+                "aliases": [alias[:_EXTERNAL_ID_LENGTH] for alias in item.get("aliases") or ()],
                 "unlocked": False,
             }
         )

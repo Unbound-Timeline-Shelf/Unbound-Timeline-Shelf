@@ -7,12 +7,19 @@ the request supplied (a record echoes those back):
 
 1. A source reported an id the game already holds: the result is the game (`id`). The title
    is not consulted. An `atlas` id that differs from the saved one is not evidence either way:
-   Atlas reports the live id after a merge, and following it needs Plugin API 1.1.20 (rule 2).
-2. (Plugin API 1.1.20, not implemented here: follow an Atlas merge or redirect by id.)
+   Atlas reports the live id after a merge, and only rule 2 follows it.
+2. (Plugin API 1.1.20) A provider's `identity` says it matched by id, redirect or crosswalk, and
+   its `previous_ids` holds the id the game has saved in that namespace: the result is the game
+   (`id`), and the saved id is to be rewritten to the live one the provider reported
+   (`followed`). A merge or redirect is followed by id, never by title, and only in the
+   provider's own namespaces (they are confined before the response reaches the host).
 3. No reported id matches the game, but a provider reported the game's exact title: `title`.
    It may be previewed, and is applied only when the person confirms it.
-4. A source contradicts an id the game holds, or two sources disagree about one namespace:
-   `conflict`. Nothing is applied.
+4. A source contradicts an id the game holds, two sources disagree about one namespace, or a
+   provider's `identity.match` is `conflict` (Plugin API 1.1.20): `conflict`. Nothing is applied.
+
+A provider whose `identity.match` is `ambiguous` named several possible games, so the ids it
+reported are not evidence of anything and are left out of the decision.
 
 A result that reports an id the person rejected for this game is `rejected`, even when another
 reported id confirms the game: the record merges every source's fields, so the rejected source's
@@ -62,6 +69,8 @@ class RefreshMatch:
     # namespace -> {value: [sources]}; "saved" is the game's own value
     conflicts: dict[str, dict[str, list[str]]] = field(default_factory=dict)
     rejected: dict[str, str] = field(default_factory=dict)
+    # rule 2: namespace -> {"from": saved id, "to": live id, "provider": who reported the move}
+    followed: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @property
     def applies_without_confirmation(self) -> bool:
@@ -98,16 +107,77 @@ def _reported(claims: Mapping[str, Mapping[str, Claim]]) -> dict[str, dict[str, 
     return values
 
 
-def classify(
+FOLLOWED_MATCHES = frozenset({"id", "redirect", "crosswalk"})
+
+
+def _identity_conflicts(
     saved: Mapping[str, str],
     claims: Mapping[str, Mapping[str, Claim]],
-    *,
-    game_title: str,
-    reported_title: str | None,
-    rejected: Iterable[tuple[str, str]] = (),
-) -> RefreshMatch:
-    """Apply the C4.4 rules to one refresh result. Pure; the caller supplies the evidence."""
-    reported = _reported(claims)
+    identities: Mapping[str, Mapping[str, object]],
+) -> dict[str, dict[str, list[str]]]:
+    """Rule 4: what each provider that answered `conflict` reported, beside the saved ids."""
+    conflicts: dict[str, dict[str, list[str]]] = {}
+    for provider, identity in sorted(identities.items()):
+        if identity.get("match") != "conflict":
+            continue
+        reported = _reported({provider: claims.get(provider, {})})
+        if not reported:
+            conflicts.setdefault("identity", {}).setdefault("conflict", []).append(provider)
+        for namespace, values in reported.items():
+            entry = conflicts.setdefault(namespace, {})
+            for value, sources in values.items():
+                entry.setdefault(value, []).extend(sources)
+            if namespace in saved:
+                entry.setdefault(saved[namespace], [SAVED])
+    return conflicts
+
+
+def _followed(
+    saved: Mapping[str, str],
+    claims: Mapping[str, Mapping[str, Claim]],
+    identities: Mapping[str, Mapping[str, object]],
+) -> dict[str, dict[str, str]]:
+    """Rule 2: saved ids a provider says it moved from, and the one live id it now reports."""
+    moves: dict[str, dict[str, str]] = {}
+    for provider, identity in sorted(identities.items()):
+        previous = identity.get("previous_ids")
+        if identity.get("match") not in FOLLOWED_MATCHES or not isinstance(previous, Mapping):
+            continue
+        reported = _reported({provider: claims.get(provider, {})})
+        for namespace, old in previous.items():
+            live = list(reported.get(namespace, {}))
+            if saved.get(namespace) == old and len(live) == 1 and live[0] != old:
+                moves.setdefault(namespace, {"from": str(old), "to": live[0], "provider": provider})
+    return moves
+
+
+def _apply_verdicts(
+    saved: Mapping[str, str],
+    claims: Mapping[str, Mapping[str, Claim]],
+    identities: Mapping[str, Mapping[str, object]],
+) -> tuple[dict[str, Mapping[str, Claim]], RefreshMatch | dict[str, dict[str, str]]]:
+    """The claims that count (an ambiguous provider's do not), and either the rule 4 conflict
+    or the ids rule 2 follows."""
+    counted = {
+        provider: ids
+        for provider, ids in claims.items()
+        if (identities.get(provider) or {}).get("match") != "ambiguous"
+    }
+    conflicts = _identity_conflicts(saved, counted, identities)
+    if conflicts:
+        agreed = {
+            namespace: next(iter(values))
+            for namespace, values in _reported(counted).items()
+            if len(values) == 1
+        }
+        return counted, RefreshMatch("conflict", agreed, conflicts=conflicts)
+    return counted, _followed(saved, counted, identities)
+
+
+def _compare(
+    saved: Mapping[str, str], reported: Mapping[str, Mapping[str, list[str]]]
+) -> tuple[dict[str, str], dict[str, str], dict[str, dict[str, list[str]]]]:
+    """Rules 1 and 4 on the reported ids: what is offered, shared with the game, or disputed."""
     conflicts: dict[str, dict[str, list[str]]] = {}
     offered: dict[str, str] = {}
     shared: dict[str, str] = {}
@@ -125,6 +195,28 @@ def classify(
             shared[namespace] = value
         elif held is not None and namespace != ATLAS:
             conflicts[namespace] = {held: [SAVED], value: list(sources)}
+    return offered, shared, conflicts
+
+
+def classify(
+    saved: Mapping[str, str],
+    claims: Mapping[str, Mapping[str, Claim]],
+    *,
+    game_title: str,
+    reported_title: str | None,
+    rejected: Iterable[tuple[str, str]] = (),
+    identities: Mapping[str, Mapping[str, object]] | None = None,
+) -> RefreshMatch:
+    """Apply the C4.4 rules to one refresh result. Pure; the caller supplies the evidence.
+
+    ``identities`` holds each provider's Plugin API 1.1.20 identity verdict (``match`` and
+    ``previous_ids``); an older provider sends none, and rules 1, 3 and 4 then work as before."""
+    claims, verdict = _apply_verdicts(saved, claims, identities or {})
+    if isinstance(verdict, RefreshMatch):
+        return verdict
+    followed = verdict
+    saved = {**saved, **{namespace: move["to"] for namespace, move in followed.items()}}
+    offered, shared, conflicts = _compare(saved, _reported(claims))
     if conflicts:
         return RefreshMatch("conflict", offered, shared, conflicts)
     refused = {
@@ -135,7 +227,7 @@ def classify(
     if refused:
         return RefreshMatch("rejected", offered, shared, rejected=refused)
     if shared:
-        return RefreshMatch("id", offered, shared)
+        return RefreshMatch("id", offered, shared, followed=followed)
     if reported_title and normalize_metadata_title(reported_title) == normalize_metadata_title(
         game_title
     ):

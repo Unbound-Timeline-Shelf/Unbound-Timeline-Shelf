@@ -1,10 +1,12 @@
 """Plugin-supplied metadata must not rewrite identities or exceed the stored column sizes."""
 
+from datetime import date
 from types import SimpleNamespace
 
-from src.api.routes.game_metadata import _game_links, _release_date
+from src.api.routes.game_metadata import _game_links
 from src.features.game_identity.provider_ids import merge_provider_ids
 from src.features.metadata.column_limits import fit_response
+from src.features.metadata.game_releases import release_of
 from src.features.metadata.identity import same_entity
 from src.features.metadata.namespaces import confine_to_namespaces
 from src.plugin_api.media_enrichment import _apply_metadata
@@ -127,6 +129,14 @@ def test_game_links_become_rows_and_bad_ones_are_dropped():
 
 
 def test_release_date_is_parsed_and_garbage_ignored():
-    assert _release_date("2020-05-17").isoformat() == "2020-05-17"
-    assert _release_date("soon") is None
-    assert _release_date(None) is None
+    assert release_of({"release_date": "2020-05-17"}) == (date(2020, 5, 17), None)
+    assert release_of({"release_date": "soon"}) == (None, None)
+    assert release_of({"release_date": None}) == (None, None)
+    # an invalid first_release falls back to the legacy day
+    assert release_of(
+        {"release_date": "2020-05-17", "first_release": {"date": "2020", "precision": "day"}}
+    ) == (date(2020, 5, 17), None)
+    assert release_of({"first_release": {"date": "2020-05", "precision": "month"}}) == (
+        date(2020, 5, 1),
+        "month",
+    )
