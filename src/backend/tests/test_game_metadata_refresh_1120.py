@@ -6,14 +6,18 @@ the result back from PostgreSQL."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
 
+from src.api.routes import export_import
+from src.database.models.game import Game
 from src.database.models.game_identity import GameRelationship, RecordOrigin
 from src.database.models.game_pending_relationship import GamePendingRelationship
 from src.database.session import SessionLocal
+from src.features import game_duplicates
 from src.features.game_identity import graph
 from src.features.game_identity.refresh_match import classify
 from src.plugin_api.metadata_contracts import (
@@ -167,6 +171,72 @@ async def test_a_day_agreeing_with_a_reported_year_wins(owner, providers, client
     assert (game.release_date, game.release_date_precision) == (date(2011, 4, 19), None)
 
 
+async def test_a_stored_day_survives_a_refresh_that_only_knows_its_year(owner, providers, client):
+    user_id, _ = owner
+    providers(
+        steam(),
+        atlas_for(
+            "12345",
+            first_release=MetadataRelease(date="2011", precision="year"),
+            releases=(MetadataRelease(date="2011", precision="year", platform="pc"),),
+        ),
+    )
+    game_id = await add_game(
+        user_id, provider_ids={"steam": "12345"}, release_date=date(2011, 4, 19)
+    )
+
+    result = await refresh(client, game_id)
+
+    assert result["status"] == "updated"
+    assert not {"release_date", "release_date_precision"} & set(result["changed_fields"])
+    game = await stored(game_id)
+    assert (game.release_date, game.release_date_precision) == (date(2011, 4, 19), None)
+    assert [entry["date"] for entry in game.releases] == ["2011"]
+
+
+async def test_a_stored_month_survives_a_year_but_a_different_year_replaces_it(
+    owner, providers, client
+):
+    user_id, _ = owner
+    providers(
+        steam(), atlas_for("12345", first_release=MetadataRelease(date="2011", precision="year"))
+    )
+    game_id = await add_game(
+        user_id,
+        provider_ids={"steam": "12345"},
+        release_date=date(2011, 4, 1),
+        release_date_precision="month",
+    )
+    await refresh(client, game_id)
+    game = await stored(game_id)
+    assert (game.release_date, game.release_date_precision) == (date(2011, 4, 1), "month")
+
+    async with SessionLocal() as db:
+        (await db.get(Game, game_id)).release_date = date(2009, 4, 19)
+        await db.commit()
+    await refresh(client, game_id)
+    game = await stored(game_id)
+    assert (game.release_date, game.release_date_precision) == (date(2011, 1, 1), "year")
+
+
+async def test_a_first_release_that_is_not_a_full_or_early_access_release_is_ignored(
+    owner, providers, client
+):
+    user_id, _ = owner
+    providers(
+        steam(),
+        atlas_for(
+            "12345", first_release=MetadataRelease(date="2010", precision="year", category="beta")
+        ),
+    )
+    game_id = await add_game(user_id, provider_ids={"steam": "12345"})
+
+    await refresh(client, game_id)
+
+    game = await stored(game_id)
+    assert (game.release_date, game.release_date_precision) == (None, None)
+
+
 async def test_the_release_date_lock_covers_its_precision_and_releases_have_their_own(
     owner, providers, client
 ):
@@ -285,6 +355,56 @@ async def test_a_live_id_another_game_holds_is_left_for_the_duplicate_review(
     assert any("Review duplicates" in error for error in result["provider_errors"])
     assert (await stored(game_id)).provider_ids == {"atlas": OTHER_ATLAS_ID}
     assert (await stored(other_id)).provider_ids == {"atlas": ATLAS_ID}
+    # the pair is in the duplicate review, though their atlas ids differ
+    review = (await client.get("/api/game-duplicates")).json()
+    assert [
+        ({pair["first"]["id"], pair["second"]["id"]}, pair["reason"]) for pair in review["pairs"]
+    ] == [({str(game_id), str(other_id)}, "shared_identity")]
+    async with SessionLocal() as db:
+        assert len((await game_duplicates.suggestions(db, user_id))["pairs"]) == 1
+    # a second refresh remembers the merge once, and it is never an edge
+    await refresh(client, game_id)
+    assert await pending(user_id) == [(game_id, "same_game", "atlas", ATLAS_ID)]
+    assert await edges(user_id) == []
+
+    # the person keeps both: the pair leaves the review and nothing was merged
+    kept = await client.post(
+        "/api/game-duplicates/keep-both",
+        json={"first_id": str(game_id), "second_id": str(other_id)},
+    )
+    assert kept.status_code == 204, kept.text
+    assert (await client.get("/api/game-duplicates")).json()["pairs"] == []
+    assert (await stored(game_id)).deleted_at is None
+    assert (await stored(other_id)).deleted_at is None
+
+
+async def test_a_followed_merge_clears_the_remembered_duplicate(owner, providers, client):
+    user_id, _ = owner
+    providers(
+        atlas_by_id(
+            {
+                OTHER_ATLAS_ID: MetadataPatch(
+                    title="Portal 2",
+                    provider_ids={"atlas": ATLAS_ID},
+                    identity=MetadataIdentity(match="id", previous_ids={"atlas": OTHER_ATLAS_ID}),
+                )
+            }
+        )
+    )
+    game_id = await add_game(user_id, provider_ids={"atlas": OTHER_ATLAS_ID})
+    other_id = await add_game(user_id, title="Portal 2", provider_ids={"atlas": ATLAS_ID})
+    await refresh(client, game_id)
+    assert len(await pending(user_id)) == 1
+
+    # the other game goes to the trash; the next refresh follows the move
+    async with SessionLocal() as db:
+        (await db.get(Game, other_id)).deleted_at = 1
+        await db.commit()
+    assert (await client.get("/api/game-duplicates")).json()["pairs"] == []
+    await refresh(client, game_id)
+
+    assert (await stored(game_id)).provider_ids == {"atlas": ATLAS_ID}
+    assert await pending(user_id) == []
 
 
 # --- C4.4 rule 4: a conflict verdict applies nothing ------------------------------------------
@@ -340,7 +460,111 @@ def test_an_ambiguous_provider_is_no_evidence_and_an_older_one_is_unchanged():
     assert classify(saved, claims, game_title="G", reported_title="G").tier == "conflict"
 
 
+async def test_nothing_an_ambiguous_provider_reported_is_stored(owner, providers, client):
+    user_id, _ = owner
+    providers(
+        steam(),
+        atlas_for(
+            "12345",
+            developer="Someone Else",
+            first_release=MetadataRelease(date="1999", precision="year"),
+            releases=(MetadataRelease(date="1999", precision="year", platform="pc"),),
+            relations=(relation("dlc_of", BASE_ATLAS_ID),),
+            identity=MetadataIdentity(match="ambiguous"),
+        ),
+    )
+    dlc_id = await add_game(user_id, provider_ids={"steam": "12345"})
+    await add_game(user_id, title="Base Game", provider_ids={"atlas": BASE_ATLAS_ID})
+
+    result = await refresh(client, dlc_id)
+
+    # Steam confirms the game by id, so the refresh applies; only Steam's fields count
+    assert (result["status"], result["match"]) == ("updated", "id")
+    assert (result["relations_added"], result["relations_pending"]) == (0, 0)
+    game = await stored(dlc_id)
+    assert (game.developer, game.release_date, game.releases) == (None, None, None)
+    assert game.provider_ids == {"steam": "12345"}
+    assert await edges(user_id) == []
+    assert await pending(user_id) == []
+
+
 # --- C6.4: game relations ---------------------------------------------------------------------
+
+
+@dataclass
+class OlderPlugin(StandInProvider):
+    """A stand-in for a plugin whose manifest declares Plugin API 1.1.19."""
+
+    api_contract: str = "1.1.19"
+
+
+async def test_relations_from_an_older_plugin_or_outside_the_related_group_are_not_ingested(
+    owner, providers, client
+):
+    user_id, _ = owner
+
+    def older(candidate):
+        if candidate is None or candidate.provider_ids.get("steam") != "12345":
+            return None
+        return MetadataPatch(
+            provider_ids={"atlas": ATLAS_ID}, relations=(relation("dlc_of", BASE_ATLAS_ID),)
+        )
+
+    providers(steam(), OlderPlugin(ATLAS, "atlas", older, priority=10))
+    dlc_id = await add_game(user_id, provider_ids={"steam": "12345"})
+    await add_game(user_id, title="Base Game", provider_ids={"atlas": BASE_ATLAS_ID})
+
+    result = await refresh(client, dlc_id)
+    assert result["status"] == "updated" and result["relations_added"] == 0
+    assert await edges(user_id) == [] and await pending(user_id) == []
+
+    recommended = relation("dlc_of", BASE_ATLAS_ID).model_copy(update={"group": "recommendation"})
+    providers(steam(), atlas_for("12345", relations=(recommended,)))
+    result = await refresh(client, dlc_id)
+    assert result["relations_added"] == 0
+    assert await edges(user_id) == [] and await pending(user_id) == []
+
+
+async def test_a_waiting_relation_needs_one_target_and_a_referrer_still_in_the_library(
+    owner, providers, client
+):
+    user_id, _ = owner
+    providers(steam(), atlas_for("12345", relations=(relation("dlc_of", BASE_ATLAS_ID),)))
+    dlc_id = await add_game(user_id, provider_ids={"steam": "12345"})
+    await refresh(client, dlc_id)
+    assert len(await pending(user_id)) == 1
+
+    # two games hold the base id: which one is meant is the person's call
+    providers(steam("777", title="Base Game"))
+    base_id = await add_game(
+        user_id, title="Base Game", provider_ids={"steam": "777", "atlas": BASE_ATLAS_ID}
+    )
+    copy_id = await add_game(
+        user_id, title="Base Game (copy)", provider_ids={"atlas": BASE_ATLAS_ID}
+    )
+    result = await refresh(client, base_id)
+    assert result["relations_added"] == 0
+    assert await edges(user_id) == []
+    assert len(await pending(user_id)) == 1
+
+    # the copy is gone, but the referring game is in the trash: still no edge to it
+    async with SessionLocal() as db:
+        await db.execute(Game.__table__.delete().where(Game.id == copy_id))
+        (await db.get(Game, dlc_id)).deleted_at = 1
+        await db.commit()
+    result = await refresh(client, base_id)
+    assert result["relations_added"] == 0
+    assert await edges(user_id) == []
+    assert len(await pending(user_id)) == 1
+
+    # restored from the trash, the reference resolves
+    async with SessionLocal() as db:
+        (await db.get(Game, dlc_id)).deleted_at = None
+        await db.commit()
+    result = await refresh(client, base_id)
+    assert result["relations_added"] == 1
+    assert await edges(user_id) == [("dlc_of", dlc_id, base_id, RecordOrigin.INGEST.value, True)]
+    assert await pending(user_id) == []
 
 
 async def test_a_reported_relation_becomes_an_ingest_edge_or_waits_for_its_game(
@@ -476,3 +700,39 @@ async def test_provider_crossplay_is_stored_as_reported_and_read_as_both_shapes(
         "partial",
         "provider",
     )
+
+
+# --- export and import keep the precision -----------------------------------------------------
+
+
+async def test_an_export_restores_a_year_only_date_as_a_year(owner, client, monkeypatch):
+    user_id, _ = owner
+    monkeypatch.setattr(export_import, "create_game_folder", lambda *_args: None)
+    releases = [
+        MetadataRelease(date="2011", precision="year", platform="pc").model_dump(mode="json")
+    ]
+    await add_game(
+        user_id,
+        title="Year Only",
+        release_date=date(2011, 1, 1),
+        release_date_precision="year",
+        releases=releases,
+    )
+    await add_game(user_id, title="A Day", release_date=date(2012, 3, 4))
+    snapshot = (await client.get("/api/export/library")).json()
+    async with SessionLocal() as db:
+        await db.execute(Game.__table__.delete().where(Game.user_id == user_id))
+        await db.commit()
+
+    done = await client.post("/api/import/library", json=snapshot)
+
+    assert done.status_code == 200 and done.json()["created"] == 2, done.text
+    async with SessionLocal() as db:
+        rows = {
+            game.title: (game.release_date, game.release_date_precision, game.releases)
+            for game in await db.scalars(select(Game).where(Game.user_id == user_id))
+        }
+    assert rows == {
+        "Year Only": (date(2011, 1, 1), "year", releases),
+        "A Day": (date(2012, 3, 4), None, None),
+    }

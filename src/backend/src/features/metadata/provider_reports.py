@@ -4,16 +4,49 @@ A record merges every source's metadata, so a value in it cannot be traced back 
 that reported it. An identity verdict and a game relation both belong to one provider: a refresh
 follows a redirect only in that provider's namespaces (C4.4 rule 2), and a relation's target is
 named in that provider's namespace (C6.4). These helpers read them per provider before the merge.
+
+A provider whose ``identity.match`` is ``ambiguous`` named several possible games, so nothing it
+reported may be applied to the game (C4.1: never auto-assign ``ambiguous``). Its patch is left
+out of the merged record (``handler._metadata``) and its relations out of ingestion; its id
+claims are dropped by ``refresh_match``. A ``conflict`` provider's relations are left out too
+(the refresh applies nothing then, but a relation must never come from a disputed record).
 """
 
 from collections.abc import Iterable, Mapping
 from typing import Any, Protocol
 
-from src.plugin_api.metadata_contracts import MetadataPatch
+from src.plugin_api.base_contracts import parse_semver
+from src.plugin_api.metadata_contracts import RELEASES_CONTRACT, MetadataPatch
 from src.plugin_api.vocab import RELATION_TYPES
 
 # a refresh considers at most this many relations from one result
 MAX_RELATIONS = 64
+# identity verdicts whose patch is not applied to a game (C4.1)
+UNASSIGNABLE_MATCHES = frozenset({"ambiguous"})
+# identity verdicts whose relations are not ingested
+UNRELATABLE_MATCHES = frozenset({"ambiguous", "conflict"})
+# only work-level relations are game relations; chains, branches and recommendations are not
+GAME_RELATION_GROUP = "related"
+
+
+def is_unassignable(patch: MetadataPatch) -> bool:
+    """Whether the provider said this lookup named several possible games (C4.1)."""
+    return patch.identity is not None and patch.identity.match in UNASSIGNABLE_MATCHES
+
+
+def reports_game_relations(api_contract: str | None) -> bool:
+    """Game relations have a defined meaning only from Plugin API 1.1.20 on (C6.4).
+
+    ``None`` is a host-owned provider (core providers send no vocabulary relations). A plugin
+    declaring an older contract may send a vocabulary string such as ``dlc_of`` whose direction
+    was never defined for it, so its relations are not ingested; an unreadable version is
+    treated as older."""
+    if api_contract is None:
+        return True
+    try:
+        return parse_semver(api_contract) >= RELEASES_CONTRACT
+    except ValueError:
+        return False
 
 
 # This structural contract describes a data field, not an object with operations.
@@ -43,7 +76,10 @@ def provider_identities(
 
 
 def provider_relations(
-    sources: Mapping[str, _Source], group: Iterable[str], namespaces: Mapping[str, str | None]
+    sources: Mapping[str, _Source],
+    group: Iterable[str],
+    namespaces: Mapping[str, str | None],
+    contracts: Mapping[str, str | None] | None = None,
 ) -> list[dict[str, Any]]:
     """Game relations in the shared vocabulary, each with the ids that name its target.
 
@@ -51,12 +87,20 @@ def provider_relations(
     is named by the candidate's ``provider_ids`` (already confined to the provider's own
     namespaces) and, when the candidate is the provider's own record, by its ``external_id``
     in the provider's namespace. Relation types outside the vocabulary (anime and film
-    relations, recommendations) are not game relations and are left out."""
+    relations) and entries outside the ``related`` group (chains, branches, recommendations)
+    are not game relations and are left out, as is everything from a provider that declared a
+    contract older than 1.1.20 (``contracts``, provider id to declared version) or whose
+    identity verdict is ``ambiguous`` or ``conflict``."""
+    contracts = contracts or {}
     found: dict[tuple[str, tuple[tuple[str, str], ...]], dict[str, Any]] = {}
     for provider_id, patch in _patches(sources, group, namespaces):
+        if not reports_game_relations(contracts.get(provider_id)):
+            continue
+        if patch.identity is not None and patch.identity.match in UNRELATABLE_MATCHES:
+            continue
         own = namespaces[provider_id] or provider_id
         for relation in patch.relations:
-            if relation.relation not in RELATION_TYPES:
+            if relation.relation not in RELATION_TYPES or relation.group != GAME_RELATION_GROUP:
                 continue
             candidate = relation.candidate
             targets = dict(candidate.provider_ids)

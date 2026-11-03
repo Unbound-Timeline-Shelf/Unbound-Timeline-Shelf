@@ -177,6 +177,10 @@ class PluginMetadataProvider:
     artwork_priority: int = UNRANKED
     automatic_search_enabled: bool = True
     account_enabled: bool = True
+    # The Plugin API contract the plugin's manifest declared when it was discovered. Responses
+    # are validated against the current one in ``invoke``; this snapshot only decides which
+    # reports of a finished lookup have a defined meaning (game relations need 1.1.20).
+    api_contract: str = "1.0.0"
 
     @property
     def id(self) -> str:
@@ -362,6 +366,9 @@ async def discover_providers(
                     declaration.name,
                     preferences["image_provider_order"],
                     CORE_PROVIDER_NAMES,
+                ),
+                api_contract=str(
+                    live.get(row.plugin_id, {}).get("api_contract_version") or "1.0.0"
                 ),
             )
         )

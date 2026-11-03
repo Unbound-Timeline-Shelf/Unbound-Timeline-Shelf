@@ -1,20 +1,20 @@
 """Conservative duplicate suggestions across host and plugin library imports."""
 
 from collections import defaultdict
-from collections.abc import Iterable
-from itertools import combinations
+from collections.abc import Iterable, Mapping
+from itertools import chain, combinations
 from typing import Any
 from unicodedata import normalize
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.game import Game
 from src.database.models.game_duplicate_dismissal import GameDuplicateDismissal
 from src.database.models.game_identity import GameIdentityDecision
+from src.database.models.game_pending_relationship import GamePendingRelationship
 from src.features.game_identity.decisions import separate_identities
 
 _SUMMARY_FIELDS = (
@@ -63,7 +63,7 @@ def compatible(first: dict[str, Any], second: dict[str, Any]) -> bool:
 
 
 def _evidence_groups(
-    games: Iterable[RowMapping],
+    games: Iterable[Mapping[str, Any]],
 ) -> dict[tuple[str, ...], list[dict[str, Any]]]:
     """Group compact rows by title or explicit provider identity, keeping manual titles."""
     groups: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
@@ -78,15 +78,56 @@ def _evidence_groups(
     return groups
 
 
+# A provider merged one game's id into another game's (Plugin API 1.1.20, C4.4); the refresh
+# could not follow it and remembered it as a pending ``same_game`` reference.
+MERGED_KIND = "same_game"
+
+
+async def _merged_pairs(
+    db: AsyncSession, user_id: UUID, games: dict[UUID, dict[str, Any]]
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Pairs of active games a provider says are one game: the first still holds the id the
+    provider retired, the second holds the live id. Their ids differ by construction, so the
+    identity check of ``compatible`` does not apply; the person decides (never merged here)."""
+    rows = await db.execute(
+        select(
+            GamePendingRelationship.game_id,
+            GamePendingRelationship.namespace,
+            GamePendingRelationship.external_id,
+        )
+        .where(
+            GamePendingRelationship.user_id == user_id,
+            GamePendingRelationship.kind == MERGED_KIND,
+        )
+        .order_by(GamePendingRelationship.game_id, GamePendingRelationship.namespace)
+    )
+    holders: dict[tuple[str, str], list[UUID]] = defaultdict(list)
+    for game in games.values():
+        for namespace, identity in (game["provider_ids"] or {}).items():
+            if identity:
+                holders[(namespace, identity)].append(game["id"])
+    pairs = []
+    for game_id, namespace, live in rows.all():
+        held_by = holders.get((namespace, live), [])
+        # exactly one other active game holds the live id; several is not a pair
+        if game_id in games and len(held_by) == 1 and held_by[0] != game_id:
+            first, second = sorted((game_id, held_by[0]))
+            pairs.append((games[first], games[second]))
+    return pairs
+
+
 async def suggestions(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[str, Any]:
     """Read compact owned rows once; bound the response and avoid provider requests."""
-    games = (
-        await db.execute(
-            select(*(getattr(Game, field) for field in _SUMMARY_FIELDS))
-            .where(Game.user_id == user_id, Game.deleted_at.is_(None))
-            .order_by(Game.id)
-        )
-    ).mappings()
+    games = [
+        dict(row)
+        for row in (
+            await db.execute(
+                select(*(getattr(Game, field) for field in _SUMMARY_FIELDS))
+                .where(Game.user_id == user_id, Game.deleted_at.is_(None))
+                .order_by(Game.id)
+            )
+        ).mappings()
+    ]
     # a keep-both dismissal, or a person's keep-separate decision in the identity model
     dismissed = set(
         (
@@ -108,15 +149,26 @@ async def suggestions(db: AsyncSession, user_id: UUID, limit: int = 50) -> dict[
     )
     pairs: list[dict[str, Any]] = []
     seen: set[tuple[UUID, UUID]] = set()
-    for evidence, group in _evidence_groups(games).items():
-        for first, second in combinations(group, 2):
-            pair = (first["id"], second["id"])
-            if pair in seen or pair in dismissed or not compatible(first, second):
-                continue
-            seen.add(pair)
-            if len(pairs) == limit:
-                return {"pairs": pairs, "has_more": True}
-            pairs.append({"first": first, "second": second, "reason": evidence[0]})
+    # A provider-reported merge is identity evidence; it reads as "shared_identity", so
+    # clients that know only the existing reasons show it as a provider identity match.
+    merged = [
+        (first, second, "shared_identity")
+        for first, second in await _merged_pairs(db, user_id, {g["id"]: g for g in games})
+    ]
+    evidence_pairs = (
+        (first, second, evidence[0])
+        for evidence, group in _evidence_groups(games).items()
+        for first, second in combinations(group, 2)
+        if compatible(first, second)
+    )
+    for first, second, reason in chain(merged, evidence_pairs):
+        pair = (first["id"], second["id"])
+        if pair in seen or pair in dismissed:
+            continue
+        seen.add(pair)
+        if len(pairs) == limit:
+            return {"pairs": pairs, "has_more": True}
+        pairs.append({"first": first, "second": second, "reason": reason})
     return {"pairs": pairs, "has_more": False}
 
 

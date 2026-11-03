@@ -13,6 +13,7 @@ from typing import Any
 
 from src.database.models.game import Game
 from src.plugin_api.metadata_contracts import MetadataRelease, partial_date_start
+from src.plugin_api.vocab import FIRST_RELEASE_CATEGORIES
 
 MAX_RELEASES = 5
 RELEASES_LOCK = "releases"
@@ -33,13 +34,18 @@ def release_of(match: dict[str, Any]) -> tuple[date | None, str | None]:
 
     Fields of a merged result can come from different providers. A day that falls inside the
     reported year or month agrees with it and is more precise, so it wins (as in Atlas's
-    hierarchical vote, C5.2)."""
+    hierarchical vote, C5.2).
+
+    A first release is a ``full`` or ``early_access`` release (C5.1); one of another category
+    (a beta, a demo) is not the game's release date and is ignored."""
     legacy = _legacy_day(match.get("release_date"))
     first = match.get("first_release")
     if isinstance(first, dict):
         try:
             release = MetadataRelease.model_validate(first)
         except ValueError:
+            release = None
+        if release is not None and release.category not in FIRST_RELEASE_CATEGORIES:
             release = None
         if release is not None and release.precision != "day":
             if legacy is not None and legacy.isoformat().startswith(release.date + "-"):
@@ -48,6 +54,38 @@ def release_of(match: dict[str, Any]) -> tuple[date | None, str | None]:
         if release is not None:
             return partial_date_start(release.date), None
     return legacy, None
+
+
+# how coarse a precision is; NULL is a day
+_COARSENESS = {None: 0, "day": 0, "month": 1, "year": 2}
+
+
+def _within(day: date, start: date, precision: str | None) -> bool:
+    """Whether ``day`` falls inside the period that starts at ``start``."""
+    if precision == "year":
+        return day.year == start.year
+    if precision == "month":
+        return (day.year, day.month) == (start.year, start.month)
+    return day == start
+
+
+def release_for(game: Game, match: dict[str, Any]) -> tuple[date | None, str | None]:
+    """The (date, precision) a refresh should store on ``game``: ``release_of(match)``, unless
+    the game already holds a more precise date inside the reported period.
+
+    A stored day agrees with a reported year (or month) that contains it and knows more, so it
+    is kept (C5.2's consistency rule applied across refreshes, not only inside one result); a
+    stored date outside the period is replaced as before."""
+    day, precision = release_of(match)
+    stored, stored_precision = game.release_date, game.release_date_precision
+    if (
+        day is not None
+        and stored is not None
+        and _COARSENESS.get(stored_precision, 0) < _COARSENESS.get(precision, 0)
+        and _within(stored, day, precision)
+    ):
+        return stored, stored_precision
+    return day, precision
 
 
 def _releases(match: dict[str, Any]) -> list[dict[str, Any]] | None:
@@ -79,7 +117,7 @@ def add_release_updates(
     only the precision differs ("2011" becoming "2011-01-01")."""
     if not save_release_date:
         return
-    day, precision = release_of(match)
+    day, precision = release_for(game, match)
     date_is_free = (
         "release_date" not in (game.locked_fields or [])
         and "release_date" not in held_by_preference

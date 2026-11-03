@@ -5,17 +5,17 @@ Folder assets, screenshots and saves
 aren't included in either direction."""
 
 import time
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.games import _derive_sort_title, _validate_game_relationship
-from src.api.schemas.game import GameCreate
+from src.api.schemas.game import GameCreate, GameReleaseRead
 from src.api.schemas.library_export import LibraryExport
 from src.core.auth import get_current_user
 from src.core.metrics import (
@@ -105,6 +105,10 @@ class ImportedGame(GameCreate):
     """A game of an export. Its old ID is kept only to map the manual rows."""
 
     id: UUID | None = None
+    # Plugin API 1.1.20 provider data an export carries (``GameRead``), so a restored year-only
+    # date stays a year instead of becoming a known 1 January. Older exports have neither.
+    release_date_precision: Literal["year", "month", "day"] | None = None
+    releases: list[GameReleaseRead] | None = Field(default=None, max_length=5)
 
 
 class LibraryImport(BaseModel):
@@ -152,6 +156,9 @@ async def import_library(
     for entry in entries:
         try:
             data = entry.model_dump(exclude={"id"})
+            # NULL is a day; a precision without a date means nothing
+            if data.get("release_date") is None or data.get("release_date_precision") == "day":
+                data["release_date_precision"] = None
             data["user_id"] = current_user.id
             data["folder_location"] = await _available_folder_location(
                 data["folder_location"], db, current_user.id
