@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas.delegation import AchievementReportWrite
+from src.api.schemas.game import play_compatibility_view
 from src.database.models.achievement import Achievement
 from src.database.models.achievement_override import AchievementOverride
 from src.database.models.game import Game, GameStatus
@@ -31,7 +32,7 @@ def library_game(game: Game) -> dict:
     item.pop("achievement_unlocked")
     item["provider_ids"] = game.provider_ids
     item["external_id"] = game.external_id
-    item["play_compatibility"] = game.play_compatibility
+    item["play_compatibility"] = play_compatibility_view(game.play_compatibility)
     item["owned"] = game.status != GameStatus.WISHLIST
     item["ownership_provenance"] = "instance_library"
     item["retrieved_at"] = int(time.time())
