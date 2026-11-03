@@ -15,7 +15,7 @@ export type PluginStatus =
   | "disabled"
   | "incompatible"
   | "unknown";
-export const PLUGIN_API_CONTRACT_VERSION = "1.1.19";
+export const PLUGIN_API_CONTRACT_VERSION = "1.1.20";
 // Every Plugin API 1.1.x contract up to the host's own keeps its UI contributions. Listing the
 // versions by hand skipped the ones between the old list and the current constant, which
 // silently hid the navigation and settings of plugins built for those contracts.

@@ -32,6 +32,12 @@ def _patch(patch: MetadataPatch, allowed: Collection[str]) -> MetadataPatch:
     )
     if relations != patch.relations:
         updates["relations"] = relations
+    # A merge or redirect may only be followed in a namespace the provider owns (C4.4 rule 2).
+    identity = patch.identity
+    if identity is not None and any(key not in allowed for key in identity.previous_ids):
+        updates["identity"] = identity.model_copy(
+            update={"previous_ids": _own(identity.previous_ids, allowed)}
+        )
     return patch.model_copy(update=updates) if updates else patch
 
 

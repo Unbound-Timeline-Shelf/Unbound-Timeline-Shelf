@@ -26,6 +26,7 @@ from src.plugin_api.metadata_contracts import (
     ProviderFailure,
     ProviderHealth,
     ProviderResponse,
+    contract_context,
 )
 from src.plugin_api.runtime_client import (
     PluginRuntimeClient,
@@ -186,16 +187,20 @@ class PluginMetadataProvider:
         return self.declaration.name
 
     async def authorized(self, operation: Operation) -> bool:
+        return await self._authorized_state(operation) is not None
+
+    async def _authorized_state(self, operation: Operation) -> dict[str, Any] | None:
+        """The installation's current runtime state when the operation is allowed, else None."""
         async with SessionLocal() as db:
             if not await provider_enabled(db, self.user_id, self.id):
-                return False
+                return None
             registration = await db.get(PluginMetadataProviderRegistration, self.id)
             if (
                 registration is None
                 or registration.revoked_at is not None
                 or registration.installation_id != self.installation_id
             ):
-                return False
+                return None
             for capability in ("metadata_providers.register", "metadata_providers." + operation):
                 if not await has_capability_grant(
                     db,
@@ -204,16 +209,18 @@ class PluginMetadataProvider:
                     capability=capability,
                     user_id=self.user_id,
                 ):
-                    return False
+                    return None
             _, revision = await configuration_values(db, registration, self.user_id)
             if revision != self.revision:
-                return False
+                return None
         plugin = await bounded(PluginRuntimeClient().plugin_state(self.plugin_id), 2)
-        return (
+        if (
             plugin.get("plugin_id") == self.plugin_id
             and plugin.get("installation_id") == str(self.installation_id)
             and installation_is_executable(plugin)
-        )
+        ):
+            return plugin
+        return None
 
     async def invoke(
         self,
@@ -223,14 +230,17 @@ class PluginMetadataProvider:
     ) -> ProviderResponse:
         """No provider-specific API, credentials, retries or throttling live in this adapter."""
         action_id = getattr(self.declaration.operations, operation)
-        is_authorized = (
-            bool(action_id) and request.user_id == self.user_id and await self.authorized(operation)
+        state = (
+            await self._authorized_state(operation)
+            if action_id and request.user_id == self.user_id
+            else None
         )
+        is_authorized = state is not None
         automatic_allowed = True
         if is_authorized and request.options.get("automatic_search") is True:
             async with SessionLocal() as db:
                 automatic_allowed = bool((await automatic_search_status(db, self))["enabled"])
-        if not action_id or not is_authorized or not automatic_allowed:
+        if not action_id or state is None or not automatic_allowed:
             return ProviderResponse(
                 failure=ProviderFailure(code="plugin_unavailable") if not is_authorized else None
             )
@@ -238,10 +248,13 @@ class PluginMetadataProvider:
         if candidate is not None:
             values["candidate"] = candidate.model_dump(mode="json")
         try:
+            # The response is held to the contract the plugin declared: a 1.1.20 field from a
+            # plugin built for an older host is an invalid response, as an unknown field was.
+            context = contract_context(str(state.get("api_contract_version") or "1.0.0"))
             payload = await PluginRuntimeClient().action(
                 self.plugin_id, action_id, values, user_id=str(self.user_id)
             )
-            result = ProviderResponse.model_validate(payload)
+            result = ProviderResponse.model_validate(payload, context=context)
         except PluginRuntimeUnavailable:
             return ProviderResponse(failure=ProviderFailure(code="plugin_unavailable"))
         except ValidationError as exc:
