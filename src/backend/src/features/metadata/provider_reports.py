@@ -16,7 +16,8 @@ from src.plugin_api.vocab import RELATION_TYPES
 MAX_RELATIONS = 64
 
 
-class _Source(Protocol):
+# This structural contract describes a data field, not an object with operations.
+class _Source(Protocol):  # pylint: disable=too-few-public-methods
     metadata: dict[str, MetadataPatch]
 
 
