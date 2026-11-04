@@ -16,7 +16,14 @@ permissions:
 
 jobs:
   runtime-smoke:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # A workflow_run executes with the default branch's cache and token scope.
+    # Only a successful push from this repository's main branch may supply its SHA.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.id == github.repository_id)
     runs-on: ubuntu-latest
     timeout-minutes: 15 # Bounded runtime validation window.
     steps:
