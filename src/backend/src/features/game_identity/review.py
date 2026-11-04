@@ -150,15 +150,15 @@ async def _candidates(
     evidence = (await db.execute(observed)).all()
     trusted: set[UUID] = set()
     edition: dict[UUID, str] = {}
-    for game_id, observed, availability, archived, disconnected in evidence:
+    for game_id, observed_edition, availability, archived, disconnected in evidence:
         if (
             availability == ObservationAvailability.AVAILABLE.value
             and archived is None
             and disconnected is None
         ):
             trusted.add(game_id)
-        if observed:
-            edition.setdefault(game_id, observed)
+        if observed_edition:
+            edition.setdefault(game_id, observed_edition)
     found = {
         game_id: Candidate(
             id=game_id,

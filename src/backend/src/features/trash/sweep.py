@@ -18,7 +18,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TypeVar
 from uuid import UUID
 
 from sqlalchemy import Select, select
@@ -121,7 +121,7 @@ async def _purge_row(
 
 
 async def _purge_rows(
-    db: AsyncSession, label: str, candidates: Select[Any], purge: _PurgeRow, cutoff: int
+    db: AsyncSession, label: str, candidates: Select[UUID, UUID], purge: _PurgeRow, cutoff: int
 ) -> int:
     purged = 0
     for row_id, game_id in (await db.execute(candidates)).tuples().all():

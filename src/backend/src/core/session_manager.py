@@ -5,9 +5,10 @@ from __future__ import annotations
 import secrets
 import time
 from dataclasses import dataclass
+from typing import Any, cast
 
 from fastapi import Request
-from sqlalchemy import delete, or_, select
+from sqlalchemy import CursorResult, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import SESSION_TTL_SECONDS, hash_token
@@ -125,7 +126,7 @@ async def purge_old_sessions(db: AsyncSession, retention_seconds: int = 30 * 864
         )
     )
     await db.commit()
-    return result.rowcount
+    return cast(CursorResult[Any], result).rowcount
 
 
 def session_state(session: UserSession, now: int | None = None) -> str:

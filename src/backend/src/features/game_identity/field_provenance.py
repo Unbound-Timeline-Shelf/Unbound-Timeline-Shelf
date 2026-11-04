@@ -50,7 +50,7 @@ def stored(value: Any) -> Any:
     return value
 
 
-def field_values_of(game: Game, fields: Collection[str]) -> Select[tuple[GameFieldValue]]:
+def field_values_of(game: Game, fields: Collection[str]) -> Select[GameFieldValue]:
     """The recorded values of `fields` for one game (callers narrow by state and origin)."""
     return select(GameFieldValue).where(
         GameFieldValue.user_id == game.user_id,
