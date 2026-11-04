@@ -163,10 +163,10 @@ jobs:
       - name: Run repository-level tool tests
         run: |
           set -o pipefail
-          python -m pytest tools/tests/test_plugin_acceptance_acquisition.py \
+          python -m pytest tools/tests/test_devcontrol_commands.py \
+            tools/tests/test_plugin_acceptance_acquisition.py \
             tools/tests/test_environment_reference.py \
-            tools/tests/test_backend_test_shards.py \
-            tools/tests/test_devcontrol_commands.py 2>&1 \
+            tools/tests/test_backend_test_shards.py 2>&1 \
             | tee repository-pytest-output.txt
 
       - name: Upload test diagnostics
