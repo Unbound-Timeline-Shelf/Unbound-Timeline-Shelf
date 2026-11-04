@@ -37,7 +37,7 @@ python-dotenv==1.2.2
 cryptography==50.0.0
 
 # OpenID Connect / OAuth 2.0
-Authlib==1.6.12
+Authlib==1.9.2
 itsdangerous==2.2.0
 
 # Development/testing
