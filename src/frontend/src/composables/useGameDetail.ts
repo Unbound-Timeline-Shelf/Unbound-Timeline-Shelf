@@ -146,7 +146,9 @@ export function useGameDetail() {
 
   const descriptionExpanded = ref(false);
   const descriptionOverflows = computed(
-    () => descriptionHtml.value.replace(/<[^>]*>/g, "").length > 320,
+    () =>
+      (new DOMParser().parseFromString(descriptionHtml.value, "text/html").body
+        .textContent?.length ?? 0) > 320,
   );
 
   // resolved separately from game.value.parentGameId (which is only an id),
