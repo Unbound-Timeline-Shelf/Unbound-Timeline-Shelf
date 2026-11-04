@@ -196,7 +196,7 @@ jobs:
         run: |
           python tools/check_pwa_lifecycle.py --plugins-root .integration-plugins \
             --work-root "${{ runner.temp }}/pwa-acceptance"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: plugin-integration-evidence
