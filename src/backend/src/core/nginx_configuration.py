@@ -264,7 +264,7 @@ async def apply_nginx_change(configuration: NginxConfiguration | None) -> AsyncI
             raise
 
 
-async def _startup_environment(output: Path | None = None) -> None:
+async def _startup_environment(output: Path) -> None:
     # The existing production entrypoint invokes this after migrations/backend health.
     async with SessionLocal() as db:
         row = await db.scalar(select(AppIntegrationSettings).limit(1))
@@ -276,14 +276,18 @@ async def _startup_environment(output: Path | None = None) -> None:
         f"export {name}={shlex.quote(value)}\n"
         for name, value in configuration.environment().items()
     )
-    if output is None:
-        print(exports, end="")
-    else:
-        output.write_text(exports, encoding="utf-8")
-        output.chmod(0o600)
+    # mkstemp creates the file with owner-only permissions before any content is written.
+    fd, name = tempfile.mkstemp(prefix=f".{output.name}.", dir=output.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(exports)
+        os.replace(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path)
+    parser.add_argument("--output", type=Path, required=True)
     asyncio.run(_startup_environment(parser.parse_args().output))

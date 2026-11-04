@@ -173,3 +173,23 @@ async def test_startup_export_file_excludes_database_debug_output(tmp_path, monk
 def test_tls_paths_cannot_inject_shell_or_nginx_syntax(value):
     with pytest.raises(ValueError):
         nginx.validate_tls_path(value)
+
+
+async def test_startup_export_replaces_symlink_without_writing_target(tmp_path, monkeypatch):
+    db = AsyncMock()
+    db.__aenter__.return_value = db
+    db.scalar.return_value = AppIntegrationSettings()
+    monkeypatch.setattr(nginx, "SessionLocal", lambda: db)
+    monkeypatch.setattr(nginx, "engine", SimpleNamespace(dispose=AsyncMock()))
+    monkeypatch.setattr(nginx, "EnvConfigHandler", lambda: EnvConfigHandler({}))
+    target = tmp_path / "untouched"
+    target.write_text("keep")
+    output = tmp_path / "nginx.env"
+    output.symlink_to(target)
+
+    await nginx._startup_environment(output)
+
+    assert target.read_text() == "keep"
+    assert not output.is_symlink()
+    assert output.stat().st_mode & 0o777 == 0o600
+    assert not list(tmp_path.glob(".nginx.env.*"))
