@@ -74,7 +74,8 @@ async def test_completion_times_use_the_native_endpoint_without_losing_metadata(
         assert metadata["time_to_beat_extras_hours"] == 1.5
         assert metadata["time_to_beat_completionist_hours"] == 2
         assert "time_to_beat_all_hours" not in metadata
-    assert all("igdb.com" in url or "twitch.tv" in url for url in calls)
+    assert all(urlparse(url).scheme == "https" for url in calls)
+    assert {urlparse(url).hostname for url in calls} == {"api.igdb.com", "id.twitch.tv"}
 
 
 async def test_concurrent_requests_share_token_refresh(monkeypatch):
