@@ -168,4 +168,4 @@ class SteamGridDBClient:
         return self.get_game_images(int(game_id), image_type=image_type, **kwargs)
 
 
-client: SteamGridDBClient | None = None
+client: SteamGridDBClient | None = None  # pylint: disable=invalid-name
