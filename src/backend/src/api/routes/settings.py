@@ -72,7 +72,7 @@ PROVIDER_FIELD_MAP: dict[str, list[tuple[str, str, bool]]] = {
     "GOG": [("refresh_token", "gog_refresh_token", True)],
 }
 
-_ProviderClientError = (
+_ProviderClientError = (  # pylint: disable=invalid-name
     SteamLibraryError,
     RetroAchievementsError,
     GiantBombError,

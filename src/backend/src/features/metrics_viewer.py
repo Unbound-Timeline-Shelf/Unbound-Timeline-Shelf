@@ -47,9 +47,9 @@ _ALLOWED_LABELS = frozenset(
 )
 _STARTED = time.time()
 _TTL = 5.0
-_value: dict[str, Any] | None = None
-_refreshed: float = 0.0
-_pending: asyncio.Task[dict[str, Any]] | None = None
+_value: dict[str, Any] | None = None  # pylint: disable=invalid-name
+_refreshed: float = 0.0  # pylint: disable=invalid-name
+_pending: asyncio.Task[dict[str, Any]] | None = None  # pylint: disable=invalid-name
 
 
 def _collect() -> dict[str, Any]:

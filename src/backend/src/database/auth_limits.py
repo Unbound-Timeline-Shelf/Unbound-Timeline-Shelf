@@ -26,7 +26,7 @@ auth_limit_engine = create_async_engine(
 )
 install_database_metrics(auth_limit_engine.sync_engine, pool="authentication")
 install_session_metrics()
-AuthLimitSession = async_sessionmaker(
+AuthLimitSession = async_sessionmaker(  # pylint: disable=invalid-name
     auth_limit_engine,
     class_=AsyncSession,
     sync_session_class=ObservedSyncSession,

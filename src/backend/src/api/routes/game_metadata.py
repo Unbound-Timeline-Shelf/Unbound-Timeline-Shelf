@@ -489,18 +489,18 @@ async def refresh_game_metadata(
         if key_art_url and (payload.overwrite_existing_art or not key_art_exists):
             try:
                 await save_locked_game_asset(await _download_art(str(key_art_url)), game, "key_art")
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception:  # pylint: disable=broad-exception-caught
                 provider_errors.append(
-                    f"{match.get('provider', 'Metadata')}: cover art could not be downloaded: {exc}"
+                    f"{match.get('provider', 'Metadata')}: cover art could not be downloaded."
                 )
             else:
                 would_add_key_art = True
         if banner_url and (payload.overwrite_existing_art or not banner_exists):
             try:
                 await save_locked_game_asset(await _download_art(str(banner_url)), game, "banner")
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception:  # pylint: disable=broad-exception-caught
                 provider_errors.append(
-                    f"{match.get('provider', 'Metadata')}: banner art could not be downloaded: {exc}"
+                    f"{match.get('provider', 'Metadata')}: banner art could not be downloaded."
                 )
             else:
                 would_add_banner = True

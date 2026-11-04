@@ -34,8 +34,8 @@ WIDTHS = {"poster": 400, "backdrop": 1920, "hero": 1920, "icon": 128}
 _PARALLEL = 4
 _ICON_PARALLEL = 16
 
-_semaphore: asyncio.Semaphore | None = None
-_icon_semaphore: asyncio.Semaphore | None = None
+_semaphore: asyncio.Semaphore | None = None  # pylint: disable=invalid-name
+_icon_semaphore: asyncio.Semaphore | None = None  # pylint: disable=invalid-name
 _running: set[Path] = set()
 _gave_up: set[Path] = set()
 _tasks: set[asyncio.Task[None]] = set()
