@@ -17,7 +17,7 @@ const frontendServer = createServer(async (incoming, outgoing) => {
   if (/^\/(api\/|pwa\/|manifest\.webmanifest|service-worker\.js)/.test(incoming.url)) {
     const target = testProxyTarget(incoming.url, backendUrl);
     if (!target) { outgoing.writeHead(400); outgoing.end(); return; }
-    const upstream = httpRequest(target, { method: incoming.method, headers: incoming.headers }, response => {
+    const upstream = httpRequest({ ...target, method: incoming.method, headers: incoming.headers }, response => {
       outgoing.writeHead(response.statusCode, response.headers); response.pipe(outgoing);
     });
     upstream.on("error", () => { outgoing.writeHead(503); outgoing.end(); }); incoming.pipe(upstream); return;

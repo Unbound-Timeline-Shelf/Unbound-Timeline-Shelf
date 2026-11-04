@@ -55,7 +55,7 @@ const server = createServer(async (incoming, outgoing) => {
   if (incoming.url.startsWith("/api/")) {
     const target = testProxyTarget(incoming.url, backendUrl);
     if (!target) { outgoing.writeHead(400); outgoing.end(); return; }
-    const upstream = httpRequest(target, { method: incoming.method, headers: incoming.headers }, response => {
+    const upstream = httpRequest({ ...target, method: incoming.method, headers: incoming.headers }, response => {
       outgoing.writeHead(response.statusCode, response.headers); response.pipe(outgoing);
     });
     upstream.on("error", error => { outgoing.writeHead(502); outgoing.end(String(error)); });
