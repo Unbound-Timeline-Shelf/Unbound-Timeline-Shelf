@@ -405,6 +405,40 @@ async def test_metadata_refresh_uses_public_image_validation_for_both_art_kinds(
         assert response.json()["provider_errors"] == []
 
 
+@pytest.mark.parametrize("kind", ["key_art", "banner"])
+async def test_metadata_refresh_does_not_expose_artwork_exception(flow, monkeypatch, kind):
+    monkeypatch.setattr(
+        game_metadata,
+        "resolve_library_record",
+        AsyncMock(
+            return_value=(
+                {
+                    "title": "Flow",
+                    "assets": [{"kind": kind, "url": "https://public.example/art.png"}],
+                },
+                [],
+            )
+        ),
+    )
+
+    def fail_download(*_args, **_kwargs):
+        raise RuntimeError("private filesystem path and secret")
+
+    monkeypatch.setattr(game_metadata, "download_image", fail_download)
+    response = await flow.client.post(
+        f"{flow.game}/metadata/refresh",
+        json={
+            "dry_run": False,
+            "update_text": False,
+            "fill_missing_art": True,
+            "overwrite_existing_art": True,
+        },
+    )
+    assert response.status_code == 200
+    assert len(response.json()["provider_errors"]) == 1
+    assert "private filesystem path and secret" not in response.text
+
+
 async def test_library_enrichment_keeps_art_fallback_and_uses_configured_limit(
     flow, network, monkeypatch
 ):
