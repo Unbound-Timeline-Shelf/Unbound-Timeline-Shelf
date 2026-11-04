@@ -83,6 +83,19 @@ it("loads an ordinary valid link on its initial mount", async () => {
   expect(isGameId(ids[0]!.toUpperCase())).toBe(true);
 });
 
+it("measures the rendered description text instead of markup or HTML entities", async () => {
+  vi.mocked(games.fetchGame).mockResolvedValue({
+    ...loadedGame,
+    description: `<p>${"&amp;".repeat(200)}</p>`,
+  });
+  const model = detail();
+  await flushPromises();
+  expect(model.descriptionOverflows.value).toBe(false);
+  model.game.value!.description = `<p>${"x".repeat(321)}</p>`;
+  await flushPromises();
+  expect(model.descriptionOverflows.value).toBe(true);
+});
+
 it("shows the same unavailable record state for every null/404 result", async () => {
   vi.mocked(games.fetchGame).mockResolvedValue(null);
   const model = detail();
