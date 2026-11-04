@@ -605,8 +605,13 @@ async def save_provider_credentials(
 
     try:
         result = await asyncio.to_thread(_validate_provider, provider, current_user)
-    except _ProviderClientError as exc:
-        return {"provider": provider, "status": "error", "detail": str(exc)}
+    except _ProviderClientError:
+        # Provider exceptions can include request URLs or response bodies with credentials.
+        return {
+            "provider": provider,
+            "status": "error",
+            "detail": "Could not validate the credentials. Check them and try again.",
+        }
 
     connected = result.get("validated", True)
     if connected and provider == "RetroAchievements":
