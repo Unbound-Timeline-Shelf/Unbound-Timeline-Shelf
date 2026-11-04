@@ -242,3 +242,18 @@ async def test_arbitrary_documents_still_download_as_attachments_with_safe_heade
     assert original in unquote(response.headers["content-disposition"])
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["content-security-policy"] == "sandbox"
+
+
+@pytest.mark.parametrize("target", ["game", "inbox"])
+async def test_decoder_details_are_not_returned_to_client(flow, monkeypatch, target):
+    def fail_open(*_args, **_kwargs):
+        raise ValueError("private decoder detail")
+
+    monkeypatch.setattr("src.helpers.media.Image.open", fail_open)
+    endpoint = f"{flow.game}/screenshots" if target == "game" else "/api/media/inbox"
+    response = await flow.client.post(
+        endpoint, files={"file": ("capture.png", b"data", "image/png")}
+    )
+    assert response.status_code == 200
+    assert response.json()["results"][0]["reason"] == "Invalid image content."
+    assert "private decoder detail" not in response.text

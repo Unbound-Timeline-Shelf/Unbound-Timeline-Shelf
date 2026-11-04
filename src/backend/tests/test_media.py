@@ -4,12 +4,14 @@ import pytest
 from starlette.datastructures import UploadFile
 
 from src.helpers.media import (
+    MediaValidationError,
     UploadTooLargeError,
     classify_media,
     list_media,
     media_subdir,
     safe_filename,
     save_upload_stream,
+    validate_media,
 )
 
 
@@ -115,3 +117,12 @@ async def test_save_upload_stream_keeps_files_up_to_the_cap_and_nothing_past_it(
     with pytest.raises(UploadTooLargeError):
         await save_upload_stream(over, tmp_path / "docs", "Manual.docx", len(data))
     assert list((tmp_path / "docs").iterdir()) == [path]
+
+
+def test_image_decoder_value_error_does_not_expose_details(monkeypatch) -> None:
+    def fail_open(*_args, **_kwargs):
+        raise ValueError("sensitive decoder detail")
+
+    monkeypatch.setattr("src.helpers.media.Image.open", fail_open)
+    with pytest.raises(MediaValidationError, match=r"^Invalid image content\.$"):
+        validate_media(b"invalid", "picture.png", "screenshot")
