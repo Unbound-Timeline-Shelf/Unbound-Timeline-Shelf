@@ -8,7 +8,8 @@ export function testProxyTarget(requestTarget, backendUrl) {
     const target = new URL(requestTarget, base);
     if (target.origin !== base.origin || target.username || target.password || target.hash) return null;
     // Authority is taken only from trusted configuration, never from the request.
-    return { hostname: base.hostname, port: base.port, path: target.pathname + target.search };
+    const hostname = base.hostname.startsWith("[") ? base.hostname.slice(1, -1) : base.hostname;
+    return { hostname, port: base.port, path: target.pathname + target.search };
   } catch {
     return null;
   }

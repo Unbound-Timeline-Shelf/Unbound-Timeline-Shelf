@@ -9,6 +9,12 @@ test("proxy keeps valid paths and queries on the configured backend", () => {
   });
 });
 
+test("proxy passes IPv6 hostnames in Node HTTP options format", () => {
+  assert.deepEqual(testProxyTarget("/api/test", "http://[::1]:8000"), {
+    hostname: "::1", port: "8000", path: "/api/test",
+  });
+});
+
 test("proxy rejects authority changes and malformed requests", () => {
   for (const target of ["//evil.example/api", "/\\evil.example/api", "http://evil.example/", "api/test", "/api/#fragment"]) {
     assert.equal(testProxyTarget(target, "http://127.0.0.1:8000"), null);
