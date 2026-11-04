@@ -124,7 +124,7 @@ jobs:
       # The JUnit reports feed `tools/backend_test_shards.py update-timings`.
       - name: Upload test diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-diagnostics-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -170,7 +170,7 @@ jobs:
 
       - name: Upload test diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: repository-pytest-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: repository-pytest-output.txt
@@ -350,7 +350,7 @@ jobs:
           python3 ../../tools/ci_checks.py backend-typecheck 2>&1 | tee mypy-output.txt
       - name: Upload mypy diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: mypy-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/backend/mypy-output.txt
@@ -377,7 +377,7 @@ jobs:
         run: PYTHONPATH=. pytest -q tests 2>&1 | tee pytest-output.txt
       - name: Upload plugin runtime diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: plugin-runtime-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/plugin-runtime/pytest-output.txt
