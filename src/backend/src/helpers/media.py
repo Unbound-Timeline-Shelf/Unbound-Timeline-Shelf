@@ -70,19 +70,31 @@ _IMAGE_FORMATS = {
 }
 
 
+class MediaValidationError(ValueError):
+    """A safe, user-facing explanation for rejected media."""
+
+
 def _validate_picture(data: bytes, extension: str) -> None:
     try:
         with Image.open(io.BytesIO(data)) as picture:
             if picture.format != _IMAGE_FORMATS[extension]:
-                raise ValueError("Image content does not match its filename extension.")
+                raise MediaValidationError("Image content does not match its filename extension.")
             if picture.width * picture.height > MAX_PIXELS:
-                raise ValueError("Image exceeds the pixel limit.")
+                raise MediaValidationError("Image exceeds the pixel limit.")
             picture.verify()
         # verify checks container integrity; loading also detects truncated pixel data.
         with Image.open(io.BytesIO(data)) as picture:
             picture.load()
-    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
-        raise ValueError("Invalid image content.") from exc
+    except MediaValidationError:
+        raise
+    except (
+        ValueError,
+        UnidentifiedImageError,
+        OSError,
+        SyntaxError,
+        Image.DecompressionBombError,
+    ) as exc:
+        raise MediaValidationError("Invalid image content.") from exc
 
 
 def _after_id3(data: bytes) -> bytes:
@@ -144,12 +156,12 @@ def _matches_container(data: bytes, extension: str) -> bool:
 def validate_media(data: bytes, filename: str, kind: MediaKind) -> None:
     """Inspect actual content before an allowed file is persisted."""
     if classify_media(None, filename) != kind:
-        raise ValueError("Unsupported file extension.")
+        raise MediaValidationError("Unsupported file extension.")
     extension = Path(original_filename(filename)).suffix.lower()
     if kind == "screenshot":
         _validate_picture(data, extension)
     elif not _matches_container(data, extension):
-        raise ValueError("File content does not match a supported media container.")
+        raise MediaValidationError("File content does not match a supported media container.")
 
 
 _SUBDIRS: dict[MediaKind, str] = {
