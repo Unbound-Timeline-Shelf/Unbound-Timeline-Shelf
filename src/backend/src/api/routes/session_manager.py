@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import time
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from sqlalchemy import func, select, update
+from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_admin, get_current_user, hash_token, session_cookie_name
@@ -82,7 +83,7 @@ async def revoke_session(db: AsyncSession, session_id: UUID, user_id: UUID | Non
         statement = statement.where(UserSession.user_id == user_id)
     result = await db.execute(statement.values(revoked_at=int(time.time())))
     await db.commit()
-    return bool(result.rowcount)
+    return bool(cast(CursorResult[Any], result).rowcount)
 
 
 @router.get("/me")
@@ -116,7 +117,7 @@ async def revoke_all_my_sessions(
         .values(revoked_at=int(time.time()))
     )
     await db.commit()
-    return {"revoked": result.rowcount}
+    return {"revoked": cast(CursorResult[Any], result).rowcount}
 
 
 @router.delete("/me/{session_id}")
@@ -191,7 +192,7 @@ async def revoke_all_sessions(
         .values(revoked_at=int(time.time()))
     )
     await db.commit()
-    return {"revoked": result.rowcount}
+    return {"revoked": cast(CursorResult[Any], result).rowcount}
 
 
 @router.delete("/admin/user/{user_id}")
@@ -208,7 +209,7 @@ async def revoke_all_user_sessions(
         .values(revoked_at=int(time.time()))
     )
     await db.commit()
-    return {"revoked": result.rowcount}
+    return {"revoked": cast(CursorResult[Any], result).rowcount}
 
 
 @router.delete("/admin/{session_id}")

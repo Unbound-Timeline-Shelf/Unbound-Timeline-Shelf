@@ -13,7 +13,6 @@ from __future__ import annotations
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Any
 from uuid import UUID, uuid5
 
 from sqlalchemy import Row, and_, delete, exists, func, select, update
@@ -210,7 +209,7 @@ async def seal_due_windows(db: AsyncSession, *, now: int | None = None, limit: i
 
 
 def _live_members(
-    rows: Sequence[Row[Any]], base: str | None
+    rows: Sequence[Row[NotificationDelivery, Notification]], base: str | None
 ) -> dict[UUID, tuple[NotificationDelivery, DigestItem]]:
     """Keep each mutable story's newest revision only; older ones are suppressed in place."""
     newest: dict[UUID, int] = {}
@@ -470,7 +469,9 @@ def _linked(item: DigestItem, notice: Notification, base: str | None) -> DigestI
     return replace(item, url=url) if url else item
 
 
-async def _chunk_members(db: AsyncSession, lead: NotificationDelivery) -> Sequence[Row[Any]]:
+async def _chunk_members(
+    db: AsyncSession, lead: NotificationDelivery
+) -> Sequence[Row[NotificationDelivery, Notification]]:
     """Lock the lead's still-waiting chunk mates with their notifications."""
     return (
         await db.execute(

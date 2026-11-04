@@ -623,7 +623,7 @@ async def completion_view(db: AsyncSession, user_id: UUID, game_id: UUID) -> dic
         "completed": done,
         "of": total,
         "partial": 0 < done < total,
-        "all_completed": total > 0 and done == total,
+        "all_completed": 0 < total == done,
         "summary": summary,
         "versions": versions,
     }

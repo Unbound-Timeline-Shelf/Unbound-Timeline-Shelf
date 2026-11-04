@@ -65,7 +65,7 @@ MAX_OFFICE_EXPANDED_BYTES = 20 * 1024 * 1024
 MAX_OFFICE_XML_BYTES = 2 * 1024 * 1024
 
 
-def owned_documents_query(user_id: object) -> Select[tuple[GameFileItem, Game]]:
+def owned_documents_query(user_id: object) -> Select[GameFileItem, Game]:
     """Apply the persisted owner/live-document boundary for listing and individual reads."""
     return (
         select(GameFileItem, Game)

@@ -10,10 +10,10 @@ address and can never read a password or token.
 
 import secrets
 import time
-from typing import NamedTuple
+from typing import Any, NamedTuple, cast
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import CursorResult, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -245,7 +245,7 @@ async def _end_credentials(db: AsyncSession, user: User) -> int:
         .where(AuthRecoveryToken.user_id == user.id, AuthRecoveryToken.used_at.is_(None))
         .values(used_at=now, encrypted_token=None)
     )
-    return result.rowcount or 0
+    return cast(CursorResult[Any], result).rowcount or 0
 
 
 def _require_local_password(target: User) -> None:

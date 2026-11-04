@@ -454,7 +454,7 @@ class MetadataHandler:
 
     def _identity(self, session: SearchSession, source: Source) -> MetadataCandidate:
         metadata = self._metadata(session, [source])
-        fields = {
+        fields: dict[str, Any] = {
             name: metadata[name]
             for name in ("title", "year", "alternate_titles", "platforms")
             if name in metadata

@@ -84,7 +84,7 @@ def local_day(timestamp: int, zone: ZoneInfo) -> date:
 def _day_start(day: date, zone: ZoneInfo) -> int:
     """The first whole second whose local date in ``zone`` is ``day``."""
     guess = int(datetime.combine(day, time.min, tzinfo=zone).timestamp())
-    if local_day(guess, zone) == day and local_day(guess - 1, zone) < day:
+    if day == local_day(guess, zone) > local_day(guess - 1, zone):
         return guess
     # Midnight fell inside a daylight-saving gap; find the real first second.
     low, high = guess - _DAY_SECONDS, guess + _DAY_SECONDS
@@ -109,7 +109,7 @@ def heatmap_window(zone: ZoneInfo, now: float | None = None) -> tuple[date, date
     return first - timedelta(days=(first.weekday() + 1) % 7), today
 
 
-def owned_activity(statement: Select[Any], user_id: UUID) -> Select[Any]:
+def owned_activity[*Ts](statement: Select[*Ts], user_id: UUID) -> Select[*Ts]:
     """Join each history row to the caller's own active title it names.
 
     ``ActivityLog.media_id`` has no foreign key (it names one of three tables),
@@ -131,7 +131,7 @@ def owned_activity(statement: Select[Any], user_id: UUID) -> Select[Any]:
     )
 
 
-def _unlocked_achievements(statement: Select[Any], user_id: UUID) -> Select[Any]:
+def _unlocked_achievements[*Ts](statement: Select[*Ts], user_id: UUID) -> Select[*Ts]:
     return statement.join(Game, Game.id == Achievement.game_id).where(
         active_owned_games(user_id),
         Achievement.unlocked.is_(True),

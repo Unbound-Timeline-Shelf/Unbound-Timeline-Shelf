@@ -208,6 +208,8 @@ async def _resolve(
     active: dict[UUID, tuple[UUID, int | None]] = {}
     trashed: dict[UUID, UUID] = {}
     for guid, game_id, deleted_at, last_played in rows:
+        if guid is None:
+            continue
         if deleted_at is None:
             active.setdefault(guid, (game_id, last_played))
         else:

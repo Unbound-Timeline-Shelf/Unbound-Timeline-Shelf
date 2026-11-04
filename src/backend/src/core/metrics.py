@@ -684,7 +684,8 @@ async def _probe_database() -> None:
     AUTH_SESSIONS.labels("active").set(active or 0)
     AUTH_SESSIONS.labels("revoked").set(revoked or 0)
     for job_id, last_success_at in rows:
-        JOB_LAST_SUCCESS.labels(job_id).set(last_success_at)
+        if last_success_at is not None:
+            JOB_LAST_SUCCESS.labels(job_id).set(last_success_at)
 
 
 async def _probe_runtime_health() -> None:
