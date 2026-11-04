@@ -20,7 +20,11 @@ test("proxy rejects authority changes and malformed requests", () => {
 
 
 test("validated options reach the configured server with the original path", async () => {
-  const server = createServer((req, res) => res.end(req.url));
+  let receivedPath;
+  const server = createServer((req, res) => {
+    receivedPath = req.url;
+    res.end("ok");
+  });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   try {
     const options = testProxyTarget("/api/items?q=1", `http://127.0.0.1:${server.address().port}`);
@@ -31,7 +35,8 @@ test("validated options reach the configured server with the original path", asy
         res.on("end", () => resolve(data));
       }).on("error", reject).end();
     });
-    assert.equal(body, "/api/items?q=1");
+    assert.equal(body, "ok");
+    assert.equal(receivedPath, "/api/items?q=1");
   } finally {
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
