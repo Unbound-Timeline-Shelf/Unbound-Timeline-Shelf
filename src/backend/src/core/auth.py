@@ -48,7 +48,7 @@ class AuthenticatedActor:
         return self.credential_kind == "session"
 
 
-_password_policy_override: dict[str, int | bool] | None = None
+_password_policy_override: dict[str, int | bool] | None = None  # pylint: disable=invalid-name
 
 
 def password_policy() -> dict[str, int | bool]:

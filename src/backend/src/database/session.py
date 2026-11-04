@@ -33,7 +33,7 @@ install_session_metrics()
 
 
 # Factory for creating AsyncSession objects.
-SessionLocal = async_sessionmaker(
+SessionLocal = async_sessionmaker(  # pylint: disable=invalid-name
     bind=engine,
     class_=ObservedAsyncSession,
     expire_on_commit=False,
