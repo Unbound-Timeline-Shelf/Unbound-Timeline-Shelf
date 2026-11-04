@@ -155,7 +155,7 @@ jobs:
           python tools/check_host_contract.py --host-root "$GITHUB_WORKSPACE"
       - name: Cache Playwright browser
         if: needs.scope.outputs.heavy == 'true'
-        uses: actions/cache@v5.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('.integration-plugins/package-lock.json') }}
