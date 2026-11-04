@@ -1,6 +1,7 @@
 // Real built frontend against the acceptance backend; no mocked API responses.
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
+import { testProxyTarget } from "./test_proxy_target.mjs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -13,7 +14,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/
 const mime = { ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".html": "text/html" };
 const server = createServer(async (incoming, outgoing) => {
   if (incoming.url.startsWith("/api/")) {
-    const upstream = httpRequest(new URL(incoming.url, process.env.PLUGIN_GATEWAY_URL), {
+    const target = testProxyTarget(incoming.url, process.env.PLUGIN_GATEWAY_URL);
+    if (!target) { outgoing.writeHead(400); outgoing.end(); return; }
+    const upstream = httpRequest(target, {
       method: incoming.method, headers: incoming.headers,
     }, (response) => {
       outgoing.writeHead(response.statusCode, response.headers);

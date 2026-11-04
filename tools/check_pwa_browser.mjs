@@ -1,6 +1,7 @@
 // Full browser + real Plugin Manager acceptance. No plugin API is mocked.
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
+import { testProxyTarget } from "./test_proxy_target.mjs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -13,7 +14,9 @@ const { chromium } = require("playwright");
 const frontend = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/frontend/dist");
 const server = createServer(async (incoming, outgoing) => {
   if (/^\/(?:api\/|pwa\/|service-worker\.js|manifest\.webmanifest)/.test(incoming.url)) {
-    const upstream = httpRequest(new URL(incoming.url, process.env.PLUGIN_GATEWAY_URL), {
+    const target = testProxyTarget(incoming.url, process.env.PLUGIN_GATEWAY_URL);
+    if (!target) { outgoing.writeHead(400); outgoing.end(); return; }
+    const upstream = httpRequest(target, {
       method: incoming.method, headers: incoming.headers,
     }, response => { outgoing.writeHead(response.statusCode, response.headers); response.pipe(outgoing); });
     upstream.on("error", () => { outgoing.writeHead(503); outgoing.end(); });

@@ -2,6 +2,7 @@
 // No host API responses are mocked. Run only against a disposable server with no configured OIDC provider.
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
+import { testProxyTarget } from "./test_proxy_target.mjs";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -14,7 +15,9 @@ const { chromium } = createRequire(path.resolve(pluginsRoot, "package.json"))("p
 const frontend = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/frontend/dist");
 const frontendServer = createServer(async (incoming, outgoing) => {
   if (/^\/(api\/|pwa\/|manifest\.webmanifest|service-worker\.js)/.test(incoming.url)) {
-    const upstream = httpRequest(new URL(incoming.url, backendUrl), { method: incoming.method, headers: incoming.headers }, response => {
+    const target = testProxyTarget(incoming.url, backendUrl);
+    if (!target) { outgoing.writeHead(400); outgoing.end(); return; }
+    const upstream = httpRequest(target, { method: incoming.method, headers: incoming.headers }, response => {
       outgoing.writeHead(response.statusCode, response.headers); response.pipe(outgoing);
     });
     upstream.on("error", () => { outgoing.writeHead(503); outgoing.end(); }); incoming.pipe(upstream); return;

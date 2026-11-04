@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { checkTasksUi } from "./check_tasks_ui.mjs";
 import { checkLibraryLayouts } from "./check_library_layouts.mjs";
 import { createServer, request as httpRequest } from "node:http";
+import { testProxyTarget } from "./test_proxy_target.mjs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -52,7 +53,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/
 const mime = { ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".html": "text/html" };
 const server = createServer(async (incoming, outgoing) => {
   if (incoming.url.startsWith("/api/")) {
-    const upstream = httpRequest(new URL(incoming.url, backendUrl), { method: incoming.method, headers: incoming.headers }, response => {
+    const target = testProxyTarget(incoming.url, backendUrl);
+    if (!target) { outgoing.writeHead(400); outgoing.end(); return; }
+    const upstream = httpRequest(target, { method: incoming.method, headers: incoming.headers }, response => {
       outgoing.writeHead(response.statusCode, response.headers); response.pipe(outgoing);
     });
     upstream.on("error", error => { outgoing.writeHead(502); outgoing.end(String(error)); });
