@@ -87,7 +87,17 @@ jobs:
         env:
           REQUESTED_REF: ${{ inputs.plugins_ref }}
           COMPANION_BRANCH: ${{ github.head_ref || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          HOST_REF: ${{ github.ref }}
         run: |
+          # A manual run on main can write default-branch caches. Do not execute
+          # an arbitrary companion ref in that trusted context. Dispatch from a
+          # non-main host branch when testing a companion branch.
+          if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$HOST_REF" = refs/heads/main ] &&
+             [ -n "$REQUESTED_REF" ] && [ "$REQUESTED_REF" != main ]; then
+            echo "Select companion main when dispatching on host main." >&2
+            exit 1
+          fi
           ref="$REQUESTED_REF"
           if [ -z "$ref" ]; then
             ref=main
