@@ -1,9 +1,9 @@
 # Official PWA integration
 
-`official.pwa` is maintained user-facing functionality based on
-`Rosefall-a/unnamed-tracking-mobile-app/pwa`. Its initial integration version is **0.0.1**. The v1.1 contract and appearance
-migration uses separate plugin and canonical asset versions of **0.0.2**;
-stable 1.0.0 requires a future explicit human decision. It opens the complete web
+`official.pwa` is maintained user-facing functionality based on the
+[Mobile-Apps PWA assets](https://github.com/Unbound-Timeline-Shelf/Mobile-Apps/tree/main/pwa).
+The plugin release and mobile asset versions are tracked separately; stable
+1.0.0 requires a future explicit human decision. It opens the complete web
 application and inherits future responsive improvements. Native Android, Android
 WebView and Windows/WinUI client implementations are independent and unchanged.
 
@@ -31,9 +31,10 @@ with `Service-Worker-Allowed: /`, and the frontend registers it at `/` with
 
 ## Cache and lifecycle
 
-Only the reviewed waiting-for-internet HTML page enters CacheStorage. There is
-no runtime response caching or private application shell. `/api/`, authentication,
-non-navigation, non-GET and cross-origin traffic bypass the worker handler.
+The reviewed waiting-for-internet page and up to 32 immutable, digest-addressed
+public theme assets may enter CacheStorage. Private API and authentication
+responses, other non-navigation requests, non-GET requests and cross-origin
+traffic bypass the worker handler. There is no cached private application shell.
 Passwords are never persisted by the PWA; normal host session expiry returns to
 login/SSO. Chrome/Edge use the browser install prompt; iOS Safari offers Share →
 Add to Home Screen guidance. Installation requires HTTPS or localhost support.
@@ -91,17 +92,16 @@ Provision these protected builder/Actions secrets in the plugin repository:
 Register the matching public key, SHA-256, publisher, channel and scope in both
 reviewed registries. The host can use `PLUGIN_TRUSTED_PUBLISHER_REGISTRY` to select
 its deployed policy; it needs no private signing keys. No production official
-private key is generated or committed. Until a protected official key is
-provisioned, only the explicitly unsigned preview is available; signed official
-publication fails atomically. Existing immutable demo artifacts remain intact.
+private key is generated or committed. Signed official publication requires the
+protected official identity and fails atomically without it. Existing immutable
+artifacts remain intact.
 
 From the plugin checkout synchronize source assets with `tools/sync_pwa.py
 --mobile-root PATH --host-root PATH`; use `--check` to verify exact source hashes,
 host worker/offline templates and version consistency. Packaging consumes
 `official/` as well as `examples/` and optional `plugins/`. `.validation/list.json`
-contains all preview packages; the public catalogue advertises only published
-history until the official identity is provisioned. Never publish a preview URL
-as a production signed release.
+contains all preview packages; the public catalogue advertises published
+history. Never publish a preview URL as a production signed release.
 
 ## Verification
 
