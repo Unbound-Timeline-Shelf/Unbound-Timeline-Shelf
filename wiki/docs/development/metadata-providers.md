@@ -18,7 +18,7 @@ provider installation is needed for default game, TV or anime search.
 
 Optional GOG, GiantBomb, RetroAchievements, ScreenScraper, HowLongToBeat, Kitsu,
 Jikan, TMDB and TVDB implementations live in
-[the companion repository](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
+[the companion repository](https://github.com/Unbound-Timeline-Shelf/Plugins).
 They use the existing verified package, permission, runtime action and gateway
 boundaries. Adding an optional provider does not require a host code change.
 Both kinds use the same canonical response models, ranking, rolling metadata preloading,

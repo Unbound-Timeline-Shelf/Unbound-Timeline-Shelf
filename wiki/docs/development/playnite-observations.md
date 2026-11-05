@@ -1,11 +1,11 @@
 # Playnite observations and compatibility
 
 Phase 4 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#100](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/100). It builds on
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#100](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/100). It builds on
 [ingestion](game-ingestion.md), [decisions](game-identity-decisions.md) and
 [counters](game-identity-counters.md). Paths start `src/backend/src/`. No migration. The extension
-side lives in [`obsoletelabs/unnamed_tracking_playnite`](https://github.com/obsoletelabs/unnamed_tracking_playnite)
+side lives in [`Unbound-Timeline-Shelf/Playnite-Integration`](https://github.com/Unbound-Timeline-Shelf/Playnite-Integration)
 (see its `api-contract.md`).
 
 ## 1. What was audited

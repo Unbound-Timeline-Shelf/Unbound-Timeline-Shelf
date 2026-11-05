@@ -31,7 +31,7 @@ SDK permissions or automatic-update settings. CSS can change the complete
 interface, including the sidebar and native plugin components. Opaque iframe
 plugins retain their isolation and receive the host's public appearance tokens.
 
-The [themes repository](https://github.com/Rosefall-a/unnamed_tracking_app_themes)
+The [themes repository](https://github.com/Unbound-Timeline-Shelf/Themes)
 contains an official Forest theme and a Purple Blocks example, a deterministic
 package builder, package-format documentation and an `unsigned-dist` CI artifact
 on every branch. Collection labels describe the package's declared collection;

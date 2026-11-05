@@ -1,8 +1,8 @@
 # Game identity decisions, merges and splits
 
 Phase 2 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#95](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/95). It builds on the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#95](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/95). It builds on the
 tables from the [data model](game-identity-model.md) (#93) and the
 [observation registry](game-ingestion.md) (#94). Code: `features/game_identity/`
 (`graph.py`, `decisions.py`) and `api/routes/game_identity.py`. No migration: the schema

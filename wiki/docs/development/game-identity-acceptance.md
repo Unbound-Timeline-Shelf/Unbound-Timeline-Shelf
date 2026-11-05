@@ -1,8 +1,8 @@
 # Game identity: final acceptance, performance and operations
 
 Final gate of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#103](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/103). This page records
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#103](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/103). This page records
 what was run, what it showed and what was fixed because of it. Every command and number below
 was produced in the stated validation environment. Backend paths start
 `src/backend/`.
@@ -33,18 +33,18 @@ Stacked: each pull request is based on the one before it, so they merge in this 
 
 | Issue | Pull request | Based on |
 | --- | --- | --- |
-| [#92](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/92) audit | [#164](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/164) | `main` |
-| [#93](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/93) data model | [#180](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/180) | `main` |
-| [#94](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/94) ingestion | [#196](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/196) | #180 |
-| [#95](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/95) merges and decisions | [#202](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/202) | #196 |
-| [#96](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/96) counters | [#205](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/205) | #202 |
-| [#97](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/97) manual achievements and completion | [#209](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/209) | #205 |
-| [#98](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/98) name provenance | [#210](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/210) | #205 |
-| [#99](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/99) matching and review queue | [#213](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/213) | #205 |
-| [#100](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/100) Playnite | [#212](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/212) and extension [#2](https://github.com/obsoletelabs/unnamed_tracking_playnite/pull/2) | #205 |
-| [#101](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/101) UI | [#214](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/214) | #213 (with #97, #98 and #100 merged in) |
-| [#102](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/102) migration | [#216](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/216) | #214 |
-| [#103](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/103) this page | the pull request that adds it | #216 |
+| [#92](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/92) audit | [#164](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/164) | `main` |
+| [#93](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/93) data model | [#180](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/180) | `main` |
+| [#94](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/94) ingestion | [#196](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/196) | #180 |
+| [#95](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/95) merges and decisions | [#202](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/202) | #196 |
+| [#96](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/96) counters | [#205](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/205) | #202 |
+| [#97](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/97) manual achievements and completion | [#209](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/209) | #205 |
+| [#98](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/98) name provenance | [#210](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/210) | #205 |
+| [#99](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/99) matching and review queue | [#213](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/213) | #205 |
+| [#100](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/100) Playnite | [#212](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/212) and extension [#2](https://github.com/Unbound-Timeline-Shelf/Playnite-Integration/pull/2) | #205 |
+| [#101](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/101) UI | [#214](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/214) | #213 (with #97, #98 and #100 merged in) |
+| [#102](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/102) migration | [#216](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/216) | #214 |
+| [#103](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/103) this page | the pull request that adds it | #216 |
 
 ## 3. Scenario matrix as executable tests
 
@@ -320,11 +320,11 @@ Schema concepts: [data model](game-identity-model.md). Decision rules:
   `/observations`, `/inventory`, an existing connection continuing after the backfill and
   previously imported IDs.
 - **Extension (C#)**: pull request
-  [#2](https://github.com/obsoletelabs/unnamed_tracking_playnite/pull/2) is ready for review.
+  [#2](https://github.com/Unbound-Timeline-Shelf/Playnite-Integration/pull/2) is ready for review.
   Its harness now distinguishes the contract-negotiation request from paginated library
   requests, checking both independently. The portable .NET 8 run passed 197 assertions;
-  [Windows build, harness and package checks](https://github.com/obsoletelabs/unnamed_tracking_playnite/actions/runs/39045128710)
-  and [extension packaging](https://github.com/obsoletelabs/unnamed_tracking_playnite/actions/runs/39045128711)
+  [Windows build, harness and package checks](https://github.com/Unbound-Timeline-Shelf/Playnite-Integration/actions/runs/39045128710)
+  and [extension packaging](https://github.com/Unbound-Timeline-Shelf/Playnite-Integration/actions/runs/39045128711)
   passed on `ba07d668`. Ship the compatible host first, then the extension.
 
 ## 9. Known limitations

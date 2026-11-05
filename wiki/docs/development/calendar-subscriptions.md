@@ -1,6 +1,6 @@
 # External calendar subscriptions
 
-Implemented first phase of [#258](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/258), following the
+Implemented first phase of [#258](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/258), following the
 [accepted decisions](design/ics-subscriptions.md#12-decisions-confirmed-on-19-october-2026). This is a host feature;
 it adds no plugin capability or contract, and does not expand Atlas integration.
 

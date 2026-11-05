@@ -1,6 +1,6 @@
 # External ICS subscriptions and synchronization
 
-Design proposal for [#258](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/258)
+Design proposal for [#258](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/258)
 (source: Rosefall #243). **Historical proposal, superseded by the implemented first subscription phase.**
 Use [Calendar subscriptions](../calendar-subscriptions.md) for current schema, API, limits and verification.
 The original alternatives below are retained as design history, not as the live API contract. Paths start `src/backend/src/`.
@@ -168,7 +168,7 @@ transport, so no test touches the network.
 
 ## 12. Decisions confirmed on 19 October 2026
 
-The maintainer approved the [first subscription phase](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/258#issuecomment-6265809566):
+The maintainer approved the [first subscription phase](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/258#issuecomment-6265809566):
 ten sources, 2 MiB/10,000-component feeds, an admin deployment switch, HTTPS secret URLs encrypted at rest,
 scheduled/manual refresh, exclusion from outbound feeds, 30-day tombstones and maintained parser dependencies.
 Basic/bearer headers and `import_once` are deferred. The follow-up decision requires local title, notes, location

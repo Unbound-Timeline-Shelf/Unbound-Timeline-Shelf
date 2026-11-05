@@ -2,7 +2,7 @@
 
 ## Current checkpoint — 17 October 2026
 
-The [ordered tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
+The [ordered tracker #141](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/141)
 contains every remaining approved Rosefall workstream. The authoritative per-issue
 board (PR, state, stack, tests, screenshots, docs, companion contracts, what remains)
 is the [status board](rosefall-469-implementation.md#status-board-for-the-141-queue).
@@ -34,12 +34,12 @@ This page separates completed adaptations from the approved backlog; the
 
 | PR | Delivered behavior |
 | --- | --- |
-| [122](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/122) | Separate frontend checks; scoped non-main commits, full ready PR/main checks, tests always run. |
-| [123](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/123) | Built-in Classic/Modern presentations, native Classic palette, setup/environment default and complete typing-only Automatic Search policy. |
-| [124](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/124) | Audited source, reconciliation matrix and approved implementation plan. |
-| [126](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/126) | Rosefall items 54–57 and 60–61: username-first/email fallback, safe new/changed usernames with legacy compatibility, password/session handling, browser-only key creation, administrator configuration access and secret redaction. |
-| [127](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/127) | Items 58–59: off-by-default verified-email requirement, explicit true claim when enabled, callback-alias enforcement, safe account collision/race handling and additive migration. |
-| [128](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/128) | Item 62: shared public DNS validation and connection pinning, TLS identity, checked redirects, bounded byte/pixel validation and owned game artwork URL fetching outside the async event loop. |
+| [122](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/122) | Separate frontend checks; scoped non-main commits, full ready PR/main checks, tests always run. |
+| [123](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/123) | Built-in Classic/Modern presentations, native Classic palette, setup/environment default and complete typing-only Automatic Search policy. |
+| [124](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/124) | Audited source, reconciliation matrix and approved implementation plan. |
+| [126](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/126) | Rosefall items 54–57 and 60–61: username-first/email fallback, safe new/changed usernames with legacy compatibility, password/session handling, browser-only key creation, administrator configuration access and secret redaction. |
+| [127](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/127) | Items 58–59: off-by-default verified-email requirement, explicit true claim when enabled, callback-alias enforcement, safe account collision/race handling and additive migration. |
+| [128](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/128) | Item 62: shared public DNS validation and connection pinning, TLS identity, checked redirects, bounded byte/pixel validation and owned game artwork URL fetching outside the async event loop. |
 
 PRs 122–127 listed above are merged into Obsolete Labs main. Source Rosefall
 commits have not been merged or cherry-picked. C1 is published as PR #128 into main. Its live PR status is authoritative for
@@ -64,7 +64,7 @@ the same frame and five tabs in #144; the quick editors are #149; the final word
 
 ## Accepted constraints for resumption
 
-- Work from current `obsoletelabs/unnamed_tracking_app_2` main. Rosefall is a separate
+- Work from current `Unbound-Timeline-Shelf/Unbound-Timeline-Shelf` main. Rosefall is a separate
   source reference. Use focused PRs into main, or explicitly documented stacks.
   Squash merging is authorized only after completion and all required checks pass.
 - Automatic Search controls typing-triggered external metadata calls. The account
@@ -75,12 +75,12 @@ the same frame and five tabs in #144; the quick editors are #149; the final word
 - New/renamed usernames permit ASCII letters, digits, `_`, `-` and `.`, no spaces.
   Existing names remain valid for login/unchanged values. Bound SQL parameters,
   not SQL-keyword blacklists, enforce database safety. Display names are tracked in
-  [issue 125](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/125).
+  [issue 125](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/125).
 - Verified email is optional per OIDC provider and environment bootstrap. Enabled
   requires the explicit boolean true claim, including legacy callback aliases.
 - Core Steam, IGDB, SteamGridDB, TVmaze, AniList, AniZip and OMDb are host features.
   Optional plugins/SDK consumers belong in the separate
-  `obsoletelabs/unnamed_tracking_app_plugins` repository. Preserve Plugin API v1,
+  `Unbound-Timeline-Shelf/Plugins` repository. Preserve Plugin API v1,
   package integrity, permissions and the single migration history.
 - Keep shared UI behavior in existing services/components. Classic styling belongs
   in centralized tokens/selectors. Keep UI screenshots and PR descriptions current.
@@ -126,7 +126,7 @@ There is no plugin SDK contract change or plugin implementation update for C1.
 
 ## Final validation and checkout
 
-C1 is committed and pushed on [PR #128](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/128).
+C1 is committed and pushed on [PR #128](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/128).
 Local validation:
 
 - Complete backend suite: **2,477 passed, four skipped**.

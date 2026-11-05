@@ -1,6 +1,6 @@
 # Playnite remote launch v1
 
-The host API, browser launch menu and Playnite companion receiver implement [host #319](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/319) and [Playnite #6](https://github.com/obsoletelabs/unnamed_tracking_playnite/issues/6). Both the updated host and companion are required. Steam streaming is [researched separately](steam-remote-play.md) and is not implemented here.
+The host API, browser launch menu and Playnite companion receiver implement [host #319](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/319) and [Playnite #6](https://github.com/Unbound-Timeline-Shelf/Playnite-Integration/issues/6). Both the updated host and companion are required. Steam streaming is [researched separately](steam-remote-play.md) and is not implemented here.
 
 ## Set up and launch
 

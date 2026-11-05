@@ -56,32 +56,32 @@ Until then, PRs remain available for review with current validation and screensh
 
 ### Current progress
 
-- **A:** merged as [PR #126](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/126).
+- **A:** merged as [PR #126](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/126).
   Full backend validation passed (2,403 tests, four skipped), frontend validation
   passed (528 tests), and hosted checks passed before the authorized squash merge.
   Modern/Classic account and phone screenshots are included.
-- **B:** merged as [PR #127](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/127).
+- **B:** merged as [PR #127](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/127).
   Opt-in verified email, callback-alias enforcement, collision handling and the
   false-default additive migration are complete. Full backend validation passed
   (2,441 tests, four skipped), frontend validation passed (531 tests), and all hosted
   checks passed before the authorized squash merge. Modern/Classic screenshots
   accompany the provider setting.
-- **C1 / 62:** merged as [PR #128](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/128): one pinned public HTTP
+- **C1 / 62:** merged as [PR #128](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/128): one pinned public HTTP
   boundary for cached images and game artwork URL downloads, with checked redirects,
   bounded streaming and image validation. The final PR and validation are recorded
   in the [handover](rosefall-469-handover.md).
   The follow-up for automatic library enrichment and game metadata refresh is
-  merged in the combined [PR #135](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/135):
+  merged in the combined [PR #135](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/135):
   both use that boundary and effective configured image limits. Six regressions
   reproduced the old downloader bypass; coverage also preserves safe candidate
   fallback. No SDK change or broader provider permissions are needed.
-- **C2 / 63–64:** merged as [PR #129](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/129).
+- **C2 / 63–64:** merged as [PR #129](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/129).
   Extension/content validation, bounded storage names, preserved original names and
   equivalent whole/range response headers are implemented. The generated additive
   migration and shared Modern/Classic UI have regression coverage and screenshots.
   All hosted checks passed before the authorized squash merge: 2,517 backend tests
   (four skipped) and 533 frontend tests. Existing uploads keep their storage paths.
-- **D / 30, 65–67:** merged as [PR #130](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/130).
+- **D / 30, 65–67:** merged as [PR #130](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/130).
   Import rating normalization, finite restore conversion, required-null PATCH
   handling and shared frontend numeric inputs have regression coverage. Hosted
   validation passed 2,566 backend tests (four skipped) and 566 frontend
@@ -91,7 +91,7 @@ Until then, PRs remain available for review with current validation and screensh
   [light mode](../assets/numeric-validation/modern-light-quick-edit.jpg) and
   [phone](../assets/numeric-validation/classic-dark-phone-quick-edit.jpg) screenshots
   cover inline validation. The shared quick-editor grid fits the phone dialog.
-- **E / 23:** merged as [PR #131](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/131).
+- **E / 23:** merged as [PR #131](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/131).
   Account provider opt-outs cover builtin/plugin discovery, current invocation,
   cached responses, direct metadata actions and scheduled metadata work. Saved
   credentials and typing choices remain intact. Library-sync actions keep their
@@ -103,7 +103,7 @@ Until then, PRs remain available for review with current validation and screensh
   [Classic dark](../assets/provider-choices/classic-dark.jpg),
   [Classic light](../assets/provider-choices/classic-light.jpg) and
   [phone](../assets/provider-choices/classic-dark-phone.jpg).
-- **F UI / 10, 12–13:** merged as [PR #133](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/133).
+- **F UI / 10, 12–13:** merged as [PR #133](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/133).
   Card saves reconcile the library, filters/counts, current preview and entity cache;
   older reads cannot undo a successful save. Active priorities use the existing
   priority policy. Finished games keep written notes and a compact keyboard-accessible
@@ -115,7 +115,7 @@ Until then, PRs remain available for review with current validation and screensh
   [phone](../assets/game-card-consistency/classic-dark-phone-priority.jpg),
   [finished notes](../assets/game-card-consistency/classic-dark-finished-note.jpg) and
   [retained written notes](../assets/game-card-consistency/classic-light-written-note.jpg).
-- **F progression / 1–3:** merged as [PR #134](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/134);
+- **F progression / 1–3:** merged as [PR #134](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/134);
   full local backend tests passed (2,669; four skipped), along with mypy and
   Ruff and full Pylint (10/10). Fifty-one separate Epic plugin consumer tests
   passed without SDK changes.
@@ -127,7 +127,7 @@ Until then, PRs remain available for review with current validation and screensh
   Achievement GET remains read-only; all providers recheck the current locked
   identity/status after a delayed single-game refresh. The plugin schema is unchanged.
   All seven full hosted workflows passed before the authorized squash merge.
-- **F folders / 5:** merged in combined [PR #135](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/135), which
+- **F folders / 5:** merged in combined [PR #135](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/135), which
   implements folder moves/recovery, coordinated file operations, artwork locking
   and the related enrichment downloader follow-up as logical commits in one PR.
   The artwork-only commit passed full local backend tests as unprivileged
@@ -164,7 +164,7 @@ Until then, PRs remain available for review with current validation and screensh
   public gateway replies passed for all four estimate fields. Direct live provider
   token/search verification also passed; this is not a claim of installed-host live
   provider execution.
-- **H and I:** merged in combined [PR #137](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/137). Exclusions and saved
+- **H and I:** merged in combined [PR #137](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/137). Exclusions and saved
   query/preset compatibility, percent-containing collection names, safe filtered
   reorder and episode-page preservation pass 25 focused regressions. The pushed
   global media sorting/counts and shared loaded-extent refresh implementation passes
@@ -176,7 +176,7 @@ Until then, PRs remain available for review with current validation and screensh
   independent tab counts; screenshots are in the media library guide. The
   temporary approval-service limit is resolved. All seven full hosted workflows
   passed before the authorized squash merge into main.
-- **J / 15, 17, 28–29:** issue #142, merged as [PR #155](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/155).
+- **J / 15, 17, 28–29:** issue #142, merged as [PR #155](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/155).
   Shared checked add/edit comparison, current protection/manual-edit handling,
   identity-bound verified artwork and staged TV seasons are committed/pushed.
   Game Repull no longer persists before Save. The actual Add media flow also
@@ -208,7 +208,7 @@ Until then, PRs remain available for review with current validation and screensh
   INTEGER range is now a validation error rather than a database failure.
 - **K / #144, #149 and L–O:** see the status board below for live PR state; only
   merged rows are complete.
-- **K media editors / 26–27:** issue #144, in review in [PR #181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181), stacked on the merged #143 editor. Movie, TV and anime editors share `MediaFormShell` on `EditorShell`: Basics, Details, Tracking, Artwork and Links tabs, pinned actions, and staged metadata lookup above every tab. Rewatches, dates, source, subratings, tags, countries, languages, age rating, features, anime format and validated provider IDs use each type's existing create/update request. Seasons, progress, title protection and immutable identity remain unchanged.
+- **K media editors / 26–27:** issue #144, in review in [PR #181](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/181), stacked on the merged #143 editor. Movie, TV and anime editors share `MediaFormShell` on `EditorShell`: Basics, Details, Tracking, Artwork and Links tabs, pinned actions, and staged metadata lookup above every tab. Rewatches, dates, source, subratings, tags, countries, languages, age rating, features, anime format and validated provider IDs use each type's existing create/update request. Seasons, progress, title protection and immutable identity remain unchanged.
 - **K quick editors / 20–21, 37–38:** issue #149. The game
   library's Edit opens `GameQuickEditModal` (status, platform, rating, cover) on
   `EditorShell`; it PATCHes only those fields and shares artwork transfer and
@@ -219,7 +219,7 @@ Until then, PRs remain available for review with current validation and screensh
   unchanged visible bucket keeps a stored Favorite or Rewatch status. Detail
   pages list priority and formatted dates through `mediaTrackingFacts`. No
   endpoint, schema or migration changes.
-- **M / 45–46:** issue [#146](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/146)
+- **M / 45–46:** issue [#146](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/146)
   implements per-kind Empty trash (explicit `confirm: true`, confirmed deletion-time
   bound, 200-title batches, per-title savepoints and deleted/failed/remaining counts)
   and opt-in `media_trash_retention_days` (Never default; 7/14/30/90) in the existing
@@ -234,7 +234,7 @@ Until then, PRs remain available for review with current validation and screensh
   invalidates every cached variant. Semantics are in the
   [architecture guide](architecture.md).
 - **O / 51–52 (activity heatmap and day detail):** issue
-  [#147](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/147), stacked on the
+  [#147](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/147), stacked on the
   game-statistics predicate from #152. A bounded owned day endpoint, month labels, keyboard
   and pointer access and one shared Modern/Classic dialog are implemented; see
   [Statistics activity](../user-guide/statistics.md) and the architecture notes. Settings
@@ -251,10 +251,10 @@ Until then, PRs remain available for review with current validation and screensh
 ### Issue-by-issue execution order
 
 The owner requested one issue at a time, most complex first, on 15 October 2026.
-[Tracker #141](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/141)
+[Tracker #141](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/141)
 contains the ordered queue, dependencies and existing related follow-ups #125,
 #132 and #138–140. #142 is merged in #155 and #143 in #171; see the status board below.
-#132 and #138–140. #142 is merged in #155; #143 is merged in #171, and #144 is in review in [PR #181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181).
+#132 and #138–140. #142 is merged in #155; #143 is merged in #171, and #144 is in review in [PR #181](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/181).
 
 All 29 untouched approved matrix rows are assigned exactly once:
 
@@ -285,28 +285,28 @@ checklists say. Local results quoted below are the authors' own PR-body claims; 
 two `tests/test_plugin_upload.py` failures noted there are sandbox network failures
 on clean main, and hosted CI decides. Re-check the live PR before acting on any row.
 
-**Verified prerequisites (merged):** #137 (squash `3b597a02403b05a46dfbe1e8e1aff7ae8c58c77f`, PR [#137](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/137)) and
-#142 (PR [#155](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/155), squash `e82e988dc873c6d9f2d93628a75f621b403c1f5d`). Companion HLTB
-estimates PR (plugins repo #47) and host [#136](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/136) are also merged.
+**Verified prerequisites (merged):** #137 (squash `3b597a02403b05a46dfbe1e8e1aff7ae8c58c77f`, PR [#137](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/137)) and
+#142 (PR [#155](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/155), squash `e82e988dc873c6d9f2d93628a75f621b403c1f5d`). Companion HLTB
+estimates PR (plugins repo #47) and host [#136](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/136) are also merged.
 
 | Order | Issue | PR | State | Base / stack | Tests | Screenshots | Docs | Companion | Remains |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2 | #143 | [#171](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/171) | Merged | main | Frontend suites reported | Modern/Classic | Editor and Classic guides | None | Nothing |
-| 3 | #144 | [#181](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/181) | Open | main (now unblocked by #171) | 665 frontend pass; no backend change | Modern/Classic, 390px | Yes | None | Review and hosted checks; #149 stacks on it |
-| 4 | #145 | [#175](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/175) | Open | main | Backend 3118 pass (2 sandbox network failures), frontend 726, strict docs | Yes | Task, AniList and notification docs | None | Review and hosted checks; #153 stacks on it |
-| 5 | #140 | [#177](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/177) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
-| 6 | #146 | [#168](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/168) | Merged | main | Reported in PR | Modern/Classic | Media library guide | None | Nothing |
-| 7 | #132 | [#172](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/172) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
-| 8 | #147 | [#193](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/193) | Open | Base is the merged #152 branch; retarget to main | Backend 2790 pass, frontend 633; build and strict docs not run | Yes | Yes | None | Retarget/rebase on main, rerun build and strict docs, hosted checks |
-| 9 | #148 | [#197](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/197) | Open | main | Backend 3104 pass, frontend 727, build; live two-client ETag check | Not applicable (no visible UI) | Yes | None | Review and hosted checks |
-| 10 | #125 | [#201](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/201) | Open | main | Backend 3140 pass, frontend 728; migration, single head | Yes | Yes | None | Review and hosted checks; its migration head must follow whatever else merges first |
-| 11 | #149 | [#200](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/200) | Open | Stacked on #144 branch | Frontend 676 pass, lint, strict docs; live checks | Modern/Classic, 390px | Yes | None | #144 must merge first, then retarget to main |
-| 12 | #150 | [#160](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/160) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
-| 13 | #151 | [#174](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/174) | Open | main | 23 new tests (fail on main, pass here); backend 2771 pass | None | Yes | None | Review and hosted checks; coordinated with merged #146 |
-| 14 | #139 | [#182](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/182) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
-| 15 | #152 | [#166](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/166) | Merged | main | Reported in PR | Not applicable | Yes | None | Nothing |
-| 16 | #138 | [#191](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/191) | Draft | main | 228 focused backend pass; full backend, build and whole-tree lint not run; one load-related timeout in a frontend test | Yes | Yes | None | Full backend suite, build, lint, then mark ready |
-| 17 | #153 | [#198](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/198) | Open | Stacked on #145 branch | 731 frontend pass, lint, build, strict docs; backend untouched | Not in PR body | Yes | None | #145 must merge first, then retarget to main |
+| 2 | #143 | [#171](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/171) | Merged | main | Frontend suites reported | Modern/Classic | Editor and Classic guides | None | Nothing |
+| 3 | #144 | [#181](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/181) | Open | main (now unblocked by #171) | 665 frontend pass; no backend change | Modern/Classic, 390px | Yes | None | Review and hosted checks; #149 stacks on it |
+| 4 | #145 | [#175](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/175) | Open | main | Backend 3118 pass (2 sandbox network failures), frontend 726, strict docs | Yes | Task, AniList and notification docs | None | Review and hosted checks; #153 stacks on it |
+| 5 | #140 | [#177](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/177) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
+| 6 | #146 | [#168](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/168) | Merged | main | Reported in PR | Modern/Classic | Media library guide | None | Nothing |
+| 7 | #132 | [#172](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/172) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
+| 8 | #147 | [#193](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/193) | Open | Base is the merged #152 branch; retarget to main | Backend 2790 pass, frontend 633; build and strict docs not run | Yes | Yes | None | Retarget/rebase on main, rerun build and strict docs, hosted checks |
+| 9 | #148 | [#197](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/197) | Open | main | Backend 3104 pass, frontend 727, build; live two-client ETag check | Not applicable (no visible UI) | Yes | None | Review and hosted checks |
+| 10 | #125 | [#201](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/201) | Open | main | Backend 3140 pass, frontend 728; migration, single head | Yes | Yes | None | Review and hosted checks; its migration head must follow whatever else merges first |
+| 11 | #149 | [#200](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/200) | Open | Stacked on #144 branch | Frontend 676 pass, lint, strict docs; live checks | Modern/Classic, 390px | Yes | None | #144 must merge first, then retarget to main |
+| 12 | #150 | [#160](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/160) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
+| 13 | #151 | [#174](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/174) | Open | main | 23 new tests (fail on main, pass here); backend 2771 pass | None | Yes | None | Review and hosted checks; coordinated with merged #146 |
+| 14 | #139 | [#182](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/182) | Merged | main | Reported in PR | Reported in PR | Yes | None | Nothing |
+| 15 | #152 | [#166](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/166) | Merged | main | Reported in PR | Not applicable | Yes | None | Nothing |
+| 16 | #138 | [#191](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/191) | Draft | main | 228 focused backend pass; full backend, build and whole-tree lint not run; one load-related timeout in a frontend test | Yes | Yes | None | Full backend suite, build, lint, then mark ready |
+| 17 | #153 | [#198](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/198) | Open | Stacked on #145 branch | 731 frontend pass, lint, build, strict docs; backend untouched | Not in PR body | Yes | None | #145 must merge first, then retarget to main |
 | 18 | #154 | PR for `claude/issue-154-selective-wording-and-migration-consistency-review` | Open (includes #181, #200, #175, #198 and #204 until they merge) | Stacked on the #200 branch | Frontend focused and full suites, lint, typecheck, build, strict docs, `alembic heads` | Modern/Classic before and after | [Copy review](rosefall-copy-review.md), [Classic guide](classic-ui.md) | None | Hosted checks; retarget to main after its bases merge |
 
 Only #143, #140, #146, #132, #150, #139 and #152 are merged. #144, #145, #147, #148, #125,

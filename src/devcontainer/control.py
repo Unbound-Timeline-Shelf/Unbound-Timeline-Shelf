@@ -45,7 +45,7 @@ DEFAULT_INSTANCES = [
 ACTIONS = {"start", "stop", "reset", "rebuild", "status", "health", "logs"}
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-GHCR_BASE = "ghcr.io/rosefall-a/unnamed_tracking_app"
+GHCR_BASE = "ghcr.io/unbound-timeline-shelf/unbound-timeline-shelf"
 IMAGE_NAMES = {
     "app": GHCR_BASE,
     "frontend": GHCR_BASE + "-frontend",

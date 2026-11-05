@@ -1,6 +1,6 @@
 # Media and account query profile
 
-Task [#260](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/260). The rule: **measure first, change only what a
+Task [#260](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/260). The rule: **measure first, change only what a
 measurement shows is a problem, and add no speculative indexes or caching.** The game-identity paths were already profiled at
 5 000 and 20 000 games (#103/#205, and the live-game-list index); this page covers what they did not: the movie, TV and anime
 libraries and the account tables.

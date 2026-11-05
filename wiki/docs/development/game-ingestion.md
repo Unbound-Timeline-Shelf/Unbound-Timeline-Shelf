@@ -1,8 +1,8 @@
 # Game ingestion
 
 Phase 1 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#94](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/94). It describes the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#94](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/94). It describes the
 **code that exists now**: a versioned, source-agnostic observation contract and an
 idempotent registry on top of the [identity data model](game-identity-model.md). Paths start
 `src/backend/src/`. No migration: the tables were created by `716a1e2c451d` (#93).

@@ -1,8 +1,8 @@
 # Manual achievements and completion
 
 Phase 3 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#97](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/97). It builds on the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#97](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/97). It builds on the
 [data model](game-identity-model.md), [ingestion](game-ingestion.md),
 [decisions](game-identity-decisions.md) and [counters](game-identity-counters.md). Paths start
 `src/backend/src/`. No migration: `game_manual_achievements` and `game_field_values` were created by

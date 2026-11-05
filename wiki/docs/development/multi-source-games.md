@@ -1,7 +1,7 @@
 # One game from several sources
 
 Gap analysis and first delivery for
-[#339](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/339): a game that exists on
+[#339](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/339): a game that exists on
 Steam, GOG, Epic, Playnite, as a manual entry or in a metadata catalogue such as Atlas should read
 as one game, with each source's contribution visible. Backend paths start `src/backend/src/`,
 frontend paths `src/frontend/src/`.

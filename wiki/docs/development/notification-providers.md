@@ -1,6 +1,6 @@
 # Plugin notification providers
 
-The [notification core](notification-core.md) owns routing, persistence and delivery lifecycle. Plugins cannot create notification database rows, override preferences or control retries. Plugin implementations live in `obsoletelabs/unnamed_tracking_app_plugins`.
+The [notification core](notification-core.md) owns routing, persistence and delivery lifecycle. Plugins cannot create notification database rows, override preferences or control retries. Plugin implementations live in `Unbound-Timeline-Shelf/Plugins`.
 
 ## Registration and compatibility
 

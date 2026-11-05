@@ -133,7 +133,7 @@ Recheck a downloaded bundle offline with `python3 tools/backup_deployment.py ver
 
 ## Reproducible acceptance
 
-The [deployment backup recovery workflow](https://github.com/obsoletelabs/unnamed_tracking_app_2/blob/main/.github/workflows/deployment-backups.yml) runs real Restic tests and builds isolated backend/runtime/SFTP images. Run the same checks locally:
+The [deployment backup recovery workflow](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/blob/main/.github/workflows/deployment-backups.yml) runs real Restic tests and builds isolated backend/runtime/SFTP images. Run the same checks locally:
 
 ```bash
 RUN_RESTIC_TESTS=1 python3 -m unittest discover -s tools/tests -p test_deployment_backups.py -v

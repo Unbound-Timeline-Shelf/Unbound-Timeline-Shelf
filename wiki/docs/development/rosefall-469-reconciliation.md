@@ -8,8 +8,8 @@ on 14 October 2026 with the recorded exceptions below; implementation follows th
 [approved concrete plan](rosefall-469-implementation.md). No feature ports are
 claimed complete by this review document.
 
-The independently authorized Classic/Automatic Search work is in [#123](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/123).
-CI changes are in [#122](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/122).
+The independently authorized Classic/Automatic Search work is in [#123](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/123).
+CI changes are in [#122](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/122).
 Those requests do not constitute approval of the feature ports below.
 
 ## Review choices
@@ -169,7 +169,7 @@ and `plugin_api/metadata_contracts.py`; `api/routes/media_common.py`;
 library/filter/cache composables, Settings aliases and stats heatmap.
 
 The active optional HLTB source is `official/metadata-hltb/plugin.py` in
-`obsoletelabs/unnamed_tracking_app_plugins`, not the similarly named legacy host
+`Unbound-Timeline-Shelf/Plugins`, not the similarly named legacy host
 file. Optional provider changes must be separate commits/PRs against that project.
 Core Steam, IGDB, SteamGridDB, TVmaze, AniList, AniZip and OMDb remain host features.
 
