@@ -1,8 +1,8 @@
 # Game name quality, provenance and placeholder repair
 
 Phase 3 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#98](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/98). It builds on the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#98](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/98). It builds on the
 `game_field_values` table from the [data model](game-identity-model.md) (#93) and the
 [observation registry](game-ingestion.md) (#94). Paths start `src/backend/src/`. No
 migration: the schema already holds value, origin, quality, lock, observation and proposal

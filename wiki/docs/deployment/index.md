@@ -4,7 +4,7 @@ Unnamed Tracking App provides a production Docker image and a separate developme
 
 ## Production
 
-Use src/docker-container/compose.yaml and the published image ghcr.io/rosefall-a/unnamed_tracking_app:<tag>.
+Use `src/docker-container/compose.yaml` and `ghcr.io/unbound-timeline-shelf/unbound-timeline-shelf:<tag>`. The default `main` tag follows development; choose a published release tag for production. Anonymous pulls are currently denied, so sign in to GHCR with an account that has access to the package.
 
 The production deployment includes PostgreSQL 18, persistent application data at /data, persistent PostgreSQL storage, and Nginx as the public HTTP edge.
 

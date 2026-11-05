@@ -1,8 +1,8 @@
 # Migrating an existing library to the game identity model
 
 Phase 6 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#102](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/102). It describes the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#102](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/102). It describes the
 **code that exists now**: an additive, resumable, idempotent backfill that maps every existing
 `games` row onto the [data model](game-identity-model.md). Backend paths start `src/backend/src/`.
 
@@ -148,7 +148,7 @@ pg_dump --format=custom --file=utapp-before-identity-backfill.dump "$DATABASE_UR
 ### How long it takes
 
 Stages reconcile counters and place umbrellas for sets of games, not one game at a time
-(final acceptance, [#103](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/103)).
+(final acceptance, [#103](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/103)).
 A games-only library of 5,000 games needed 87,161 SQL statements before that change and about a
 thousand after, with identical results; `tests/test_game_identity_scale.py` pins that the number
 of statements does not grow with the number of games. The remaining time is Python work that is

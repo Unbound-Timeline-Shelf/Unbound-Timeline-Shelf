@@ -1,6 +1,6 @@
 # Optional AFK-time observations and aggregation semantics
 
-Design proposal for [#264](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/264)
+Design proposal for [#264](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/264)
 (source: Rosefall #65). **Accepted design; not implemented.** Decisions confirmed on 19 October 2026. Paths start
 `src/backend/src/`. Current-state claims were re-checked against host `main` at `07933cd2` and the Playnite
 extension at `af054d59` on 30 October 2026.
@@ -99,9 +99,9 @@ Session intervals require a stable producer-local session ID and boundaries insi
 
 | Producer | Today (verified) | Gap |
 | --- | --- | --- |
-| Playnite extension (`obsoletelabs/unnamed_tracking_playnite`) | Sends contract v1 (`PlayniteObservations.cs`, `Version = 1`) with Playnite's own cumulative playtime and the other fields in section 1; can sync on `OnGameStopped`. No idle sampling. | Opt-in idle sampler using OS idle time only (no input content), session intervals, contract v2 negotiation and the `library.afk_sync` grant |
+| Playnite extension (`Unbound-Timeline-Shelf/Playnite-Integration`) | Sends contract v1 (`PlayniteObservations.cs`, `Version = 1`) with Playnite's own cumulative playtime and the other fields in section 1; can sync on `OnGameStopped`. No idle sampling. | Opt-in idle sampler using OS idle time only (no input content), session intervals, contract v2 negotiation and the `library.afk_sync` grant |
 | Desktop companion | Does not exist. (The extension's `Companion.Tests` project tests the Playnite extension.) | A separate product and repository using the same contract; not planned here |
-| Plugins via Plugin API v1 | `games.import` under `games.write` can report `playtime_seconds` | `games.afk.write` capability and AFK fields on `games.import` (host); any collecting plugin lives in `obsoletelabs/unnamed_tracking_app_plugins` |
+| Plugins via Plugin API v1 | `games.import` under `games.write` can report `playtime_seconds` | `games.afk.write` capability and AFK fields on `games.import` (host); any collecting plugin lives in `Unbound-Timeline-Shelf/Plugins` |
 | Host | No AFK field, metric, setting or table | Owns only the contract, storage, consent, enforcement and display |
 
 ## 6. Aggregation semantics
@@ -166,7 +166,7 @@ This design does not change achievement or notification calculations.
 | 1. Contract and storage | Host | Playnite and generic contract v2 fields; `GameMetric.AFK_TIME`; counter wiring and AFK adjustments; `game_afk_intervals` migration; `afk_collection_enabled` setting; `library.afk_sync` scope; 90-day pruning job; read API | v0.0.5 |
 | 2. Presentation | Host | Separate AFK and derived active-time display; per-source management and deletion; personal export; explicit active-time statistics choice | v0.0.5 or later |
 | 3. Plugin boundary | Host | `games.afk.write` capability, AFK fields on `games.import`, [Plugin capabilities](../plugin-capabilities.md) and Plugin API v1 docs | after phase 1 |
-| 4. Producers | `obsoletelabs/unnamed_tracking_playnite`, `obsoletelabs/unnamed_tracking_app_plugins` | Opt-in OS idle sampler and v2 negotiation in the extension; any collecting plugin and its examples in the plugin repository | after phases 1 and 3 |
+| 4. Producers | `Unbound-Timeline-Shelf/Playnite-Integration`, `Unbound-Timeline-Shelf/Plugins` | Opt-in OS idle sampler and v2 negotiation in the extension; any collecting plugin and its examples in the plugin repository | after phases 1 and 3 |
 
 ## 10. Test strategy
 
@@ -184,7 +184,7 @@ This design does not change achievement or notification calculations.
 
 ## 11. Confirmed decisions and implementation boundary
 
-The [maintainer's issue answers](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/264#issuecomment-6265692706)
+The [maintainer's issue answers](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/264#issuecomment-6265692706)
 approve per-user opt-in, session intervals, derived statistics, thresholds of 60 to 3 600 seconds and a new
 capability. Follow-up confirmation on 19 October fixes interval retention at 90 days, retains cumulative totals,
 includes AFK in personal exports and makes active-time statistics an explicit choice. No deployment switch is

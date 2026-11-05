@@ -1,7 +1,7 @@
 # Decision brief: project naming and branding
 
 Status: decision brief for the maintainer, for
-[#268](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/268) (part of #248;
+[#268](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/268) (part of #248;
 upstream Rosefall #10). This page does **not** propose, rank or recommend a name or logo.
 It lays out what a naming decision affects, what each layer costs to change, and which
 questions the maintainer must answer. It does not authorize renaming repositories,
@@ -51,7 +51,7 @@ organization owns published artifacts.
 | Default logo/favicon | `DEFAULT_ICON` SVG in `core/branding.py`; frontend `public/favicon.svg`, `icons.svg` | Cosmetic default | Low. Custom uploads are normalized to PNG (bounded to 512 px; PWA icons composed from the logo) |
 | Browser title | `Archive` fallback | Cosmetic | Low; also asserted in `src/frontend/src/tests/pageTitle.test.ts` |
 | Wiki site name and URL | `Unnamed Tracking App`; `https://obsoletelabs.github.io/unnamed_tracking_app_2/` | Documentation | Medium. The URL derives from org and repository name, so external links break on rename unless redirected |
-| GitHub repository | `obsoletelabs/unnamed_tracking_app_2` (with a `_2` suffix); plugins repo `obsoletelabs/unnamed_tracking_app_plugins` | Distribution | High. Default plugin catalogue URL (`api/routes/plugin_manager/catalogues.py`, `example.env`) points at the plugins repository raw path; GitHub redirects renamed repositories but not indefinitely or for raw content in all cases |
+| GitHub repository | `Unbound-Timeline-Shelf/Unbound-Timeline-Shelf` (with a `_2` suffix); plugins repo `Unbound-Timeline-Shelf/Plugins` | Distribution | High. Default plugin catalogue URL (`api/routes/plugin_manager/catalogues.py`, `example.env`) points at the plugins repository raw path; GitHub redirects renamed repositories but not indefinitely or for raw content in all cases |
 | Container image | `ghcr.io/rosefall-a/unnamed_tracking_app` | Distribution | High. User compose files pin it; old tags remain until removed |
 | Compose project, services, env vars | `UNNAMED_TRACKING_APP_*`, db defaults `unnamed_tracking` | Deployment contract | High. AGENTS.md says not to change environment-variable contracts casually; renaming the default database or user does not rename existing volumes' databases |
 | Filesystem paths | `/var/lib/unnamed-tracking/plugins` | Runtime data location | High. Existing volumes and the runtime sandbox expect it |
@@ -194,7 +194,7 @@ between staged and one-step rollout is itself a decision (question 8).
   for the maintainer's decision. This page changes none of them.
 - No new branding settings, theme or configuration system is introduced; the existing
   administrator branding stays the mechanism for per-deployment names and images.
-- The plugins repository (`obsoletelabs/unnamed_tracking_app_plugins`) is a separate
+- The plugins repository (`Unbound-Timeline-Shelf/Plugins`) is a separate
   project. Any change there is coordinated separately and keeps the public contract.
 
 ## 8. Acceptance mapping

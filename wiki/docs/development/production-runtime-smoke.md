@@ -36,7 +36,7 @@ The temporary backend module exists only in the CI/test container and is never b
 
 ## Published-image validation
 
-The existing production image workflow remains unchanged. On a successful main-branch production-image workflow run, the smoke workflow receives that workflow's commit SHA and pulls `ghcr.io/rosefall-a/unnamed_tracking_app:sha-<commit>`.
+The existing production image workflow remains unchanged. On a successful main-branch production-image workflow run, the smoke workflow receives that workflow's commit SHA and pulls `ghcr.io/unbound-timeline-shelf/unbound-timeline-shelf:sha-<commit>`.
 
 For pull requests and manually/scheduled source runs, the smoke workflow builds the current production Dockerfile locally because the production image is not published for pull requests.
 

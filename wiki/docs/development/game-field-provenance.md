@@ -1,7 +1,7 @@
 # Per-field provenance and a preferred metadata source (design)
 
-Design for [#348](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/348) and the
-metadata half of [#349](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/349).
+Design for [#348](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/348) and the
+metadata half of [#349](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/349).
 **Steps 1 to 3 (provenance rows, preferences, page UI) are implemented.** Paths start `src/backend/src/`.
 
 ## What exists today

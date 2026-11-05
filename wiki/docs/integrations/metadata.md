@@ -14,7 +14,7 @@ without selecting results. All 29 results with a supplied release year displayed
 it, including entries beyond the initial five; all 30 results had zero artwork
 assets. `Toast & Toaster` supplied "Coming soon" without a year, so its year
 remained blank. That check kept each query unchanged. The query-change regression
-reported in [issue #6](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/6)
+reported in [issue #6](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/6)
 is covered by the retained metadata behavior above.
 
 ![Text-only rolling preloading updates years throughout the result list](../assets/plugin-metadata/rolling-five-text.jpg)
@@ -212,7 +212,7 @@ row under a lock, so a protection change during lookup is respected.
 
 See [Progressive metadata and Plugin API 1.1.1](../development/metadata-providers.md)
 for the public contract, session endpoints and migration details. Provider
-optional implementations are maintained in [obsoletelabs/unnamed_tracking_app_plugins](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
+optional implementations are maintained in [Unbound-Timeline-Shelf/Plugins](https://github.com/Unbound-Timeline-Shelf/Plugins).
 
 ## Atlas (optional provider)
 
@@ -290,7 +290,7 @@ they do not imply that every authenticated provider has been configured or valid
 ## Epic Games plugin (experimental)
 
 Epic is not a core provider. The optional
-[Epic Games Library](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/blob/main/official/epic-games/README.md)
+[Epic Games Library](https://github.com/Unbound-Timeline-Shelf/Plugins/blob/main/official/epic-games/README.md)
 plugin (`official.epic-games`) is maintained in the companion plugin repository
 and requires Plugin API 1.1.11. Install it through **Settings → Plugins**, approve
 its permissions and enable it; **Epic Games** then appears in
@@ -335,11 +335,11 @@ To recover:
   is enabled and its permissions are approved.
 
 The plugin's
-[troubleshooting and support notes](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/blob/main/official/epic-games/README.md#troubleshooting-and-support)
+[troubleshooting and support notes](https://github.com/Unbound-Timeline-Shelf/Plugins/blob/main/official/epic-games/README.md#troubleshooting-and-support)
 are the maintained reference for the plugin's Epic messages, and the
 [Epic plugin guide](https://obsoletelabs.github.io/unnamed_tracking_app_plugins/examples/epic-games/)
 covers its design and validation. Report Epic sign-in or import failures in the
-[plugin repository's issues](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/issues),
+[plugin repository's issues](https://github.com/Unbound-Timeline-Shelf/Plugins/issues),
 not to Epic. Never include the authorization code, the text of Epic's sign-in
 page, tokens or your Epic account ID.
 

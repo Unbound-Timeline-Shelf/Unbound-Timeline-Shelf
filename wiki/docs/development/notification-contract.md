@@ -1,7 +1,7 @@
 # Canonical notification contract (1.0.0)
 
 This page is the versioned contract shared by the notification overhaul
-([#104](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/104)). It
+([#104](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/104)). It
 defines what a notification **event**, durable **story**, canonical **content**,
 per-destination **delivery** and physical **attempt** are, how they map onto the
 existing [notification core](notification-core.md) records, and which rules

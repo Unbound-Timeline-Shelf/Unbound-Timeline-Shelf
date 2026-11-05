@@ -87,6 +87,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
   images:
     name: Images
@@ -96,6 +97,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
   runtime-smoke:
     name: Runtime smoke

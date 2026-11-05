@@ -2,6 +2,8 @@
 
 The production deployment is an additional packaging target under `src/docker-container/`. It does not replace the existing development frontend/backend images.
 
+The application image is `ghcr.io/unbound-timeline-shelf/unbound-timeline-shelf`. The Compose example defaults to the moving `main` tag; set `UNNAMED_TRACKING_APP_VERSION` to an available release tag for production. Anonymous pulls are currently denied, so authenticate to GHCR with an account that has access to the package before pulling.
+
 ## Architecture
 
 The image is built in stages: Node 22 compiles the Vue frontend, while the runtime image contains Python 3.12, FastAPI, Nginx, the compiled frontend, and the independent startup/diagnostic layer.
@@ -74,12 +76,7 @@ The host enforces authenticated gateway access and capability grants. Plugin bro
 
 ### Plugin runtime image name
 
-The runtime image is published as `ghcr.io/obsoletelabs/unnamed_tracking_plugin_runtime`.
-The original name, `ghcr.io/obsoletelabs/unnamed_tracking_app_2-plugin-runtime`, still
-receives the same tags and contents so existing deployments keep working, but it is being
-phased out. A runtime started from the original name logs a deprecation notice naming the new
-image at startup and every five minutes. Change the `image:` of your `plugin-runtime`
-service to the new name; the tags are unchanged.
+The current runtime image is `ghcr.io/unbound-timeline-shelf/unnamed_tracking_plugin_runtime`. The workflow also publishes a deprecated compatibility image under `ghcr.io/unbound-timeline-shelf/unbound-timeline-shelf-plugin-runtime`; it logs the replacement name. The production Compose file builds the runtime from the checkout. Published images currently require GHCR access.
 
 ### Release tags
 
@@ -98,6 +95,24 @@ Betas for several release lines can exist at once. Each line keeps its own `X.Y.
 `latest-beta` follows only the next line to ship. Running a beta of a later line, or any
 `pr-<number>` image, against real data is risky: database migrations only move forward, so an older
 version cannot be pointed back at a database a newer one has migrated. Use a copy or throwaway data.
+
+### Image names and signatures
+
+The image workflows derive the GHCR owner and repository from GitHub. In this
+repository they publish the application as
+`ghcr.io/unbound-timeline-shelf/unbound-timeline-shelf`, the frontend, backend
+and wiki images under the same name with `-frontend`, `-backend` and
+`-wikicontainer` suffixes, and the runtime images named above.
+
+Newly published images are signed by digest using the workflow's GitHub OIDC
+identity and verified by CI. Older image tags do not gain signatures until their
+images are rebuilt. With access to the package, verify an image by digest:
+
+```sh
+cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/\.github/workflows/' \
+  ghcr.io/unbound-timeline-shelf/unbound-timeline-shelf@sha256:<digest>
+```
 
 ### Cutting a beta
 

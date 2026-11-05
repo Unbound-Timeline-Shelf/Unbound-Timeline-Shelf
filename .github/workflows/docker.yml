@@ -5,6 +5,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 jobs:
   build-and-push:
@@ -123,6 +124,7 @@ jobs:
         run: sleep 30
 
       - name: Build and push ${{ matrix.name }} (retry)
+        id: retry
         if: steps.build.outcome == 'failure'
         uses: docker/build-push-action@v7
         with:
@@ -134,3 +136,18 @@ jobs:
           build-args: ${{ matrix.replacement && format('REPLACEMENT_IMAGE=ghcr.io/{0}/{1}', env.OWNER_LC, matrix.replacement) || '' }}
           cache-from: type=gha,scope=${{ matrix.cache || matrix.name }}
           cache-to: ${{ github.ref == 'refs/heads/main' && format('type=gha,mode=max,scope={0}', matrix.cache || matrix.name) || '' }}
+
+      - name: Install Cosign
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: sigstore/cosign-installer@v4.1.0
+
+      - name: Sign and verify the published image digest
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          DIGEST: ${{ steps.build.outcome == 'success' && steps.build.outputs.digest || steps.retry.outputs.digest }}
+        run: |
+          test -n "$DIGEST"
+          cosign sign --yes "$IMAGE_REF@$DIGEST"
+          cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\\.github/workflows/" \
+            "$IMAGE_REF@$DIGEST" >/dev/null

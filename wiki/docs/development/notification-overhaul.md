@@ -1,7 +1,7 @@
 # Notification overhaul coordination board
 
 Coordination page for the notification overhaul
-([#104](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/104)). It tracks
+([#104](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/104)). It tracks
 order, pull requests, invariants and verification. It does not restate the design:
 
 - the wire and behaviour contract is [Canonical notification contract](notification-contract.md);
@@ -43,7 +43,7 @@ dispatcher and policy modules, even though the issue treats them as parallel.
 ## Pull request board
 
 All pull requests target the base shown, so each diff contains only its own issue.
-"Plugins" pull requests are in `obsoletelabs/unnamed_tracking_app_plugins`.
+"Plugins" pull requests are in `Unbound-Timeline-Shelf/Plugins`.
 
 | Issue | Pull request | Base | State | Companion |
 | --- | --- | --- | --- | --- |
@@ -180,7 +180,7 @@ pytest -q -p no:cacheprovider tests/test_notification_*.py tests/test_plugin_not
 - [x] Baseline cross-provider gate #231 merged; compatibility adapters explicitly kept.
 - [x] One Alembic head verified on the checked `main` after the merges.
 - [x] Final #118 acceptance results, including current Docker/companion/frontend checks,
-  recorded in [#287](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/287).
+  recorded in [#287](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/287).
   See [Rollout and acceptance](notification-rollout.md#19-october-2026-integrated-acceptance).
 
 The implementation and acceptance evidence are complete on the proposed branch. Merge and

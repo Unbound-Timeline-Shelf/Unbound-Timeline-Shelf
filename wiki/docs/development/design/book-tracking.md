@@ -1,7 +1,7 @@
 # Design proposal: book tracking
 
 Status: accepted design, confirmed on 19 October 2026; nothing in this page is implemented. It
-answers [#265](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/265)
+answers [#265](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/265)
 (part of #248; upstream Rosefall #57). Confirmed scope and implementation phases appear below.
 
 ## 1. Problem and current state
@@ -170,7 +170,7 @@ the new tables and enums. The generated migration is reviewed manually per AGENT
 - Core versus optional: only Steam, IGDB, SteamGridDB, TVmaze, AniList, AniZip and OMDb
   are hardcoded. This proposal adds **no** hardcoded book provider. Sources such as Open
   Library, Hardcover or Google Books would be optional plugins in
-  `obsoletelabs/unnamed_tracking_app_plugins`, using the existing
+  `Unbound-Timeline-Shelf/Plugins`, using the existing
   `metadata_providers.register` boundary and its permission, credential and account
   opt-out handling.
 - Contract effect: `MediaType` is a public closed enum and registrations accept at most
@@ -234,7 +234,7 @@ duplication evidence.
 
 ## 9. Confirmed decisions and implementation boundary
 
-The maintainer's answers on [#265](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/265) approve the
+The maintainer's answers on [#265](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/265) approve the
 dedicated feature, optional editions, audiobook format with percent progress, an export-version bump, and an
 additive book metadata contract in phase 3. There is no new hardcoded provider. Delegation scopes and concrete
 provider integrations are deferred until needed. Series remain plain fields; work merging is deferred.

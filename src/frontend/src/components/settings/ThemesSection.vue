@@ -159,7 +159,7 @@ onMounted(load);
       <strong>Drop a .utt package here</strong>
       <p>Review the publisher and version before installing.</p>
       <a
-        href="https://github.com/Rosefall-a/unnamed_tracking_app_themes"
+        href="https://github.com/Unbound-Timeline-Shelf/Themes"
         target="_blank"
         rel="noopener noreferrer"
         >Browse theme sources and CI packages</a

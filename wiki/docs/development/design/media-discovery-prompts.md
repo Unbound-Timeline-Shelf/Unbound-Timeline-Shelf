@@ -1,7 +1,7 @@
 # Design proposal: opt-in prompts for untracked media discovery
 
 Status: accepted design, confirmed on 19 October 2026. Nothing here is implemented. It answers
-[#266](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/266) (part of
+[#266](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/266) (part of
 #248; upstream Rosefall #214, which had no body beyond the title).
 
 ## 1. Problem and current state
@@ -213,7 +213,7 @@ Cadence is an implementation default, not an already shipped setting.
 
 ## 9. Confirmed decisions and implementation boundary
 
-The maintainer's answers on [#266](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/266) approve the
+The maintainer's answers on [#266](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/266) approve the
 default-off core Home widget; anime first, then movies/TV; separate library consent; a dismissal table; excluding
 unknown ratings; and optional notifications. A public discovery operation is deferred to phase 3 and books are
 excluded initially. The table avoids rewriting a growing JSON preference and supports indexed, owner-scoped

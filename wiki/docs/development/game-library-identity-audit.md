@@ -1,8 +1,8 @@
 # Game library identity audit
 
 Phase 0 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#92](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/92). It records how the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#92](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/92). It records how the
 game library, duplicate review and the Playnite integration work **today**, so the schema
 and contract work in #93–#103 starts from the code rather than from the target design.
 
@@ -12,12 +12,12 @@ and contract work in #93–#103 starts from the code rather than from the target
   test-only file, `src/backend/tests/test_playnite_contract.py`, which pins the Playnite
   HTTP contract described in [section 6](#6-playnite-integration).
 - **Not inspected:** the Playnite extension's own source (`UnnamedTrackingPlaynite`, now
-  `obsoletelabs/unnamed_tracking_playnite`) was not available to this audit. Section 6
+  `Unbound-Timeline-Shelf/Playnite-Integration`) was not available to this audit. Section 6
   therefore documents the host side of the contract plus what the host repository already
   records about the extension ([Playnite](../integrations/playnite.md) and the
   [2026-10-03 acceptance](post-merge-acceptance-2026-10-03.md)). Items marked
   *unverified* must be confirmed against the extension source in #100 before its contract
-  changes. `obsoletelabs/unnamed_tracking_app_plugins` contains no Playnite code; its Epic
+  changes. `Unbound-Timeline-Shelf/Plugins` contains no Playnite code; its Epic
   Games plugin is the only official `games.import` consumer and was read for section 5.1.
 
 ## 1. Rollout prohibitions

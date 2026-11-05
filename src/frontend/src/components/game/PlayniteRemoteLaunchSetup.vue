@@ -53,7 +53,7 @@ defineEmits<{ close: [] }>();
     <template #footer>
       <a
         class="ui-btn ui-btn-primary"
-        href="https://github.com/obsoletelabs/unnamed_tracking_playnite/releases"
+        href="https://github.com/Unbound-Timeline-Shelf/Playnite-Integration/releases"
         target="_blank"
         rel="noopener noreferrer"
         >Playnite extension downloads ↗</a

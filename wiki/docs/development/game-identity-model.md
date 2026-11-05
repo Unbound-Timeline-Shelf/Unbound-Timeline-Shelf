@@ -1,8 +1,8 @@
 # Game identity data model
 
 Phase 1 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#93](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/93). It describes the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#93](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/93). It describes the
 **schema that exists now**: thirteen additive tables created by migration `716a1e2c451d`
 and the models in `backend/database/models/game_identity.py` and
 `game_identity_tracking.py` (paths start `src/backend/src/`). Nothing reads or writes them

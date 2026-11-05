@@ -1,8 +1,8 @@
 # Game overview, versions and identity UI
 
 Phase 5 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#101](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/101). It presents the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#101](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/101). It presents the
 [decisions](game-identity-decisions.md), [counters](game-identity-counters.md),
 [manual tracking](game-identity-manual.md), [names](game-identity-names.md) and
 [matching](game-identity-matching.md) work to people. Backend paths start `src/backend/src/`,
@@ -58,7 +58,7 @@ service, never from the browser:
 - achievements: provider rows plus manual achievements, each counted once.
 
 The game page Overview shows **Copies & versions** (`components/game/GameVersionsPanel.vue`,
-redesigned for [#274](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/274)):
+redesigned for [#274](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/274)):
 the overall block, then one row per copy named by edition, store and platform
 (`utils/gameCopies.ts::copyName`) with its own playtime, last played, achievements and
 completion, and the actions in section 5. A game with one record shows an

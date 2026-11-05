@@ -1,8 +1,8 @@
 # Hybrid identity matching and the duplicate queue
 
 Phase 4 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#99](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/99). It describes the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#99](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/99). It describes the
 **code that exists now**; paths start `src/backend/src/`. No migration: decisions, relationships
 and observations from #93 to #96 hold everything.
 
