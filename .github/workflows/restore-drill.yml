@@ -81,25 +81,7 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Install backup tools
-        run: |
-          # The Ubuntu default client can be older than the PostgreSQL 18 services.
-          # pg_dump refuses to back up a newer server, so use the matching PGDG client.
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl --fail --silent --show-error --location \
-            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-            https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          . /etc/os-release
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends restic postgresql-client-18
-          # The backup process deliberately uses /bin:/usr/bin, ignoring GITHUB_PATH.
-          # Avoid pg_wrapper choosing an older local cluster for archive verification.
-          sudo ln -sf /usr/lib/postgresql/18/bin/pg_dump /usr/bin/pg_dump
-          sudo ln -sf /usr/lib/postgresql/18/bin/pg_restore /usr/bin/pg_restore
-          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
-          restic version
-          env -i PATH=/bin:/usr/bin LANG=C.UTF-8 pg_dump --version
-          env -i PATH=/bin:/usr/bin LANG=C.UTF-8 pg_restore --version
+        uses: ./.github/actions/backup-tools
 
       # The key is synthetic, but the log must never carry a key in any case.
       - name: Mask the drill key
