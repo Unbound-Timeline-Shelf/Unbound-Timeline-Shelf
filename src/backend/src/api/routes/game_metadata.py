@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import date
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import (
@@ -27,8 +28,7 @@ from src.api.routes.utils.games import (
 from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
-from src.core.titles import normalize_metadata_title as _normalize_metadata_title
-from src.database.models.game import GameLink
+from src.database.models.game import Game, GameLink
 from src.database.models.game_identity_tracking import FieldValueOrigin
 from src.database.models.user import User
 from src.database.session import get_db
@@ -37,7 +37,7 @@ from src.features.achievement_catalogue import (
     has_catalogue,
     store_catalogue,
 )
-from src.features.game_identity import field_preferences, field_provenance, names
+from src.features.game_identity import field_preferences, field_provenance, names, refresh_match
 from src.features.game_identity.provider_ids import (
     find_provider_id_conflicts,
     merge_provider_ids,
@@ -85,6 +85,10 @@ class MetadataSearchResponse(BaseModel):
     results: list[dict]
 
 
+_Namespace = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")]
+_Identity = Annotated[str, Field(min_length=1, max_length=512)]
+
+
 class MetadataRefreshRequest(BaseModel):
     __module__ = "src.api.routes.games"
     dry_run: bool = False
@@ -92,6 +96,17 @@ class MetadataRefreshRequest(BaseModel):
     fill_missing_art: bool = True
     overwrite_existing_art: bool = False
     expected_updated_at: int | None = None
+    # A result that matches only by title (no reported provider id is one the game holds) is
+    # applied only when the person confirms it after a preview (CONTRACTS-v1 C4.4 rule 3). The
+    # confirmation is the previewed `candidate.provider_ids`: the apply looks the game up again,
+    # and a candidate with any other ids is answered `needs-confirmation`, never applied.
+    confirm_candidate: dict[_Namespace, _Identity] | None = Field(default=None, max_length=32)
+
+
+class MetadataRejectionRequest(BaseModel):
+    __module__ = "src.api.routes.games"
+    # the `candidate.provider_ids` of a refresh response the person says is not this game
+    provider_ids: dict[_Namespace, _Identity] = Field(min_length=1, max_length=32)
 
 
 # Parallel routes/models intentionally share this shape.
@@ -243,6 +258,42 @@ async def clear_field_preference(
     await db.commit()
 
 
+def _reported_title(record: dict) -> str | None:
+    """The title a provider reported, never the saved title the lookup was started with."""
+    title = (record.get("metadata") or {}).get("title")
+    if not title and record.get("provider") != "local":
+        # a search candidate (title-only lookup) carries the provider's own title
+        title = record.get("title")
+    return str(title) if title else None
+
+
+def _refresh_outcome(
+    status_name: str,
+    game: Game,
+    provider_errors: list[str],
+    decision: refresh_match.RefreshMatch | None = None,
+    details: dict[str, object] | None = None,
+) -> dict:
+    """One response shape for every refresh outcome; the C4.4 fields are additive."""
+    return {
+        "status": status_name,
+        "provider": None,
+        "provider_errors": provider_errors,
+        "changed_fields": [],
+        "skipped_locked_fields": [],
+        "would_add_key_art": False,
+        "would_add_banner": False,
+        "game_updated_at": game.updated_at,
+        # "id" (a reported id the game holds), "title" (title only: apply needs
+        # `confirm_candidate`), "conflict", "rejected" or "none"
+        "match": decision.tier if decision else "none",
+        "candidate": None,
+        "conflicts": decision.conflict_candidates() if decision else [],
+        "rejected_ids": dict(decision.rejected) if decision else {},
+        **(details or {}),
+    }
+
+
 # Keep the established workflow and public parameters together.
 # pylint: disable=too-many-branches,too-many-locals,too-many-statements
 @router.post("/{game_id}/metadata/refresh")
@@ -283,28 +334,12 @@ async def refresh_game_metadata(
     provider_errors = result.get("provider_errors", [])
     _record_provider_use(scan_settings, record.get("contributors", []))
 
-    match = next(
-        (
-            candidate
-            for candidate in result.get("results", [])
-            if isinstance(candidate, dict)
-            and _normalize_metadata_title(str(candidate.get("title") or ""))
-            == _normalize_metadata_title(game.title)
-        ),
-        None,
-    )
-    if match is None:
+    match = result["results"][0] if result["results"] else None
+    claims = record.get("provider_id_claims", {}) if record else {}
+    reported_title = _reported_title(record) if record else None
+    if match is None or not (claims or reported_title):
         await db.commit()
-        return {
-            "status": "no-match",
-            "provider": None,
-            "provider_errors": provider_errors,
-            "changed_fields": [],
-            "skipped_locked_fields": [],
-            "would_add_key_art": False,
-            "would_add_banner": False,
-            "game_updated_at": game.updated_at,
-        }
+        return _refresh_outcome("no-match", game, provider_errors)
 
     max_image_bytes = MAX_BYTES
     if payload.fill_missing_art and not payload.dry_run:
@@ -328,6 +363,39 @@ async def refresh_game_metadata(
             )
     else:
         game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+
+    # Decided on the row just read (locked when applying), so ids an editor changed during the
+    # provider lookup are the ones compared. Titles never gate an id match (C4.4).
+    decision = refresh_match.classify(
+        game.provider_ids or {},
+        claims,
+        game_title=game.title,
+        reported_title=reported_title,
+        rejected=await refresh_match.rejected_ids(db, game.id),
+    )
+    candidate = {"title": reported_title, "provider_ids": decision.offered}
+    if decision.tier in {"none", "conflict", "rejected"}:
+        await db.commit()
+        return _refresh_outcome(
+            {"none": "no-match"}.get(decision.tier, decision.tier),
+            game,
+            provider_errors,
+            decision,
+            {"candidate": candidate, "provider": match.get("provider")},
+        )
+    # A title-only match is previewed; it is applied only once the person confirms this very
+    # candidate. The lookup above ran again, so a different candidate with the same title (a
+    # remake, a re-ranked provider) is offered for confirmation instead of being saved.
+    needs_confirmation = (
+        decision.tier == "title"
+        and not payload.dry_run
+        and payload.confirm_candidate != decision.offered
+    )
+    if needs_confirmation and payload.confirm_candidate is not None:
+        provider_errors.append(
+            "The title-only match changed after the preview; confirm the new candidate to apply it."
+        )
+    preview_only = payload.dry_run or needs_confirmation
 
     field_values: dict[str, object] = {
         "title": match.get("title"),
@@ -405,7 +473,8 @@ async def refresh_game_metadata(
     if "provider_ids" in game.locked_fields:
         skipped_locked.append("provider_ids")
     else:
-        offered_provider_ids = match.get("provider_ids", {})
+        # only ids the sources reported themselves; the record also echoes the request's ids
+        offered_provider_ids = decision.offered
         provider_ids_to_add = {
             namespace: identity
             for namespace, identity in offered_provider_ids.items()
@@ -451,20 +520,25 @@ async def refresh_game_metadata(
         and (payload.overwrite_existing_art or not banner_exists)
     )
 
-    if payload.dry_run:
+    details: dict[str, object] = {
+        "candidate": candidate,
+        "provider": match.get("provider"),
+        "changed_fields": changed_fields,
+        "skipped_locked_fields": sorted(set(skipped_locked)),
+        "would_add_key_art": would_add_key_art,
+        "would_add_banner": would_add_banner,
+    }
+    if preview_only:
         # A preview records no game changes, but the existing provider-last-used
         # telemetry may be updated as part of the provider lookup.
         await db.commit()
-        return {
-            "status": "preview",
-            "provider": match.get("provider"),
-            "provider_errors": provider_errors,
-            "changed_fields": changed_fields,
-            "skipped_locked_fields": sorted(set(skipped_locked)),
-            "would_add_key_art": would_add_key_art,
-            "would_add_banner": would_add_banner,
-            "game_updated_at": game.updated_at,
-        }
+        return _refresh_outcome(
+            "needs-confirmation" if needs_confirmation else "preview",
+            game,
+            provider_errors,
+            decision,
+            details,
+        )
 
     game.provider_ids = provider_ids_to_save
     if payload.update_text:
@@ -518,16 +592,78 @@ async def refresh_game_metadata(
 
     await db.commit()
     await db.refresh(game)
-    return {
-        "status": "updated",
-        "provider": match.get("provider"),
-        "provider_errors": provider_errors,
-        "changed_fields": changed_fields,
-        "skipped_locked_fields": sorted(set(skipped_locked)),
-        "would_add_key_art": would_add_key_art,
-        "would_add_banner": would_add_banner,
-        "game_updated_at": game.updated_at,
-    }
+    return _refresh_outcome(
+        "updated",
+        game,
+        provider_errors,
+        decision,
+        {**details, "would_add_key_art": would_add_key_art, "would_add_banner": would_add_banner},
+    )
 
 
 # pylint: enable=too-many-branches,too-many-locals,too-many-statements
+
+
+@router.get("/{game_id}/metadata/rejections")
+async def list_metadata_rejections(
+    game_id: UUID,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict:
+    """Provider ids the person said are not this game; a refresh never adopts them."""
+    game = await _get_game_or_404(game_id, db, current_user.id)
+    rejected = await refresh_match.rejected_ids(db, game.id)
+    return {
+        "rejected": [
+            {"namespace": namespace, "identity": identity}
+            for namespace, identity in sorted(rejected)
+        ]
+    }
+
+
+@router.post("/{game_id}/metadata/rejections")
+async def reject_metadata_candidate(
+    game_id: UUID,
+    payload: MetadataRejectionRequest,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict:
+    """Remember that a refresh candidate is not this game, so later refreshes refuse it."""
+    game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
+    stored = await refresh_match.reject(db, game, payload.provider_ids)
+    if not stored:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Every id in this candidate is already saved on the game; "
+                "edit the game's provider ids instead."
+            ),
+        )
+    await db.commit()
+    return {"rejected": [{"namespace": ns, "identity": value} for ns, value in stored.items()]}
+
+
+_NAMESPACE_QUERY = Query(default=None, min_length=1, max_length=128)
+_IDENTITY_QUERY = Query(default=None, min_length=1, max_length=512)
+
+
+@router.delete("/{game_id}/metadata/rejections", status_code=status.HTTP_204_NO_CONTENT)
+async def forget_metadata_rejections(
+    game_id: UUID,
+    namespace: str | None = _NAMESPACE_QUERY,
+    identity: str | None = _IDENTITY_QUERY,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> None:
+    """Forget one rejection (`?namespace=&identity=`), or every rejection for this game.
+
+    The next refresh may match the forgotten ids again."""
+    if (namespace is None) != (identity is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Give both namespace and identity to forget one rejection, or neither.",
+        )
+    game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
+    only = (namespace, identity) if namespace is not None and identity is not None else None
+    await refresh_match.forget_rejections(db, game.id, only=only)
+    await db.commit()

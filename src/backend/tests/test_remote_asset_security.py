@@ -390,6 +390,8 @@ async def test_metadata_refresh_uses_public_image_validation_for_both_art_kinds(
             "update_text": False,
             "fill_missing_art": True,
             "overwrite_existing_art": True,
+            # a title-only match (no provider ids on either side) is applied once confirmed
+            "confirm_candidate": {},
         },
     )
     assert response.status_code == 200, response.text

@@ -512,7 +512,27 @@ export function rankMetadataResults<T extends { title: string }>(
 }
 
 export type RefreshMetadataResult =
-  "updated" | "preview" | "no-match" | "error";
+  | "updated"
+  | "preview"
+  | "no-match"
+  // a provider contradicts a saved id, or two providers disagree: nothing applied
+  | "conflict"
+  // the candidate carries an id the user rejected for this game
+  | "rejected"
+  // a title-only match, applied only when its previewed candidate is confirmed
+  | "needs-confirmation"
+  | "error";
+
+// how the result was matched: "id" (a provider reported an id the game
+// holds) or "title" (title only, applied only once confirmed)
+export type RefreshMetadataMatch =
+  "id" | "title" | "conflict" | "rejected" | "none";
+
+// a title-only match is confirmed by sending its candidate's providerIds back
+export interface RefreshMetadataCandidate {
+  title: string | null;
+  providerIds: Record<string, string>;
+}
 
 export interface RefreshMetadataOutcome {
   status: RefreshMetadataResult;
@@ -539,6 +559,8 @@ export const DEFAULT_REFRESH_OPTIONS: RefreshMetadataOptions = {
 
 export interface RefreshMetadataPreview {
   status: RefreshMetadataResult;
+  match: RefreshMetadataMatch;
+  candidate: RefreshMetadataCandidate | null;
   provider: string | null;
   providerErrors: string[];
   changedFields: string[];
@@ -550,6 +572,11 @@ export interface RefreshMetadataPreview {
 
 interface BackendMetadataRefreshResponse {
   status: RefreshMetadataResult;
+  match?: RefreshMetadataMatch;
+  candidate?: {
+    title: string | null;
+    provider_ids: Record<string, string>;
+  } | null;
   provider: string | null;
   provider_errors: string[];
   changed_fields: string[];
@@ -563,6 +590,7 @@ async function requestGameMetadataRefresh(
   game: Game,
   options: RefreshMetadataOptions,
   dryRun: boolean,
+  confirmCandidate: Record<string, string> | null = null,
 ): Promise<BackendMetadataRefreshResponse> {
   const response = await fetch(`/api/game/${game.id}/metadata/refresh`, {
     method: "POST",
@@ -573,6 +601,7 @@ async function requestGameMetadataRefresh(
       update_text: options.updateText,
       fill_missing_art: options.fillMissingArt,
       overwrite_existing_art: options.overwriteExistingArt,
+      ...(confirmCandidate ? { confirm_candidate: confirmCandidate } : {}),
       ...(dryRun || game.updatedAt === undefined
         ? {}
         : { expected_updated_at: game.updatedAt }),
@@ -587,11 +616,18 @@ async function requestGameMetadataRefresh(
   return await response.json();
 }
 
+// confirmCandidate: the previewed title-only candidate's ids the user accepted
 export async function applyGameMetadataRefresh(
   game: Game,
   options: RefreshMetadataOptions = DEFAULT_REFRESH_OPTIONS,
+  confirmCandidate: Record<string, string> | null = null,
 ): Promise<RefreshMetadataOutcome> {
-  const raw = await requestGameMetadataRefresh(game, options, false);
+  const raw = await requestGameMetadataRefresh(
+    game,
+    options,
+    false,
+    confirmCandidate,
+  );
   return {
     status: raw.status,
     provider: raw.provider,
@@ -607,9 +643,10 @@ export async function applyGameMetadataRefresh(
 export async function refreshGameMetadata(
   game: Game,
   options: RefreshMetadataOptions = DEFAULT_REFRESH_OPTIONS,
+  confirmCandidate: Record<string, string> | null = null,
 ): Promise<RefreshMetadataOutcome> {
   try {
-    return await applyGameMetadataRefresh(game, options);
+    return await applyGameMetadataRefresh(game, options, confirmCandidate);
   } catch {
     return {
       status: "error",
@@ -632,6 +669,13 @@ export async function previewGameMetadataRefresh(
     const raw = await requestGameMetadataRefresh(game, options, true);
     return {
       status: raw.status,
+      match: raw.match ?? "none",
+      candidate: raw.candidate
+        ? {
+            title: raw.candidate.title,
+            providerIds: raw.candidate.provider_ids ?? {},
+          }
+        : null,
       provider: raw.provider,
       providerErrors: raw.provider_errors ?? [],
       changedFields: raw.changed_fields ?? [],
@@ -643,6 +687,8 @@ export async function previewGameMetadataRefresh(
   } catch {
     return {
       status: "error",
+      match: "none",
+      candidate: null,
       provider: null,
       providerErrors: [],
       changedFields: [],
