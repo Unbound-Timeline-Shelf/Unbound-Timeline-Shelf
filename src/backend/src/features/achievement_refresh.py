@@ -18,6 +18,7 @@ from src.database.models.game import Game
 from src.database.models.user import User
 from src.features.achievement_catalogue import store_catalogue
 from src.features.achievement_folding import apply_manual_progress, fold_catalog
+from src.features.achievement_rekey import unmatched_marks
 from src.features.achievement_sync import (
     psn_trophy_rows,
     replace_achievements,
@@ -300,6 +301,12 @@ async def _achievement_refresh_result(
     if data.catalogue_errors:
         warnings.append(
             "Metadata provider lookup had errors: " + ", ".join(data.catalogue_errors[:3])
+        )
+    unmatched = await unmatched_marks(db, game_id) if data.catalogue_rows else 0
+    if unmatched:
+        warnings.append(
+            f"{unmatched} manual mark{'s' if unmatched != 1 else ''} could not be matched to an "
+            f"achievement and {'were' if unmatched != 1 else 'was'} kept"
         )
 
     providers = []
