@@ -47,6 +47,7 @@ from src.features.game_identity.provider_ids import (
 from src.features.metadata.game_releases import add_release_updates, release_for
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import (
+    field_source,
     game_result,
     library_candidate,
     resolve_library_record,
@@ -301,6 +302,15 @@ def _record_followed_ids(
         )
 
 
+def _by_source(updates: dict[str, object], sources: dict[str, str | None]) -> dict:
+    """The updated fields grouped by the provider that supplied them."""
+    grouped: dict[str | None, list[str]] = {}
+    for field in updates:
+        if field in sources:
+            grouped.setdefault(sources[field], []).append(field)
+    return grouped
+
+
 def _reported_title(record: dict) -> str | None:
     """The title a provider reported, never the saved title the lookup was started with."""
     title = (record.get("metadata") or {}).get("title")
@@ -533,8 +543,10 @@ async def refresh_game_metadata(
     updates: dict[str, object] = {}
     skipped_locked: list[str] = []
     # Lock > preference: a field whose preferred source is another one with a value is left alone.
+    # Each field of the merged result names the provider it came from (Steam, IGDB, Atlas...).
+    sources = {field: field_source(match, field) for field in field_values}
     held_by_preference = await field_preferences.fields_held_by_other_source(
-        db, game, match.get("provider"), field_values.keys()
+        db, game, match.get("provider"), field_values.keys(), field_providers=sources
     )
     for field, fresh in field_values.items():
         if (
@@ -669,13 +681,14 @@ async def refresh_game_metadata(
     if payload.update_text:
         _record_field_changes(game, updates, db)
         apply_metadata_updates(game, updates)
-        await field_provenance.record_field_sources(
-            db,
-            game,
-            updates,
-            origin=FieldValueOrigin.METADATA,
-            provider=match.get("provider"),
-        )
+        for provider, fields in _by_source(updates, sources).items():
+            await field_provenance.record_field_sources(
+                db,
+                game,
+                {field: updates[field] for field in fields},
+                origin=FieldValueOrigin.METADATA,
+                provider=provider,
+            )
         if "title" in updates:
             names.note_title_change(game, trusted_metadata=True)
             await names.reconcile_games(db, game.user_id, [game])

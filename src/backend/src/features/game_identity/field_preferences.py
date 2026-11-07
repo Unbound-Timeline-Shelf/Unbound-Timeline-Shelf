@@ -12,7 +12,7 @@ A source is a metadata provider (`provider:<id>`, known from the values a refres
 from __future__ import annotations
 
 import time
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -220,17 +220,22 @@ async def clear_preference(db: AsyncSession, game: Game, field: str) -> bool:
 
 
 async def fields_held_by_other_source(
-    db: AsyncSession, game: Game, provider: object, fields: Collection[str]
+    db: AsyncSession,
+    game: Game,
+    provider: object,
+    fields: Collection[str],
+    *,
+    field_providers: Mapping[str, object] | None = None,
 ) -> set[str]:
     """Fields of `fields` a refresh from `provider` must leave alone.
 
     That is each field whose preferred source is a different one that reports a value; a
-    preferred source with no value for the field is ignored so the refresh can fill it."""
+    preferred source with no value for the field is ignored so the refresh can fill it. A
+    merged result names, in `field_providers`, the provider each field's value came from."""
     chosen = {field: key for field, key in (await preferences(db, game)).items() if field in fields}
-    own = provider_key(provider)
     held: set[str] = set()
     for field, key in chosen.items():
-        if key == own:
+        if key == provider_key((field_providers or {}).get(field) or provider):
             continue
         try:
             value = await _validated_source(db, game, field, key)
