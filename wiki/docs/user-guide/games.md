@@ -83,6 +83,18 @@ review the canonical entry and propose missing store IDs through Atlas.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
+**Select → Remove** moves every selected game to Trash at once, exactly as deleting
+each from its page would: its notes, screenshots, saves and other files go with it,
+and **Settings → Library** restores it for 7 days. A game shown with several copies
+removes only the record you selected; its other copies show on their own until it
+is restored. The confirmation says how many games are affected; afterwards a summary
+reports how many moved to Trash, which were no longer in your library, and which
+could not be removed. Games that could not be removed stay selected with the reason,
+so **Remove** again retries just those. Selections larger than 100 games are sent in
+several requests (`POST /api/game/bulk-delete`, at most 100 IDs each; it reports
+`deleted`, `not_found`, `already_deleted` and `failed` per ID, and another account's
+IDs are reported as not found).
+
 ### Quick edit
 
 The Edit button on a game in the library opens a light editor for the status,
