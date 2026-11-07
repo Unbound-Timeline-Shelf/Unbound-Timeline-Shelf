@@ -1,4 +1,4 @@
-import { createEntityCache } from "../utils/entityCache";
+import { createEntityCache, onEntityCacheReset } from "../utils/entityCache";
 import type { Game, GameRelationshipType } from "../types/game";
 
 // Shared snapshots let detail pages render immediately and keep older list
@@ -6,6 +6,16 @@ import type { Game, GameRelationshipType } from "../types/game";
 export const gameCache = createEntityCache<Game>();
 let mutationVersion = 0;
 const gameMutationVersions = new Map<string, number>();
+// The revision at which the current account's snapshots began (#468): a
+// response to a request started before it belongs to the previous account.
+let accountRevision = 0;
+onEntityCacheReset(() => {
+  gameMutationVersions.clear();
+  accountRevision = ++mutationVersion;
+});
+/** Whether a request started at revision `started` is for the current account. */
+export const isCurrentAccountRequest = (started: number): boolean =>
+  started >= accountRevision;
 export const gameLibraryRevision = (): number => mutationVersion;
 export const peekGame = gameCache.peek;
 export const peekAllGames = (): Game[] | null =>
@@ -32,12 +42,19 @@ function rememberGame(game: Game): Game {
   return gameCache.put(game);
 }
 
-export function rememberGameMutation(game: Game): Game {
+/**
+ * Remember a game the app just changed. Pass the revision captured before the
+ * request when there is one: a save answered after the account changed is
+ * returned to its caller but not cached.
+ */
+export function rememberGameMutation(game: Game, started?: number): Game {
+  if (started !== undefined && !isCurrentAccountRequest(started)) return game;
   gameMutationVersions.set(game.id, ++mutationVersion);
   return rememberGame(game);
 }
 
 export function rememberFetchedGame(game: Game, started: number): Game {
+  if (!isCurrentAccountRequest(started)) return game;
   const current = gameCache.peek(game.id);
   return current && (gameMutationVersions.get(game.id) ?? 0) > started
     ? current
@@ -51,4 +68,9 @@ export function invalidateGameLibrary(): void {
 export function forgetGame(id: string): void {
   gameCache.remove(id);
   gameMutationVersions.set(id, ++mutationVersion);
+}
+
+/** Mark the list complete, unless the account changed since `started`. */
+export function markGameListLoaded(started: number): void {
+  if (isCurrentAccountRequest(started)) gameCache.markListLoaded();
 }
