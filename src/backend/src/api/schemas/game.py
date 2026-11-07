@@ -341,6 +341,17 @@ class GameUpdate(TitleProtectionUpdate):
         return value
 
 
+# Each removal moves a whole game folder, so one request stays small; the app sends a larger
+# selection in several requests (#462).
+GAME_BULK_DELETE_LIMIT = 100
+
+
+class GameBulkDelete(BaseModel):
+    """Move several of the caller's games to trash, each exactly as a single delete does."""
+
+    game_ids: list[UUID] = Field(min_length=1, max_length=GAME_BULK_DELETE_LIMIT)
+
+
 class GameBulkUpdate(BaseModel):
     """Apply the same field values to many games at once. Deliberately a
     narrower field set than GameUpdate — title/folder_location/notes/

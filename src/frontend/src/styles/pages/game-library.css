@@ -1494,3 +1494,20 @@
   line-height: 1.2;
   pointer-events: none;
 }
+.form-error.bulk-success {
+  color: var(--ui-danger);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-danger) 30%, transparent);
+  border-radius: var(--ui-radius-control);
+  padding: 8px 12px;
+  margin-bottom: 20px;
+}
+.bulk-failures {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.btn-outline.danger-outline {
+  color: var(--ui-danger);
+  border-color: color-mix(in srgb, var(--ui-danger) 55%, transparent);
+}
