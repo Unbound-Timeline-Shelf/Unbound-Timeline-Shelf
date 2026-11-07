@@ -371,6 +371,34 @@ async def test_sticky_aliases_keep_the_stored_id(game):
     assert await log(game) == []
 
 
+async def test_a_1_1_20_catalogue_keeps_ids_through_its_aliases_and_stores_platinum(game):
+    """C2.6 end to end: the aliases and the platinum tier go through contract validation,
+    ``catalogue_rows`` and ``store_catalogue`` exactly as a 1.1.20 plugin sends them."""
+    await store(game, atlas(("Winner", "steam:W", row_id())))
+    await mark(game, ak1("steam:W"))
+    stored = (await catalogue(game))[ak1("steam:W")].id
+    rows = _rows(
+        [
+            {
+                "name": "Winner",
+                "external_id": ak1("curator~winner"),
+                "aliases": [ak1("steam:W")],
+                "source_ids": {"atlas.row": row_id()},
+            },
+            {"name": "Everything", "external_id": ak1("steam:ALL"), "tier": "platinum"},
+        ]
+    )
+    assert rows[0]["aliases"] == [ak1("steam:W")]
+    await store(game, rows)
+    after = await catalogue(game)
+    assert set(after) == {ak1("steam:W"), ak1("steam:ALL")}
+    assert after[ak1("steam:W")].id == stored
+    assert after[ak1("steam:ALL")].medal == "platinum"
+    assert set(await marks(game)) == {ak1("steam:W")}
+    assert (await listed(game))["Winner"]["unlocked"] is True
+    assert await log(game) == []
+
+
 async def test_a_bridge_that_names_a_row_another_entry_owns_is_ignored(game):
     keep, other = row_id(), row_id()
     await store(game, legacy(("A", keep), ("B", other)))

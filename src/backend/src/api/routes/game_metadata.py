@@ -1,6 +1,7 @@
 """Game metadata routes, composed by the games router."""
 
 import asyncio
+import time
 from typing import Annotated
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
 from src.database.models.game import Game, GameLink
+from src.database.models.game_field_change import GameFieldChange
 from src.database.models.game_identity_tracking import FieldValueOrigin
 from src.database.models.user import User
 from src.database.session import get_db
@@ -272,6 +274,30 @@ async def _follow_moved_ids(
         moved.pop(namespace, None)
         blocked[namespace] = live
     return {**saved, **moved}, blocked
+
+
+def _record_followed_ids(
+    db: AsyncSession,
+    game: Game,
+    decision: refresh_match.RefreshMatch,
+    saved: dict[str, str],
+    to_save: dict[str, str],
+) -> None:
+    """Keep each saved id a rule 2 rewrite replaced in the game's history, so the id the host
+    held can be restored if the provider later detaches a wrong merge (C4.2)."""
+    now = int(time.time())
+    for namespace, move in sorted(decision.followed.items()):
+        if saved.get(namespace) != move["from"] or to_save.get(namespace) != move["to"]:
+            continue
+        db.add(
+            GameFieldChange(
+                game_id=game.id,
+                field_name="provider_ids",
+                old_value=f"{namespace}: {move['from']}",
+                new_value=f"{namespace}: {move['to']} (moved by {move['provider']})",
+                changed_at=now,
+            )
+        )
 
 
 def _reported_title(record: dict) -> str | None:
@@ -575,6 +601,7 @@ async def refresh_game_metadata(
             details,
         )
 
+    _record_followed_ids(db, game, decision, game.provider_ids or {}, provider_ids_to_save)
     game.provider_ids = provider_ids_to_save
     if merged_ids is not None:
         # games whose provider ids merged are flagged through the duplicate review (C4.4)

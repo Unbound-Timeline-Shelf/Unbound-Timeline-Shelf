@@ -11,6 +11,8 @@ from collections.abc import Collection
 from datetime import date
 from typing import Any
 
+from sqlalchemy import ColumnElement, or_
+
 from src.database.models.game import Game
 from src.plugin_api.metadata_contracts import MetadataRelease, partial_date_start
 from src.plugin_api.vocab import FIRST_RELEASE_CATEGORIES
@@ -88,17 +90,52 @@ def release_for(game: Game, match: dict[str, Any]) -> tuple[date | None, str | N
     return day, precision
 
 
-def _releases(match: dict[str, Any]) -> list[dict[str, Any]] | None:
-    raw = match.get("releases")
+def known_day() -> ColumnElement[bool]:
+    """Games whose ``release_date`` is a known day, not the first day of a year or a month.
+
+    Server-built feeds that place a game on one day (the calendar, release notifications) use
+    it, so a year-only "2027" is never shown as a release on 1 January (C5.5)."""
+    return or_(Game.release_date_precision.is_(None), Game.release_date_precision == "day")
+
+
+def valid_releases(raw: object) -> list[dict[str, Any]] | None:
+    """The entries of ``raw`` a refresh would store: each a valid ``MetadataRelease``, the first
+    of each (platform, region, edition, category), at most five. None when none is left."""
     if not isinstance(raw, list) or not raw:
         return None
     rows: list[dict[str, Any]] = []
-    for entry in raw[:MAX_RELEASES]:
+    keys: set[tuple[str | None, str | None, str | None, str]] = set()
+    for entry in raw:
         try:
-            rows.append(MetadataRelease.model_validate(entry).model_dump(mode="json"))
+            release = MetadataRelease.model_validate(entry)
         except ValueError:
             continue
+        if release.key in keys:
+            continue
+        keys.add(release.key)
+        rows.append(release.model_dump(mode="json"))
+        if len(rows) == MAX_RELEASES:
+            break
     return rows or None
+
+
+def precision_for_date(day: date | None, precision: str | None) -> str | None:
+    """``precision`` when it can describe ``day``: a year or month whose first day ``day`` is,
+    within the C5.1 year range. Anything else is a day (None), since the date is what a person
+    sees and edits (an imported or hand-edited pair that disagree keeps the date)."""
+    if day is None or precision not in ("year", "month"):
+        return None
+    try:
+        release = MetadataRelease.model_validate(
+            {"date": day.isoformat()[: 4 if precision == "year" else 7], "precision": precision}
+        )
+    except ValueError:
+        return None
+    return precision if partial_date_start(release.date) == day else None
+
+
+def _releases(match: dict[str, Any]) -> list[dict[str, Any]] | None:
+    return valid_releases(match.get("releases"))
 
 
 def add_release_updates(
@@ -138,3 +175,15 @@ def add_release_updates(
         skipped_locked.append(RELEASES_LOCK)
     elif releases != game.releases:
         updates["releases"] = releases
+
+
+def sync_release_updates(game: Game, match: dict[str, Any]) -> dict[str, object]:
+    """The release date, precision and releases a library sync stores on a game it enriches:
+    the same values a refresh stores (so a 1.1.20 ``first_release`` arrives with the game), with
+    locks honoured by ``apply_metadata_updates`` and ``add_release_updates``."""
+    updates: dict[str, object] = {}
+    day = release_for(game, match)[0]
+    if day is not None and day != game.release_date:
+        updates["release_date"] = day
+    add_release_updates(game, match, updates, [], save_release_date=True)
+    return updates
