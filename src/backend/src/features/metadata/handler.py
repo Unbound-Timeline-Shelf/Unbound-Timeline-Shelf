@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from collections.abc import AsyncIterator, Iterable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -450,6 +450,15 @@ class MetadataHandler:
         return metadata, origins
 
     @staticmethod
+    def _source_labels(session: SearchSession) -> dict[str, str]:
+        """provider id -> the label its values are recorded and preferred under: the display
+        name, or ``name (id)`` when two providers share it (two plugins both called "RAWG")."""
+        names = Counter(provider.name for provider in session.providers)
+        return {
+            p.id: p.name if names[p.name] == 1 else f"{p.name} ({p.id})" for p in session.providers
+        }
+
+    @staticmethod
     def _place(
         metadata: dict[str, Any], origins: dict[str, str], provider_id: str, name: str, value: Any
     ) -> None:
@@ -536,7 +545,7 @@ class MetadataHandler:
     def _record(self, session: SearchSession, group: list[str], rank: int) -> dict[str, Any]:
         representative = self._identity(session, session.sources[group[0]])
         metadata, origins = self._merged(session, [session.sources[key] for key in group])
-        provider_names = {provider.id: provider.name for provider in session.providers}
+        provider_names = self._source_labels(session)
         provider_ids: dict[str, str] = {}
         for key in group:
             for namespace, external_id in identities(

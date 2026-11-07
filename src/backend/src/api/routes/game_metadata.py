@@ -483,6 +483,8 @@ async def refresh_game_metadata(
         "time_to_beat_all_hours": "save_time_to_beat",
     }
     updates: dict[str, object] = {}
+    # fields the refresh offered with the value the game already holds (their source is re-read)
+    unchanged: dict[str, object] = {}
     skipped_locked: list[str] = []
     # Lock > preference: a field whose preferred source is another one with a value is left alone.
     # Each field of the merged result names the provider it came from (Steam, IGDB, Atlas...).
@@ -510,6 +512,8 @@ async def refresh_game_metadata(
                 updates[field] = fresh
         elif fresh != current:
             updates[field] = fresh
+        else:
+            unchanged[field] = current
 
     add_release_updates(
         game,
@@ -629,6 +633,11 @@ async def refresh_game_metadata(
                 {field: updates[field] for field in fields},
                 origin=FieldValueOrigin.METADATA,
                 provider=provider,
+            )
+        # an unchanged value recorded under the old merged "Library" label is re-attributed
+        for provider, fields in _by_source(unchanged, sources).items():
+            await field_provenance.relabel_unchanged(
+                db, game, {field: unchanged[field] for field in fields}, provider=provider
             )
         if "title" in updates:
             names.note_title_change(game, trusted_metadata=True)
