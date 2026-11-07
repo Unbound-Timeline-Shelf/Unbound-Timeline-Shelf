@@ -87,7 +87,11 @@ export interface BackendTVShow {
   airing_interval_days: number | null;
 }
 
-import { createEntityCache } from "../utils/entityCache";
+import {
+  atEpoch,
+  createEntityCache,
+  entityCacheEpoch,
+} from "../utils/entityCache";
 const tvShowCache = createEntityCache<TVShow>();
 export const peekTVShow = tvShowCache.peek;
 export const peekAllTVShows = (): TVShow[] | null =>
@@ -349,6 +353,7 @@ export async function createSeason(
   showId: string,
   input: SeasonInput,
 ): Promise<TVShow> {
+  const started = entityCacheEpoch();
   const response = await fetch(`/api/tv/${showId}/seasons`, {
     method: "POST",
     credentials: "include",
@@ -357,7 +362,7 @@ export async function createSeason(
   });
   const raw = await handle<BackendTVShow>(response, "create season");
   api.markMutation();
-  return mapBackendTVShow(raw);
+  return atEpoch(started, () => mapBackendTVShow(raw));
 }
 
 export interface SeasonUpdateInput {
@@ -384,6 +389,7 @@ export async function updateSeason(
   if ("posterUrl" in input) body.poster_url = input.posterUrl;
   if (input.status) body.status = denormalizeStatus(input.status);
 
+  const started = entityCacheEpoch();
   const response = await fetch(`/api/tv/${showId}/seasons/${seasonId}`, {
     method: "PATCH",
     credentials: "include",
@@ -392,7 +398,7 @@ export async function updateSeason(
   });
   const raw = await handle<BackendTVShow>(response, "update season");
   api.markMutation();
-  return mapBackendTVShow(raw);
+  return atEpoch(started, () => mapBackendTVShow(raw));
 }
 
 // First call syncs the season's episodes in from TVmaze if none exist yet
@@ -402,6 +408,7 @@ export async function fetchEpisodes(
   showId: string,
   seasonId: string,
 ): Promise<TVShow> {
+  const started = entityCacheEpoch();
   const response = await fetch(
     `/api/tv/${showId}/seasons/${seasonId}/episodes`,
     {
@@ -410,7 +417,7 @@ export async function fetchEpisodes(
   );
   const raw = await handle<BackendTVShow>(response, "fetch episodes");
   const previous = JSON.stringify(tvShowCache.peek(showId));
-  const show = mapBackendTVShow(raw);
+  const show = atEpoch(started, () => mapBackendTVShow(raw));
   if (JSON.stringify(show) !== previous) api.markMutation();
   return show;
 }
@@ -432,6 +439,7 @@ export async function updateEpisode(
   if ("rating" in input) body.rating = input.rating;
   if ("note" in input) body.note = input.note;
 
+  const started = entityCacheEpoch();
   const response = await fetch(
     `/api/tv/${showId}/seasons/${seasonId}/episodes/${episodeId}`,
     {
@@ -443,7 +451,7 @@ export async function updateEpisode(
   );
   const raw = await handle<BackendTVShow>(response, "update episode");
   api.markMutation();
-  return mapBackendTVShow(raw);
+  return atEpoch(started, () => mapBackendTVShow(raw));
 }
 
 // Sets `watched` on many episodes in one request â€” a shift-click range
@@ -455,6 +463,7 @@ export async function bulkSetEpisodesWatched(
   episodeIds: string[],
   watched: boolean,
 ): Promise<TVShow> {
+  const started = entityCacheEpoch();
   const response = await fetch(
     `/api/tv/${showId}/seasons/${seasonId}/episodes/bulk-watched`,
     {
@@ -466,20 +475,21 @@ export async function bulkSetEpisodesWatched(
   );
   const raw = await handle<BackendTVShow>(response, "bulk-update episodes");
   api.markMutation();
-  return mapBackendTVShow(raw);
+  return atEpoch(started, () => mapBackendTVShow(raw));
 }
 
 export async function deleteSeason(
   showId: string,
   seasonId: string,
 ): Promise<TVShow> {
+  const started = entityCacheEpoch();
   const response = await fetch(`/api/tv/${showId}/seasons/${seasonId}`, {
     method: "DELETE",
     credentials: "include",
   });
   const raw = await handle<BackendTVShow>(response, "delete season");
   api.markMutation();
-  return mapBackendTVShow(raw);
+  return atEpoch(started, () => mapBackendTVShow(raw));
 }
 
 // A raw metadata search result, straight from whichever provider (TMDB or
@@ -687,11 +697,12 @@ export async function fetchTVShowRecommended(
 // Runs the airing check for just this title now (the background loop only
 // comes around every 30 minutes) and returns the refreshed record.
 export async function refreshTVShowAiring(id: string): Promise<TVShow> {
+  const started = entityCacheEpoch();
   const response = await fetch(`/api/tv/${id}/refresh-airing`, {
     method: "POST",
     credentials: "include",
   });
   const raw = await handle<BackendTVShow>(response, "refresh airing schedule");
   api.markMutation();
-  return mapBackendTVShow(raw);
+  return atEpoch(started, () => mapBackendTVShow(raw));
 }

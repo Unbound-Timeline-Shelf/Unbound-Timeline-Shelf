@@ -9,6 +9,7 @@ import {
   gameCache,
   gameLibraryRevision,
   invalidateGameLibrary,
+  markGameListLoaded,
   rememberFetchedGame,
   rememberGameMutation,
 } from "./gameCache";
@@ -207,7 +208,7 @@ export async function fetchGames(): Promise<Game[]> {
   const games = all.map((raw) =>
     rememberFetchedGame(mapBackendGame(raw), started),
   );
-  gameCache.markListLoaded();
+  markGameListLoaded(started);
   return games;
 }
 
@@ -251,7 +252,7 @@ export async function fetchGamesForViewport(
     rememberFetchedGame(mapBackendGame(raw), started),
   );
   if (result.total !== null && skip + games.length >= result.total)
-    gameCache.markListLoaded();
+    markGameListLoaded(started);
   return { games, total: result.total, statusCounts: result.statusCounts };
 }
 
@@ -815,6 +816,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
     return newGame;
   }
 
+  const started = gameLibraryRevision();
   const response = await fetch("/api/game/create", {
     method: "POST",
     credentials: "include",
@@ -869,7 +871,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
   if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 export async function updateGame(
   id: string,
@@ -994,6 +996,7 @@ export async function updateGame(
   if (input.priority !== undefined) body.priority = input.priority;
   if (input.createdAt != null) body.created_at = input.createdAt;
 
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${id}`, {
     method: "PATCH",
     credentials: "include",
@@ -1004,7 +1007,7 @@ export async function updateGame(
   if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 export interface GameNoteListResponse {
@@ -1711,6 +1714,7 @@ export async function setFavorite(
     return mockGames[index];
   }
 
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${gameId}`, {
     method: "PATCH",
     credentials: "include",
@@ -1723,7 +1727,7 @@ export async function setFavorite(
   }
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 export async function setResumeNote(
@@ -1802,6 +1806,7 @@ export async function setStatus(
     return mockGames[index];
   }
 
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${gameId}`, {
     method: "PATCH",
     credentials: "include",
@@ -1814,7 +1819,7 @@ export async function setStatus(
   }
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 // Deliberately narrower than NewGameInput/GameUpdate, title, folder,
@@ -1893,6 +1898,7 @@ async function patchCollections(
   gameId: string,
   collections: string[],
 ): Promise<Game> {
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${gameId}`, {
     method: "PATCH",
     credentials: "include",
@@ -1901,7 +1907,7 @@ async function patchCollections(
   });
   if (!response.ok) throw await failedRequest(response);
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 export async function addGameToCollection(
