@@ -762,7 +762,7 @@ async def reject_metadata_candidate(
     stored = await refresh_match.reject(db, game, payload.provider_ids)
     if not stored:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 "Every id in this candidate is already saved on the game; "
                 "edit the game's provider ids instead."
@@ -789,7 +789,7 @@ async def forget_metadata_rejections(
     The next refresh may match the forgotten ids again."""
     if (namespace is None) != (identity is None):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Give both namespace and identity to forget one rejection, or neither.",
         )
     game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
