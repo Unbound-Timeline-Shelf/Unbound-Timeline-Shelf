@@ -36,6 +36,7 @@ from src.features.game_folders import reserved_names
 from src.features.game_identity import manual
 from src.features.imports.library_export import build_library_export
 from src.features.jobs import JOBS, get_setting
+from src.features.metadata.game_releases import precision_for_date, valid_releases
 from src.features.tag_catalogue import restore_catalogue
 from src.helpers import save_game_asset
 from src.helpers.save_game_asset import create_game_folder
@@ -156,9 +157,12 @@ async def import_library(
     for entry in entries:
         try:
             data = entry.model_dump(exclude={"id"})
-            # NULL is a day; a precision without a date means nothing
-            if data.get("release_date") is None or data.get("release_date_precision") == "day":
-                data["release_date_precision"] = None
+            # NULL is a day; a precision kept only when it can describe the date (a year or month
+            # is stored as its first day), and releases only as a refresh would store them
+            data["release_date_precision"] = precision_for_date(
+                data.get("release_date"), data.get("release_date_precision")
+            )
+            data["releases"] = valid_releases(data.get("releases"))
             data["user_id"] = current_user.id
             data["folder_location"] = await _available_folder_location(
                 data["folder_location"], db, current_user.id

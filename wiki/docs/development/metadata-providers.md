@@ -103,7 +103,11 @@ A **release** is `{date, precision, platform?, region?, edition?, category}`:
 `release_date` keeps its day-only meaning, so older plugins and clients are unaffected. The
 `release_date` field lock covers the date and its precision; `releases` has its own lock key, and
 the **save release date** scan setting covers all three. Editing a game's release date by hand
-makes it a day again. The game API returns `release_date_precision` and `releases`.
+makes it a day again. The game API returns `release_date_precision` and `releases`. A library
+sync stores the same date, precision and releases as a refresh, and a library import keeps a
+precision only when the date is the first day of that year or month. The calendar, its feeds and
+release notifications show a game on its release day only when the day is known: a game known
+only to the year or the month is left out of them.
 
 **Identity rules.** A refresh still matches by the provider ids the sources reported themselves
 (rule 1). With 1.1.20 it also:
@@ -111,7 +115,8 @@ makes it a day again. The game API returns `release_date_precision` and `release
 - follows a merge or redirect (rule 2): when a provider's `identity.match` is `id`, `redirect` or
   `crosswalk` and its `previous_ids` holds the id the game has saved in that namespace, the
   result is the game, and the saved id is rewritten to the one live id the provider reported.
-  The response lists it under `followed_ids`. If another game already holds the live id, the
+  The response lists it under `followed_ids`, and the game's history keeps the id it held. If
+  another game already holds the live id, the
   saved id is kept and the refresh says so. The duplicate review then lists the two games (as a
   provider identity match) until the person merges them or keeps both; they are never merged
   automatically. A provider can only move ids in its own namespaces;

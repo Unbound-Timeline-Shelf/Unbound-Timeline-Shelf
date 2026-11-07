@@ -7,19 +7,22 @@ the result back from PostgreSQL."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
 from uuid import UUID
 
 from sqlalchemy import select
 
-from src.api.routes import export_import
-from src.database.models.game import Game
+from src.api.routes import export_import, library_sync, media_extras
+from src.database.models.game import Game, GameStatus
+from src.database.models.game_field_change import GameFieldChange
 from src.database.models.game_identity import GameRelationship, RecordOrigin
 from src.database.models.game_pending_relationship import GamePendingRelationship
 from src.database.session import SessionLocal
-from src.features import game_duplicates
+from src.features import game_duplicates, game_notifications
 from src.features.game_identity import graph
 from src.features.game_identity.refresh_match import classify
+from src.features.notification_controller import NotificationEvent
 from src.plugin_api.metadata_contracts import (
     MetadataCandidate,
     MetadataIdentity,
@@ -87,6 +90,16 @@ async def pending(user_id: UUID) -> list[tuple[UUID, str, str, str]]:
             select(GamePendingRelationship).where(GamePendingRelationship.user_id == user_id)
         )
         return sorted((row.game_id, row.kind, row.namespace, row.external_id) for row in rows)
+
+
+async def id_history(game_id: UUID) -> list[tuple[str | None, str | None]]:
+    async with SessionLocal() as db:
+        rows = await db.scalars(
+            select(GameFieldChange).where(
+                GameFieldChange.game_id == game_id, GameFieldChange.field_name == "provider_ids"
+            )
+        )
+        return [(row.old_value, row.new_value) for row in rows]
 
 
 # --- C5: partial and multiple release dates ---------------------------------------------------
@@ -310,6 +323,13 @@ async def test_a_redirected_atlas_id_is_rewritten_to_the_live_one(owner, provide
     applied = await refresh(client, game_id)
     assert (applied["status"], applied["match"]) == ("updated", "id")
     assert (await stored(game_id)).provider_ids == {"atlas": ATLAS_ID}
+    # the id the game held stays in its history, so a wrong merge can be undone (C4.2)
+    assert await id_history(game_id) == [
+        (f"atlas: {OTHER_ATLAS_ID}", f"atlas: {ATLAS_ID} (moved by {ATLAS})")
+    ]
+    # a further refresh moves nothing and records nothing more
+    await refresh(client, game_id)
+    assert len(await id_history(game_id)) == 1
 
 
 async def test_without_an_identity_verdict_a_changed_atlas_id_is_not_followed(
@@ -736,3 +756,175 @@ async def test_an_export_restores_a_year_only_date_as_a_year(owner, client, monk
         "Year Only": (date(2011, 1, 1), "year", releases),
         "A Day": (date(2012, 3, 4), None, None),
     }
+
+
+async def test_an_import_keeps_only_releases_and_precision_a_refresh_would_store(
+    owner, client, monkeypatch
+):
+    user_id, _ = owner
+    monkeypatch.setattr(export_import, "create_game_folder", lambda *_args: None)
+    good = {"date": "2011", "precision": "year", "platform": "pc"}
+    games = [
+        {
+            "title": "Hand Edited",
+            "folder_location": "hand-edited",
+            "release_date": "2011-01-01",
+            "release_date_precision": "year",
+            "releases": [
+                good,
+                {**good, "date": "2011-05"},  # a month written under a year precision
+                {"date": "1900", "precision": "year"},  # before 1950 (C5.1)
+                {"date": "not-a-date", "precision": "day"},
+                {**good, "date": "2012"},  # repeats (platform, region, edition, category)
+            ],
+        },
+        # a year precision whose date is not 1 January: the date wins and is a day
+        {
+            "title": "Mid Year",
+            "folder_location": "mid-year",
+            "release_date": "2011-05-14",
+            "release_date_precision": "year",
+        },
+        {
+            "title": "Out Of Range",
+            "folder_location": "out-of-range",
+            "release_date": "1900-01-01",
+            "release_date_precision": "year",
+        },
+        {
+            "title": "A Month",
+            "folder_location": "a-month",
+            "release_date": "2011-04-01",
+            "release_date_precision": "month",
+        },
+    ]
+
+    done = await client.post("/api/import/library", json={"games": games})
+
+    assert done.status_code == 200 and done.json()["created"] == 4, done.text
+    async with SessionLocal() as db:
+        rows = {
+            game.title: (game.release_date, game.release_date_precision, game.releases)
+            for game in await db.scalars(select(Game).where(Game.user_id == user_id))
+        }
+    expected = MetadataRelease.model_validate(good).model_dump(mode="json")
+    assert rows == {
+        "Hand Edited": (date(2011, 1, 1), "year", [expected]),
+        "Mid Year": (date(2011, 5, 14), None, None),
+        "Out Of Range": (date(1900, 1, 1), None, None),
+        "A Month": (date(2011, 4, 1), "month", None),
+    }
+
+
+# --- server-built feeds never show a year or a month as a day (C5.5) ---------------------------
+
+
+async def test_the_calendar_leaves_out_releases_known_only_to_the_year_or_month(owner, client):
+    user_id, _ = owner
+    today = date.today()
+    ahead = date(today.year + 1, 1, 1)
+    await add_game(user_id, title="Next Year", release_date=ahead, release_date_precision="year")
+    await add_game(user_id, title="Next Month", release_date=ahead, release_date_precision="month")
+    await add_game(user_id, title="That Day", release_date=ahead)
+    async with SessionLocal() as db:
+        upcoming = await media_extras.build_calendar_entries(
+            db, user_id, 14, game_releases=True, window=(ahead, ahead)
+        )
+    assert [entry["title"] for entry in upcoming] == ["That Day"]
+
+    # the past side: a year-only game is not "released on 1 January"
+    last_year = date(today.year - 1, 1, 1)
+    await add_game(
+        user_id, title="Last Year", release_date=last_year, release_date_precision="year"
+    )
+    await add_game(user_id, title="Last Year Day", release_date=last_year)
+    response = await client.get("/api/calendar/games")
+    assert response.status_code == 200, response.text
+    released = [entry["title"] for entry in response.json() if entry["kind"] == "game_released"]
+    assert released == ["Last Year Day"]
+
+
+async def test_release_notifications_skip_a_date_known_only_to_the_year(owner, monkeypatch):
+    user_id, _ = owner
+    day = date(2026, 1, 1)
+    for title, precision in (("Year", "year"), ("Month", "month"), ("Day", None)):
+        await add_game(
+            user_id,
+            title=title,
+            status=GameStatus.WISHLIST,
+            release_date=day,
+            release_date_precision=precision,
+        )
+    announced: list[str] = []
+
+    async def emit(db, event):
+        announced.append((await db.get(Game, event.entity_id)).title)
+        return event
+
+    monkeypatch.setattr(game_notifications, "emit", emit)
+    now = int(datetime(2026, 1, 3, 12, tzinfo=timezone.utc).timestamp())
+    async with SessionLocal() as db:
+        created = await game_notifications.generate_game_releases(db, user_id, now=now)
+        assert announced == ["Day"] and created == 1
+        # the interpreter refuses a year-only release too, should an event name one
+        year_game = await db.scalar(
+            select(Game).where(Game.user_id == user_id, Game.title == "Year")
+        )
+        event = NotificationEvent(
+            type="game.released",
+            user_id=user_id,
+            entity_type="game",
+            entity_id=year_game.id,
+            occurred_at=int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()),
+            dedupe_key=f"game-release:{year_game.id}:2026-01-01",
+            data={},
+        )
+        assert await game_notifications.interpret_game_event(db, event) is None
+
+
+# --- a library sync stores the same release a refresh does ------------------------------------
+
+
+async def test_a_library_sync_stores_a_partial_first_release_with_its_precision(monkeypatch):
+    record: dict = {
+        "metadata": {
+            "first_release": {"date": "2027", "precision": "year"},
+            "releases": [{"date": "2027", "precision": "year", "platform": "pc"}],
+        },
+        "provider_ids": {},
+    }
+
+    async def resolve(*_args, **_kwargs):
+        return record, None
+
+    async def unclaimed(*_args, **_kwargs):
+        return {}
+
+    async def artwork(_game, _match, _max_bytes, outcome, **_kwargs):
+        return outcome
+
+    monkeypatch.setattr(library_sync, "resolve_library_record", resolve)
+    monkeypatch.setattr(library_sync, "unclaimed_provider_ids", unclaimed)
+    monkeypatch.setattr(library_sync, "_fetch_missing_artwork", artwork)
+    user = SimpleNamespace(id=None)
+
+    async def enrich(**values) -> Game:
+        values.setdefault("locked_fields", [])
+        game = Game(sort_title="synced", folder_location="synced", **values)
+        # pylint: disable-next=protected-access
+        await library_sync._enrich_new_game(game, user, {})
+        return game
+
+    game = await enrich(title="Synced")
+    assert (game.release_date, game.release_date_precision) == (date(2027, 1, 1), "year")
+    assert [entry["date"] for entry in game.releases] == ["2027"]
+
+    # an older provider's day is stored as a day, and a locked date keeps its value
+    record["metadata"] = {"release_date": "2027-03-04"}
+    game = await enrich(title="Day")
+    assert (game.release_date, game.release_date_precision) == (date(2027, 3, 4), None)
+    record["metadata"] = {"first_release": {"date": "2027", "precision": "year"}}
+    game = await enrich(
+        title="Locked", locked_fields=["release_date"], release_date=date(2027, 3, 4)
+    )
+    assert (game.release_date, game.release_date_precision) == (date(2027, 3, 4), None)
