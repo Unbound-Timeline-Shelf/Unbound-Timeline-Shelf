@@ -67,7 +67,8 @@ async def test_group_play_details_roundtrip_and_clear(scratch_user):
         game_id = created.id
     async with SessionLocal() as db:
         row = await db.get(Game, game_id)
-        assert row.play_compatibility == preset
+        # crossplay is stored as the shared vocabulary value; a confirmed true is a "yes"
+        assert row.play_compatibility == {**preset, "crossplay": "yes"}
         await games.update_game(game_id, GameUpdate(play_compatibility=None), db, scratch_user)
     async with SessionLocal() as db:
         assert (await db.get(Game, game_id)).play_compatibility is None
@@ -158,14 +159,16 @@ async def test_group_play_bulk_updates_only_selected_owned_games(scratch_user):
                 scratch_user,
             )
             assert result == {"updated": 2}
+            # "false" is not a confirmed "no": it is stored as unknown
+            stored = {**preset, "crossplay": None}
             for game_id in (first_id, second_id):
-                assert (await db.get(Game, game_id)).play_compatibility == preset
+                assert (await db.get(Game, game_id)).play_compatibility == stored
             assert (await db.get(Game, third_id)).play_compatibility is None
             assert (await db.get(Game, foreign_id)).play_compatibility is None
             await games.bulk_update_games(
                 GameBulkUpdate(game_ids=[first_id, second_id], platform="PC"), db, scratch_user
             )
-            assert (await db.get(Game, first_id)).play_compatibility == preset
+            assert (await db.get(Game, first_id)).play_compatibility == stored
             await games.bulk_update_games(
                 GameBulkUpdate(game_ids=[first_id, second_id], play_compatibility=None),
                 db,

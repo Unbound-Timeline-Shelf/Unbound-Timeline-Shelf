@@ -1,4 +1,13 @@
-"""Provider-neutral, bounded metadata extension contracts for Plugin API v1.1.1."""
+"""Provider-neutral, bounded metadata extension contracts for Plugin API v1.1.1.
+
+Plugin API 1.1.20 adds partial and regional release dates (``first_release``, ``releases``),
+the identity verdict of a lookup (``identity``), achievement ``aliases`` and the ``platinum``
+tier. A plugin whose manifest declares an older contract is held to the older shape: the host
+validates its responses with ``api_contract`` in the validation context (see
+``contract_context``), and a 1.1.20 field or value from it is an ``invalid_response``, exactly as
+an unknown field was before. Host code that builds these models without a context (core
+providers, merging pages) is not limited.
+"""
 
 from __future__ import annotations
 
@@ -15,11 +24,38 @@ from pydantic import (
     StrictBool,
     StrictFloat,
     StrictInt,
+    ValidationInfo,
     model_validator,
 )
 
+from .base_contracts import parse_semver
+
 Identifier = Annotated[str, Field(min_length=1, max_length=512)]
 ActionId = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")]
+
+# The Plugin API version that introduced the release, identity and alias fields and ``platinum``.
+RELEASES_CONTRACT = (1, 1, 20)
+CONTRACT_CONTEXT_KEY = "api_contract"
+
+
+def contract_context(api_contract_version: str) -> dict[str, tuple[int, int, int]]:
+    """The validation context for a response from a plugin that declares this contract."""
+    return {CONTRACT_CONTEXT_KEY: parse_semver(api_contract_version)}
+
+
+def _declared_contract(info: ValidationInfo) -> tuple[int, int, int] | None:
+    context = info.context
+    if not isinstance(context, dict):
+        return None
+    declared = context.get(CONTRACT_CONTEXT_KEY)
+    return declared if isinstance(declared, tuple) else None
+
+
+def _require_releases_contract(info: ValidationInfo, used: list[str]) -> None:
+    """Refuse 1.1.20 fields from a plugin that declared an older contract."""
+    declared = _declared_contract(info)
+    if used and declared is not None and declared < RELEASES_CONTRACT:
+        raise ValueError(f"{', '.join(used)} require Plugin API 1.1.20")
 
 
 CustomValue = (
@@ -157,7 +193,8 @@ class MetadataAchievement(MetadataModel):
     # A hidden entry whose real text the provider did not reveal arrives as a placeholder.
     hidden: bool = False
     kind: Literal["progression", "missable", "win_condition"] | None = None
-    tier: Literal["bronze", "silver", "gold"] | None = None
+    # ``platinum`` (a whole-catalogue completion trophy) needs Plugin API 1.1.20 (C7.1).
+    tier: Literal["bronze", "silver", "gold", "platinum"] | None = None
     points: int | None = Field(default=None, ge=0, le=100_000)
     global_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     icon_url: AnyHttpUrl | None = None
@@ -165,6 +202,76 @@ class MetadataAchievement(MetadataModel):
     # Ids the same achievement has elsewhere (e.g. {"steam": "ACH_X"}), used to match a user's
     # synced progress to this entry.
     source_ids: dict[ActionId, Identifier] = Field(default_factory=dict, max_length=8)
+    # Plugin API 1.1.20: other stable ids of this same entry (Atlas sends every merged row's key).
+    # A stored definition listed here keeps its id instead of being replaced (C2.5 step 3).
+    aliases: tuple[Identifier, ...] = Field(default=(), max_length=32)
+
+    @model_validator(mode="after")
+    def declared_contract(self, info: ValidationInfo) -> "MetadataAchievement":
+        used = ["aliases"] if "aliases" in self.model_fields_set else []
+        if self.tier == "platinum":
+            used.append("tier platinum")
+        _require_releases_contract(info, used)
+        return self
+
+
+# C5.1: YYYY, YYYY-MM or YYYY-MM-DD; a day must also be a real calendar date.
+PARTIAL_DATE_RE = r"^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$"
+_PRECISION_LENGTH = {"year": 4, "month": 7, "day": 10}
+# Year and month values follow C5.1 (1950-2100). A day keeps the host's general date range, as a
+# day ``release_date`` always did: Atlas carries a pre-1950 day into ``first_release``.
+_PARTIAL_YEARS = (1950, 2100)
+_DAY_YEARS = (1800, 3000)
+PartialDate = Annotated[str, Field(pattern=PARTIAL_DATE_RE, max_length=10)]
+
+
+def partial_date_start(value: str) -> date:
+    """The first day of the period a PartialDate names ("2011" is 1 January 2011)."""
+    year, month, day = (value.split("-") + ["1", "1"])[:3]
+    return date(int(year), int(month), int(day))
+
+
+class MetadataRelease(MetadataModel):
+    """One release of a game, at year, month or day precision (Plugin API 1.1.20, C5.3)."""
+
+    date: PartialDate
+    precision: Literal["year", "month", "day"]
+    platform: str | None = Field(default=None, min_length=1, max_length=128)
+    region: str | None = Field(default=None, pattern=r"^(ww|eu|na|asia|oce|latam|[a-z]{2})$")
+    edition: str | None = Field(default=None, min_length=1, max_length=100)
+    category: Literal["full", "early_access", "beta", "rerelease", "port", "demo"] = "full"
+
+    @model_validator(mode="after")
+    def precision_matches_date(self) -> "MetadataRelease":
+        if len(self.date) != _PRECISION_LENGTH[self.precision]:
+            raise ValueError(f"a {self.precision} date is written {self.precision_shape()}")
+        try:
+            start = partial_date_start(self.date)
+        except ValueError as exc:
+            raise ValueError("date is not a calendar date") from exc
+        low, high = _DAY_YEARS if self.precision == "day" else _PARTIAL_YEARS
+        if not low <= start.year <= high:
+            raise ValueError(f"a {self.precision} date must fall between {low} and {high}")
+        return self
+
+    def precision_shape(self) -> str:
+        return {"year": "YYYY", "month": "YYYY-MM", "day": "YYYY-MM-DD"}[self.precision]
+
+    @property
+    def key(self) -> tuple[str | None, str | None, str | None, str]:
+        """Entries are unique on (platform, region, edition, category) (C5.1)."""
+        return (self.platform, self.region, self.edition, self.category)
+
+
+class MetadataIdentity(MetadataModel):
+    """How the provider matched the lookup to its record (Plugin API 1.1.20, C4.4).
+
+    ``id``, ``redirect`` and ``crosswalk`` are identity evidence; ``previous_ids`` names ids the
+    provider no longer uses for this record (a merge or redirect), so the host can follow them.
+    ``conflict`` and ``ambiguous`` are never assigned automatically."""
+
+    match: Literal["id", "redirect", "crosswalk", "exact", "conflict", "ambiguous"]
+    previous_ids: dict[ActionId, Identifier] = Field(default_factory=dict, max_length=8)
 
 
 class MetadataPatch(MetadataModel):
@@ -227,6 +334,13 @@ class MetadataPatch(MetadataModel):
     achievements: tuple[MetadataAchievement, ...] = Field(default=(), max_length=MAX_ACHIEVEMENTS)
     # Provider-defined fields the host has no column for, kept as read-only provider details.
     custom: dict[ActionId, CustomValue] = Field(default_factory=dict, max_length=32)
+    # Plugin API 1.1.20. The first release at its real precision ("2011", "2011-04"); its
+    # platform, region and edition are ignored. ``release_date`` keeps its day-only meaning.
+    first_release: MetadataRelease | None = None
+    # Plugin API 1.1.20. Up to five releases, unique on (platform, region, edition, category).
+    releases: tuple[MetadataRelease, ...] = Field(default=(), max_length=5)
+    # Plugin API 1.1.20. How the provider matched this lookup (C4.4 rules 2 and 4).
+    identity: MetadataIdentity | None = None
 
     @model_validator(mode="after")
     def ordered_players(self) -> "MetadataPatch":
@@ -236,6 +350,29 @@ class MetadataPatch(MetadataModel):
             and self.players_min > self.players_max
         ):
             raise ValueError("players_max must be at least players_min")
+        return self
+
+    @model_validator(mode="after")
+    def consistent_releases(self, info: ValidationInfo) -> "MetadataPatch":
+        _require_releases_contract(
+            info,
+            [
+                name
+                for name in ("first_release", "releases", "identity")
+                if name in self.model_fields_set
+            ],
+        )
+        keys = [release.key for release in self.releases]
+        if len(keys) != len(set(keys)):
+            raise ValueError("releases repeat a (platform, region, edition, category) entry")
+        first = self.first_release
+        if (
+            first is not None
+            and first.precision == "day"
+            and self.release_date is not None
+            and self.release_date.isoformat() != first.date
+        ):
+            raise ValueError("release_date and a day first_release must name the same day")
         return self
 
 

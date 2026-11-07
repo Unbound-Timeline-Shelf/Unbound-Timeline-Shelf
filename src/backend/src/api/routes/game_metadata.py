@@ -1,7 +1,7 @@
 """Game metadata routes, composed by the games router."""
 
 import asyncio
-from datetime import date
+import time
 from typing import Annotated
 from uuid import UUID
 
@@ -29,6 +29,7 @@ from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
 from src.database.models.game import Game, GameLink
+from src.database.models.game_field_change import GameFieldChange
 from src.database.models.game_identity_tracking import FieldValueOrigin
 from src.database.models.user import User
 from src.database.session import get_db
@@ -38,10 +39,12 @@ from src.features.achievement_catalogue import (
     store_catalogue,
 )
 from src.features.game_identity import field_preferences, field_provenance, names, refresh_match
+from src.features.game_identity.ingest_relations import ingest_relations, record_merged_ids
 from src.features.game_identity.provider_ids import (
     find_provider_id_conflicts,
     merge_provider_ids,
 )
+from src.features.metadata.game_releases import add_release_updates, release_for
 from src.features.metadata.locked_fields import apply_metadata_updates
 from src.features.metadata.service import (
     game_result,
@@ -184,15 +187,6 @@ def _game_links(raw: object) -> list[GameLink] | None:
     return rows or None
 
 
-def _release_date(raw: object) -> date | None:
-    if isinstance(raw, date):
-        return raw
-    try:
-        return date.fromisoformat(str(raw)[:10]) if raw else None
-    except ValueError:
-        return None
-
-
 @router.get("/{game_id}/field-sources")
 async def get_field_sources(
     game_id: UUID,
@@ -258,6 +252,54 @@ async def clear_field_preference(
     await db.commit()
 
 
+async def _follow_moved_ids(
+    db: AsyncSession,
+    game: Game,
+    decision: refresh_match.RefreshMatch,
+    saved: dict[str, str],
+    provider_errors: list[str],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """The saved ids with every id a provider moved (C4.4 rule 2) replaced by the live one, and
+    the moves another game blocks (namespace -> live id), which go to the duplicate review."""
+    if not decision.followed:
+        return saved, {}
+    moved = {namespace: move["to"] for namespace, move in decision.followed.items()}
+    blocked: dict[str, str] = {}
+    taken = await find_provider_id_conflicts(db, game.user_id, game.id, moved)
+    for namespace, live, _other in taken:
+        provider_errors.append(
+            f"The {namespace} ID moved to {live}, which another game already holds; the saved "
+            "ID was kept. Review duplicates to merge the two games."
+        )
+        moved.pop(namespace, None)
+        blocked[namespace] = live
+    return {**saved, **moved}, blocked
+
+
+def _record_followed_ids(
+    db: AsyncSession,
+    game: Game,
+    decision: refresh_match.RefreshMatch,
+    saved: dict[str, str],
+    to_save: dict[str, str],
+) -> None:
+    """Keep each saved id a rule 2 rewrite replaced in the game's history, so the id the host
+    held can be restored if the provider later detaches a wrong merge (C4.2)."""
+    now = int(time.time())
+    for namespace, move in sorted(decision.followed.items()):
+        if saved.get(namespace) != move["from"] or to_save.get(namespace) != move["to"]:
+            continue
+        db.add(
+            GameFieldChange(
+                game_id=game.id,
+                field_name="provider_ids",
+                old_value=f"{namespace}: {move['from']}",
+                new_value=f"{namespace}: {move['to']} (moved by {move['provider']})",
+                changed_at=now,
+            )
+        )
+
+
 def _reported_title(record: dict) -> str | None:
     """The title a provider reported, never the saved title the lookup was started with."""
     title = (record.get("metadata") or {}).get("title")
@@ -290,6 +332,8 @@ def _refresh_outcome(
         "candidate": None,
         "conflicts": decision.conflict_candidates() if decision else [],
         "rejected_ids": dict(decision.rejected) if decision else {},
+        # ids a provider moved (a merge or redirect, Plugin API 1.1.20): {ns: {from, to, provider}}
+        "followed_ids": dict(decision.followed) if decision else {},
         **(details or {}),
     }
 
@@ -372,6 +416,7 @@ async def refresh_game_metadata(
         game_title=game.title,
         reported_title=reported_title,
         rejected=await refresh_match.rejected_ids(db, game.id),
+        identities=record.get("provider_identities") or {},
     )
     candidate = {"title": reported_title, "provider_ids": decision.offered}
     if decision.tier in {"none", "conflict", "rejected"}:
@@ -406,7 +451,7 @@ async def refresh_game_metadata(
         "tags": match.get("tags"),
         "features": match.get("features"),
         "age_rating": match.get("age_rating"),
-        "release_date": _release_date(match.get("release_date")),
+        "release_date": release_for(game, match)[0],
         "time_to_beat_hours": match.get("time_to_beat_hours"),
         "time_to_beat_extras_hours": match.get("time_to_beat_extras_hours"),
         "time_to_beat_completionist_hours": match.get("time_to_beat_completionist_hours"),
@@ -454,6 +499,15 @@ async def refresh_game_metadata(
         elif fresh != current:
             updates[field] = fresh
 
+    add_release_updates(
+        game,
+        match,
+        updates,
+        skipped_locked,
+        save_release_date=preferences.get("save_release_date", True),
+        held_by_preference=held_by_preference,
+    )
+
     provider_play = provider_play_compatibility(match, game.play_compatibility)
     if provider_play is not None:
         if "play_compatibility" in game.locked_fields:
@@ -470,9 +524,16 @@ async def refresh_game_metadata(
 
     existing_provider_ids = game.provider_ids or {}
     provider_ids_to_save = existing_provider_ids
+    # None: the provider_ids lock kept rule 2 from being considered, so the review is unchanged
+    merged_ids: dict[str, str] | None = None
     if "provider_ids" in game.locked_fields:
         skipped_locked.append("provider_ids")
     else:
+        # rule 2: a provider moved a saved id (a merge or redirect); follow it unless another
+        # game already holds the live id, which the duplicate review is for
+        existing_provider_ids, merged_ids = await _follow_moved_ids(
+            db, game, decision, existing_provider_ids, provider_errors
+        )
         # only ids the sources reported themselves; the record also echoes the request's ids
         offered_provider_ids = decision.offered
         provider_ids_to_add = {
@@ -540,7 +601,12 @@ async def refresh_game_metadata(
             details,
         )
 
+    _record_followed_ids(db, game, decision, game.provider_ids or {}, provider_ids_to_save)
     game.provider_ids = provider_ids_to_save
+    if merged_ids is not None:
+        # games whose provider ids merged are flagged through the duplicate review (C4.4)
+        await record_merged_ids(db, game, merged_ids)
+    relations = {"added": 0, "pending": 0}
     if payload.update_text:
         _record_field_changes(game, updates, db)
         apply_metadata_updates(game, updates)
@@ -554,6 +620,12 @@ async def refresh_game_metadata(
         if "title" in updates:
             names.note_title_change(game, trusted_metadata=True)
             await names.reconcile_games(db, game.user_id, [game])
+        # Plugin API 1.1.20 game relations; a savepoint, so a failure keeps the metadata update
+        try:
+            async with db.begin_nested():
+                relations = await ingest_relations(db, game, record.get("provider_relations") or [])
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            provider_errors.append(f"Relations: {type(exc).__name__}")
 
     if payload.fill_missing_art:
 
@@ -597,7 +669,13 @@ async def refresh_game_metadata(
         game,
         provider_errors,
         decision,
-        {**details, "would_add_key_art": would_add_key_art, "would_add_banner": would_add_banner},
+        {
+            **details,
+            "would_add_key_art": would_add_key_art,
+            "would_add_banner": would_add_banner,
+            "relations_added": relations["added"],
+            "relations_pending": relations["pending"],
+        },
     )
 
 

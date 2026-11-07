@@ -9,8 +9,8 @@ the old id as ``source_ids["atlas.row"]``, and the catalogue is re-keyed in plac
 1. an incoming row whose external id is already stored updates that row;
 2. else a row whose ``atlas.row`` bridge names a stored row re-keys it, and moves its manual
    mark with it (``method="row_id"``);
-3. else a row listing a stored id among its ``aliases`` keeps that stored id (sticky). Plugin
-   API 1.1.19 has no ``aliases`` field, so this step only runs once the host contract carries one;
+3. else a row listing a stored id among its ``aliases`` keeps that stored id (sticky). The
+   ``aliases`` field arrived in Plugin API 1.1.20; an older plugin sends none and skips this step;
 4. before rows that are no longer listed are deleted, a manual mark that matches no catalogue
    row moves to the one incoming row with its name (``method="name"``). Marks that match none,
    or several, are kept as they are.
