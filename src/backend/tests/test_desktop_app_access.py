@@ -11,7 +11,7 @@ from sqlalchemy import delete, select
 
 from src.api.routes.delegation import browser_user
 from src.core.auth import hash_token
-from src.database.models.delegation import IntegrationClient, IntegrationPolicy
+from src.database.models.delegation import DelegationAudit, IntegrationClient, IntegrationPolicy
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal
@@ -73,7 +73,7 @@ async def desktop():
         await db.commit()
 
 
-async def connect(flow, scopes=SYNC, *, approve=None):
+async def connect(flow, scopes=SYNC, *, approve=None, device_id="playnite-1234abcd"):
     verifier = secrets.token_urlsafe(48)
     started = await flow.client.post(
         f"{BASE}/desktop/playnite/requests",
@@ -81,7 +81,7 @@ async def connect(flow, scopes=SYNC, *, approve=None):
             "scopes": scopes,
             "code_challenge": hash_token(verifier),
             "device_name": "Gaming PC",
-            "device_id": "playnite-1234abcd",
+            "device_id": device_id,
         },
     )
     assert started.status_code == 201, started.text
@@ -366,3 +366,51 @@ async def test_content_write_is_listed_as_a_write_capability(desktop):
     summary = (await desktop.client.get(f"{BASE}/requests/{started.json()['request_id']}")).json()
     capability = summary["capabilities"][0]
     assert capability["scope"] == "content.write" and capability["write"] is True
+
+
+async def test_relinking_the_same_device_replaces_its_earlier_connection(desktop):
+    """#460: signing Playnite in again (say after the address changed) must not pile up
+    connections; another device keeps its own."""
+    first = await connect(desktop)
+    laptop = await connect(desktop, device_id="playnite-laptop-5678")
+    assert (await desktop.client.get("/api/game/list", headers=first)).status_code == 200
+
+    again = await connect(desktop)
+
+    assert (await desktop.client.get("/api/game/list", headers=first)).status_code == 401
+    assert (await desktop.client.get("/api/game/list", headers=again)).status_code == 200
+    assert (await desktop.client.get("/api/game/list", headers=laptop)).status_code == 200
+    listed = (await desktop.client.get(f"{BASE}/grants")).json()
+    assert sorted(grant["external_account"]["subject"] for grant in listed) == [
+        "playnite-1234abcd",
+        "playnite-laptop-5678",
+    ]
+    async with SessionLocal() as db:
+        events = (
+            await db.scalars(
+                select(DelegationAudit.event).where(DelegationAudit.user_id == desktop.user.id)
+            )
+        ).all()
+    assert events.count("replaced") == 1
+
+
+async def test_an_approved_relink_that_is_never_collected_keeps_the_old_connection(desktop):
+    """The old credential is replaced only once the device has really received the new one."""
+    first = await connect(desktop)
+    verifier = secrets.token_urlsafe(48)
+    started = await desktop.client.post(
+        f"{BASE}/desktop/playnite/requests",
+        json={
+            "scopes": SYNC,
+            "code_challenge": hash_token(verifier),
+            "device_name": "Gaming PC",
+            "device_id": "playnite-1234abcd",
+        },
+    )
+    request_id = started.json()["request_id"]
+    decided = await desktop.client.post(
+        f"{BASE}/requests/{request_id}/decision",
+        json={"approve": True, "scopes": SYNC, "expires_in_hours": None},
+    )
+    assert decided.status_code == 200
+    assert (await desktop.client.get("/api/game/list", headers=first)).status_code == 200

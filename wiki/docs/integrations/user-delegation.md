@@ -62,6 +62,11 @@ operator-approved web origin. They start with
 `POST /api/delegation/v1/desktop/{app}/requests`, sending `scopes`, `code_challenge`, a
 `device_name` and a stable `device_id`; the device is shown on the consent page and in Connected
 apps as display context, like `external_account`. `GET /instance` lists them in `desktop_apps`.
+Signing in again from the same device replaces that device's earlier connection: once the device
+has collected its new credential, the user's other active grants for the same app and `device_id`
+are revoked and audited as `replaced`, so relinking (for example after the instance address
+changed) does not leave a stale connection behind. Other devices keep their own connections, and
+an approval the device never collects changes nothing.
 
 **Administration → Integration access → Let people connect desktop apps such as Playnite**
 (`allow_desktop_apps`) governs them, on by default because each user could already create a
