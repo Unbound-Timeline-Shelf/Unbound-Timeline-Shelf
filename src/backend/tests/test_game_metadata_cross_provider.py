@@ -10,11 +10,14 @@ library re-import) changes nothing."""
 from __future__ import annotations
 
 from datetime import date
+from unittest.mock import AsyncMock
 
 from sqlalchemy import func, select
 
+from src.api.routes import library_sync
 from src.database.models.game import Game, GameStatus
 from src.database.models.game_identity_tracking import (
+    FieldValueOrigin,
     FieldValueState,
     GameFieldPreference,
     GameFieldValue,
@@ -126,7 +129,8 @@ async def test_four_providers_make_one_record_with_every_field_attributed_to_its
         "tags": ("core.igdb", ["Puzzle"]),
         "age_rating": (RAWG, "PEGI 12"),
         "series": (RAWG, "Portal"),
-        "release_date": (ATLAS, "2011-04-01"),
+        # a month is recorded as the month, so preferring Atlas later restores the precision
+        "release_date": (ATLAS, "2011-04"),
     }
     read = (await client.get(f"/api/game/{game_id}/field-sources")).json()
     assert read["developer"]["provider"] == "core.igdb"
@@ -296,4 +300,270 @@ async def test_a_steam_reimport_after_merge_and_unmerge_reuses_both_games(owner,
     merged = await stored(steam_game)
     assert merged.playtime_seconds == 600
     assert merged.provider_ids["igdb"] == IGDB_ID
+    assert (await stored(other_copy)).playtime_seconds == 60
+
+
+# --- data recorded before per-field sources: every field under "Library" -----------------------
+
+# the fields a four-provider refresh stores, as an install refreshed before #348 holds them
+REFRESHED = {
+    "title": "Portal 2",
+    "description": "A puzzle game from Steam.",
+    "developer": "Valve",
+    "publisher": "Electronic Arts",
+    "tags": ["Puzzle"],
+    "age_rating": "PEGI 12",
+    "series": "Portal",
+    "release_date": date(2011, 4, 1),
+    "release_date_precision": "month",
+    "releases": [
+        MetadataRelease(date="2011-04", precision="month", region="eu").model_dump(mode="json")
+    ],
+}
+
+
+async def legacy_rows(user_id, game_id, values: dict, *, user_fields=()) -> None:
+    """The provenance an older refresh wrote: each value as current, labelled "Library"
+    (the fields in `user_fields` as a person's own edit)."""
+    async with SessionLocal() as db:
+        for field, value in values.items():
+            typed = field in user_fields
+            db.add(
+                GameFieldValue(
+                    user_id=user_id,
+                    game_id=game_id,
+                    field=field,
+                    value=value,
+                    state=FieldValueState.CURRENT.value,
+                    origin=(FieldValueOrigin.USER if typed else FieldValueOrigin.METADATA).value,
+                    source_label=None if typed else "Library",
+                    observed_at=None if typed else 1,
+                    edited_at=1 if typed else None,
+                    recorded_at=1,
+                    locked=False,
+                )
+            )
+        await db.commit()
+
+
+async def provenance_rows(game_id) -> int:
+    async with SessionLocal() as db:
+        return int(
+            await db.scalar(select(func.count()).where(GameFieldValue.game_id == game_id)) or 0
+        )
+
+
+async def test_an_unchanged_value_recorded_under_library_is_relabelled_by_the_next_refresh(
+    owner, providers, client
+):
+    user_id, _ = owner
+    providers(*four_providers())
+    game_id = await add_game(user_id, provider_ids={"steam": STEAM_ID}, **REFRESHED)
+    await legacy_rows(
+        user_id,
+        game_id,
+        {
+            "description": "A puzzle game from Steam.",
+            "developer": "Valve",
+            "publisher": "Electronic Arts",
+            "tags": ["Puzzle"],
+            "age_rating": "PEGI 12",
+            "series": "Portal",
+            "release_date": "2011-04-01",
+        },
+        user_fields=("series",),
+    )
+
+    result = await refresh(client, game_id)
+
+    # nothing changed on the game itself
+    assert result["status"] == "updated"
+    assert result["changed_fields"] == []
+    # but every value a provider supplied now names that provider; the person's own stays theirs
+    assert await current_sources(game_id) == {
+        "description": ("core.steam", "A puzzle game from Steam."),
+        "developer": ("core.igdb", "Valve"),
+        "publisher": ("core.igdb", "Electronic Arts"),
+        "tags": ("core.igdb", ["Puzzle"]),
+        "age_rating": (RAWG, "PEGI 12"),
+        "series": (None, "Portal"),
+        "release_date": (ATLAS, "2011-04"),
+    }
+    async with SessionLocal() as db:
+        superseded = set(
+            await db.scalars(
+                select(GameFieldValue.field).where(
+                    GameFieldValue.game_id == game_id,
+                    GameFieldValue.source_label == "Library",
+                    GameFieldValue.state == FieldValueState.SUPERSEDED.value,
+                )
+            )
+        )
+    assert superseded == {
+        "description",
+        "developer",
+        "publisher",
+        "tags",
+        "age_rating",
+        "release_date",
+    }
+    # the Library entries are no longer offered next to the real providers
+    read = (await client.get(f"/api/game/{game_id}/field-sources")).json()
+    assert read["developer"]["provider"] == "core.igdb"
+    assert "provider:Library" not in {s["source_key"] for s in read["developer"]["sources"]}
+
+    # and the relabelling happens once: a further refresh writes nothing
+    before, count = await current_sources(game_id), await provenance_rows(game_id)
+    await refresh(client, game_id)
+    assert await current_sources(game_id) == before
+    assert await provenance_rows(game_id) == count
+
+
+async def test_a_library_preference_from_before_per_field_sources_still_follows_the_refresh(
+    owner, providers, client
+):
+    user_id, _ = owner
+    providers(*four_providers(igdb={"developer": "Valve Corporation"}))
+    game_id = await add_game(user_id, provider_ids={"steam": STEAM_ID}, **REFRESHED)
+    await legacy_rows(user_id, game_id, {"developer": "Valve"})
+    # "Prefer this source" could only ever name "Library", the refresh's own merged result
+    async with SessionLocal() as db:
+        db.add(
+            GameFieldPreference(
+                user_id=user_id,
+                game_id=game_id,
+                field="developer",
+                source_key="provider:Library",
+                created_at=1,
+            )
+        )
+        await db.commit()
+
+    result = await refresh(client, game_id)
+
+    assert "developer" in result["changed_fields"]
+    assert (await stored(game_id)).developer == "Valve Corporation"
+    assert (await current_sources(game_id))["developer"] == ("core.igdb", "Valve Corporation")
+    read = (await client.get(f"/api/game/{game_id}/field-sources")).json()
+    assert read["developer"]["preferred"] == "provider:Library"
+    assert [s["source_key"] for s in read["developer"]["sources"]] == ["provider:core.igdb"]
+
+
+async def test_preferring_a_providers_month_restores_the_month_not_its_first_day(
+    owner, providers, client
+):
+    user_id, _ = owner
+    providers(*four_providers())
+    game_id = await add_game(user_id, provider_ids={"steam": STEAM_ID})
+    await refresh(client, game_id)
+    # Steam later reports the day, which wins over Atlas's month (C5.2)
+    providers(*four_providers(steam={"release_date": date(2011, 4, 19)}))
+    await refresh(client, game_id)
+    game = await stored(game_id)
+    assert (game.release_date, game.release_date_precision) == (date(2011, 4, 19), None)
+
+    response = await client.put(
+        f"/api/game/{game_id}/field-preferences/release_date",
+        json={"source_key": f"provider:{ATLAS}"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["applied"] is True
+    game = await stored(game_id)
+    # April 2011, never 1 April 2011 (C5.5)
+    assert (game.release_date, game.release_date_precision) == (date(2011, 4, 1), "month")
+    assert (await current_sources(game_id))["release_date"] == (ATLAS, "2011-04")
+    # asking again changes nothing
+    again = await client.put(
+        f"/api/game/{game_id}/field-preferences/release_date",
+        json={"source_key": f"provider:{ATLAS}"},
+    )
+    assert again.json()["applied"] is False
+
+
+class _NamedRawg(StandInProvider):
+    """A community provider whose display name is "RAWG", as two plugins can both be."""
+
+    @property
+    def name(self) -> str:
+        return "RAWG"
+
+
+async def test_two_providers_sharing_a_name_are_recorded_apart(owner, providers, client):
+    user_id, _ = owner
+
+    def rawg(provider_id: str, priority: int, **fields) -> StandInProvider:
+        linked = _linked(provider_id, "rawg", priority, **fields)
+        return _NamedRawg(linked.id, linked.namespace, linked.respond, priority=priority)
+
+    providers(
+        _linked("core.steam", "steam", 0, provider_ids={"steam": STEAM_ID}, title="Portal 2"),
+        rawg("community.one.rawg", 10, developer="Valve"),
+        rawg("community.two.rawg", 20, developer="Someone else", series="Portal"),
+    )
+    game_id = await add_game(user_id, provider_ids={"steam": STEAM_ID})
+
+    await refresh(client, game_id)
+
+    sources = await current_sources(game_id)
+    assert sources["developer"] == ("RAWG (community.one.rawg)", "Valve")
+    assert sources["series"] == ("RAWG (community.two.rawg)", "Portal")
+
+
+# --- a re-import through the real Steam sync after merge and unmerge, both directions --------
+
+
+def steam_library(monkeypatch, *titles: tuple[int, str]) -> None:
+    """The Steam account owns `titles`; the real sync route, row locks and writes run."""
+    monkeypatch.setattr(
+        library_sync.steam_connection, "credentials", AsyncMock(return_value=("7656", "key"))
+    )
+    monkeypatch.setattr(library_sync.steam_connection, "recheck", AsyncMock(return_value=None))
+    owned = [{"appid": appid, "name": name, "playtime_forever": 30} for appid, name in titles]
+    monkeypatch.setattr(library_sync.steam, "get_owned_games", lambda *_: owned)
+
+
+async def sync_steam(client) -> dict:
+    response = await client.post("/api/library-sync/steam", params={"achievements": "later"})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def test_a_steam_sync_reuses_the_steam_copy_whichever_side_of_a_merge_it_is(
+    owner, providers, client, monkeypatch
+):
+    user_id, _ = owner
+    providers(*four_providers())
+    steam_game = await add_game(
+        user_id,
+        title="Portal 2",
+        source="Steam",
+        external_id=STEAM_ID,
+        provider_ids={"steam": STEAM_ID},
+        playtime_seconds=600,
+    )
+    other_copy = await add_game(user_id, title="Portal 2", source="manual", playtime_seconds=60)
+    await refresh(client, steam_game)
+    steam_library(monkeypatch, (int(STEAM_ID), "Portal 2"))
+
+    # the Steam copy is first the merged-away member, then the one the other is merged into
+    for source, target in ((steam_game, other_copy), (other_copy, steam_game)):
+        async with SessionLocal() as db:
+            await decisions.merge_identities(db, user_id, source, target)
+            await db.commit()
+        merged = await sync_steam(client)
+        assert (merged["games_added"], merged["games_updated"]) == (0, 1)
+        assert merged["enrich_game_ids"] == []
+        async with SessionLocal() as db:
+            # not marked separate, so the same pair can be merged the other way next
+            await decisions.unmerge_identity(db, user_id, source, keep_separate=False)
+            await db.commit()
+        apart = await sync_steam(client)
+        assert (apart["games_added"], apart["games_updated"]) == (0, 1)
+        assert await games_of(user_id) == 2
+
+    game = await stored(steam_game)
+    # the sync's playtime reached the Steam copy only; the refreshed ids were kept
+    assert game.playtime_seconds == 30 * 60
+    assert game.provider_ids["igdb"] == IGDB_ID
     assert (await stored(other_copy)).playtime_seconds == 60
