@@ -129,10 +129,15 @@ for games with a single source.
 4. **Implemented (UI).** The Metadata row names the current source of every recorded field
    (`fieldProvenance`). The label beside a field also appears for a locked field (lock icon) and
    for a preference the value does not follow (`preferenceNotInEffect`: the preferred source is not
-   the current one, which is what happens while losing values are not stored). When
-   `PUT field-preferences` answers `applied: false`, the list says the preference was saved but the
-   value shown did not change. The release date shows on the Overview as "Released" with its own
-   label, and More details lists the regional and edition releases at their known precision. No
-   API changed.
+   the current one). Since losing values are kept as candidates (step 2) that means a lock or a
+   hand edit outranks the preference, or the preferred source has not reported a value yet
+   (`preferenceAwaitingValue`: it is not among the field's `sources`). When
+   `PUT field-preferences` answers `applied: false`, the list explains its `outcome`
+   (`unchanged`, `locked`, `awaiting_value`; an older backend without `outcome` gets a generic
+   "did not change"). The list floats over the page (`position: fixed`, placed under the label
+   and kept inside the window, docked to the bottom on a phone) so opening it never moves the
+   hero or a facts grid. The release date shows on the Overview as "Released" with its own
+   label, and More details lists the regional and edition releases at their known precision,
+   without a label: `releases` is not a provenance field. No API changed.
 
 Each step is independently shippable; step 1 alone answers the provenance half of #348.
