@@ -77,6 +77,24 @@ export const MEDAL_LABEL: Record<AchievementTier, string> = {
   platinum: "Platinum",
 };
 
+// A hidden achievement that is still locked is named by its placeholder
+// everywhere, screen-reader labels included, and shows no medal, so nothing
+// spoils it. `hiddenLocked` is the page's isHiddenLocked(a), which also knows
+// whether the person revealed it.
+export function achievementLabel(
+  a: Achievement,
+  hiddenLocked: boolean,
+): string {
+  return hiddenLocked ? "hidden achievement" : a.name;
+}
+
+export function visibleMedal(
+  a: Achievement,
+  hiddenLocked: boolean,
+): AchievementTier | null {
+  return hiddenLocked ? null : (a.tierOverride ?? null);
+}
+
 export function isPlatinum(a: Achievement): boolean {
   return a.tierOverride === "platinum";
 }

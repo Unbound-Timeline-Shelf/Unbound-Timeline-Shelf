@@ -13,6 +13,7 @@ import {
   disagreeingFields,
   fieldProvenance,
   metadataSummary,
+  preferenceAwaitingValue,
   preferenceNotInEffect,
   showsFieldSource,
 } from "../utils/fieldSources";
@@ -20,7 +21,7 @@ import {
 vi.mock("../services/gameFieldSources", async (original) => ({
   ...(await original<typeof import("../services/gameFieldSources")>()),
   fetchFieldSources: vi.fn(),
-  preferFieldSource: vi.fn(async () => ({ applied: true })),
+  preferFieldSource: vi.fn(async () => ({ applied: true, outcome: "applied" })),
   clearFieldSource: vi.fn(async () => {}),
 }));
 vi.mock("../services/gameIdentity", async (original) => ({
@@ -91,10 +92,18 @@ describe("provenance and preference rules", () => {
     expect(preferenceNotInEffect(single({ preferred: "provider:igdb" }))).toBe(
       false,
     );
-    // RAWG lost the merge, so its value is not stored and cannot apply (Phase 5 D2)
+    // RAWG has reported no value for this field yet, so the preference waits
     expect(preferenceNotInEffect(single({ preferred: "provider:rawg" }))).toBe(
       true,
     );
+    expect(
+      preferenceAwaitingValue(single({ preferred: "provider:rawg" })),
+    ).toBe(true);
+    // a listed preferred source is not awaiting a value
+    expect(
+      preferenceAwaitingValue(entry({ preferred: "provider:steam" })),
+    ).toBe(false);
+    expect(preferenceAwaitingValue(single())).toBe(false);
   });
 
   it("shows the label for a lock or an unapplied preference, not for one quiet source", () => {
@@ -182,7 +191,7 @@ describe("the field source label", () => {
     expect(wrapper.text()).toContain("locked");
   });
 
-  it("explains a preferred source the value does not follow", async () => {
+  it("explains a preferred source that has not reported a value yet", async () => {
     const wrapper = mountLabel(
       entry({ sources: [entry().sources[1]], preferred: "provider:rawg" }),
     );
@@ -190,23 +199,46 @@ describe("the field source label", () => {
     expect(chip.classes()).toContain("warn");
     await chip.trigger("click");
     expect(wrapper.get(".source-list").text()).toContain(
-      "You prefer rawg here, but the value shown comes from igdb",
+      "You prefer rawg here, but it has not reported a value for this field yet.",
     );
   });
 
-  it("says when a saved preference did not change the value", async () => {
-    vi.mocked(fields.preferFieldSource).mockResolvedValueOnce({
-      applied: false,
-    });
-    const wrapper = mountLabel(entry());
+  it("names where the value comes from when a listed preferred source is not shown", async () => {
+    const both = entry();
+    const wrapper = mountLabel(entry({ preferred: both.sources[0].sourceKey }));
     await wrapper.get(".source-chip").trigger("click");
-    await wrapper.get(".source-list li button").trigger("click");
-    await flushPromises();
-    expect(wrapper.get("[role=status]").text()).toBe(
-      "Preference saved. The value shown did not change.",
+    expect(wrapper.get(".source-list").text()).toContain(
+      "but the value shown comes from igdb.",
     );
-    expect(wrapper.emitted("changed")).toHaveLength(1);
+    expect(wrapper.get(".source-list").text()).not.toContain("not reported");
   });
+
+  it.each([
+    [null, "Preference saved. The value shown did not change."],
+    ["unchanged", "Preference saved. The value shown already matches it."],
+    [
+      "locked",
+      "Preference saved. This field is locked, so the value shown stays until you unlock it.",
+    ],
+    [
+      "awaiting_value",
+      "Preference saved. steam has not reported a value for this field yet; the next refresh that reports one applies it.",
+    ],
+  ] as const)(
+    "says why a saved preference did not change the value (%s)",
+    async (outcome, message) => {
+      vi.mocked(fields.preferFieldSource).mockResolvedValueOnce({
+        applied: false,
+        outcome,
+      });
+      const wrapper = mountLabel(entry());
+      await wrapper.get(".source-chip").trigger("click");
+      await wrapper.get(".source-list li button").trigger("click");
+      await flushPromises();
+      expect(wrapper.get("[role=status]").text()).toBe(message);
+      expect(wrapper.emitted("changed")).toHaveLength(1);
+    },
+  );
 
   it("closes the list with Escape", async () => {
     const wrapper = mountLabel(entry());
