@@ -12,6 +12,9 @@ export interface LibrarySyncResult {
   // Steam only: wishlist games added, and games whose store details, tags or
   // artwork could not be filled in (they keep what they have)
   wishlist_added?: number;
+  // wishlist games an earlier import left unfinished (still named "Steam app
+  // <id>") that this import tried to finish (#465)
+  wishlist_recovered?: number;
   wishlist_failed?: boolean;
   wishlist_error?: string;
   enrich_failed?: number;
@@ -95,21 +98,33 @@ async function finishSteamImport(result: SteamImportResult): Promise<void> {
     }
   }
   const ids = [...(result.enrich_game_ids ?? [])];
+  let recoverIds: string[] = [];
   try {
-    const wishlist = await postSteamStep<{ added: number; game_ids: string[] }>(
-      "wishlist",
-    );
+    const wishlist = await postSteamStep<{
+      added: number;
+      game_ids: string[];
+      recover_game_ids?: string[];
+    }>("wishlist");
     result.wishlist_added = wishlist.added;
     ids.push(...wishlist.game_ids);
+    recoverIds = (wishlist.recover_game_ids ?? []).filter(
+      (id) => !ids.includes(id),
+    );
+    if (recoverIds.length) result.wishlist_recovered = recoverIds.length;
   } catch (e) {
     result.wishlist_failed = true;
     result.wishlist_error = e instanceof Error ? e.message : undefined;
   }
   const outcome = await enrichSteamGames(ids);
-  result.enrich_failed = outcome.failedIds.length;
-  result.enrich_failed_ids = outcome.failedIds;
-  result.artwork_missing = outcome.artworkMissingIds.length;
-  result.artwork_missing_ids = outcome.artworkMissingIds;
+  // existing records are only filled in, never overwritten (#465)
+  const recovered = await enrichSteamGames(recoverIds, "recover");
+  result.enrich_failed_ids = [...outcome.failedIds, ...recovered.failedIds];
+  result.enrich_failed = result.enrich_failed_ids.length;
+  result.artwork_missing_ids = [
+    ...outcome.artworkMissingIds,
+    ...recovered.artworkMissingIds,
+  ];
+  result.artwork_missing = result.artwork_missing_ids.length;
 }
 
 export interface SteamEnrichOutcome {
@@ -124,13 +139,20 @@ interface EnrichStepResult {
 }
 
 /**
+ * How an enrichment pass treats what a game already has: `full` is the first
+ * pass over a new game; `recover` fills only empty details, a placeholder
+ * title and missing pictures, so it is safe on a record someone has since
+ * edited (#465); `artwork` retries just the missing pictures.
+ */
+export type SteamEnrichMode = "full" | "recover" | "artwork";
+
+/**
  * Read store details and pictures for games a few at a time. A batch that does
  * not come back at all counts every game in it as failed; the rest carry on.
- * `artworkOnly` retries just the pictures and never rewrites saved details.
  */
 export async function enrichSteamGames(
   ids: readonly string[],
-  artworkOnly = false,
+  mode: SteamEnrichMode = "full",
 ): Promise<SteamEnrichOutcome> {
   const outcome: SteamEnrichOutcome = { failedIds: [], artworkMissingIds: [] };
   for (let i = 0; i < ids.length; i += ENRICH_BATCH) {
@@ -138,7 +160,8 @@ export async function enrichSteamGames(
     try {
       const batch = await postSteamStep<EnrichStepResult>("enrich", {
         game_ids: batchIds,
-        ...(artworkOnly ? { artwork_only: true } : {}),
+        ...(mode === "artwork" ? { artwork_only: true } : {}),
+        ...(mode === "recover" ? { recover: true } : {}),
       });
       outcome.failedIds.push(...(batch.failed_game_ids ?? []));
       outcome.artworkMissingIds.push(...(batch.artwork_missing_game_ids ?? []));
