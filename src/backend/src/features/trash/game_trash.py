@@ -389,3 +389,49 @@ async def recover_interrupted_deletes(db: AsyncSession, data_root: Path) -> int:
             await db.rollback()
             logger.warning("Kept trashed folder of game %s for later: %s", game_id, exc)
     return recovered
+
+
+async def trash_games(
+    db: AsyncSession, user_id: UUID, game_ids: list[UUID], data_root: Path
+) -> dict[str, list]:
+    """Move several of one account's games to trash, one at a time (#462).
+
+    Each game goes exactly as a single delete sends it: under its own exclusive row lock, with
+    its storage checked and its folder moved and row committed together, so it is restorable
+    for 7 days and a failure never affects the games already moved. Repeated IDs count once.
+    An ID that is not one of this account's games is reported as not found, without saying
+    whether it exists; a game already in trash is reported as such, so a retry is safe."""
+    deleted: list[str] = []
+    not_found: list[str] = []
+    already_deleted: list[str] = []
+    failed: list[dict[str, str]] = []
+    for game_id in dict.fromkeys(game_ids):
+        try:
+            game = await db.scalar(
+                select(Game)
+                .where(Game.id == game_id, Game.user_id == user_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if game is None or game.deleted_at is not None:
+                (not_found if game is None else already_deleted).append(str(game_id))
+                await db.rollback()
+                continue
+            await finish_storage_operation(
+                asyncio.to_thread(game_folders.ensure_storage_ready, data_root, game)
+            )
+            await trash_game(db, game, data_root)
+            deleted.append(str(game_id))
+        except game_folders.FolderStorageError as exc:
+            await db.rollback()
+            failed.append({"id": str(game_id), "detail": str(exc)})
+        except Exception:  # pylint: disable=broad-exception-caught  # one game never stops the rest
+            await db.rollback()
+            logger.exception("Could not move game %s to trash", game_id)
+            failed.append({"id": str(game_id), "detail": "Could not move this game to trash."})
+    return {
+        "deleted": deleted,
+        "not_found": not_found,
+        "already_deleted": already_deleted,
+        "failed": failed,
+    }

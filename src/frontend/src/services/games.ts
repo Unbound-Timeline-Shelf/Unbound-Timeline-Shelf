@@ -8,7 +8,6 @@ import {
   forgetGame,
   gameCache,
   gameLibraryRevision,
-  invalidateGameLibrary,
   markGameListLoaded,
   rememberFetchedGame,
   rememberGameMutation,
@@ -45,7 +44,7 @@ function toNumberOrNull(value: number | string | null): number | null {
   return value === null ? null : Number(value);
 }
 
-function playCompatibilityPayload(
+export function playCompatibilityPayload(
   value: GamePlayCompatibility | null | undefined,
 ) {
   return value
@@ -1825,72 +1824,6 @@ export async function setStatus(
 // Deliberately narrower than NewGameInput/GameUpdate, title, folder,
 // notes, playtime, purchase info, and ratings are per-game by nature and
 // excluded so a bulk edit can't stamp one game's specifics onto many others.
-export interface BulkEditFields {
-  playCompatibility?: GamePlayCompatibility | null;
-  status?: GameStatus;
-  favorite?: boolean;
-  developer?: string | null;
-  publisher?: string | null;
-  series?: string | null;
-  ageRating?: string | null;
-  platform?: string | null;
-  priority?: string | null;
-  tags?: string[];
-  features?: string[];
-}
-
-export async function bulkUpdateGames(
-  gameIds: string[],
-  fields: BulkEditFields,
-): Promise<number> {
-  const payload: Record<string, unknown> = { game_ids: gameIds };
-  if (fields.playCompatibility !== undefined)
-    payload.play_compatibility = playCompatibilityPayload(
-      fields.playCompatibility,
-    );
-  if (fields.status !== undefined)
-    payload.status = denormalizeStatus(fields.status);
-  if (fields.favorite !== undefined) payload.favorite = fields.favorite;
-  if (fields.developer !== undefined) payload.developer = fields.developer;
-  if (fields.publisher !== undefined) payload.publisher = fields.publisher;
-  if (fields.series !== undefined) payload.series = fields.series;
-  if (fields.ageRating !== undefined) payload.age_rating = fields.ageRating;
-  if (fields.platform !== undefined) payload.platform = fields.platform;
-  if (fields.priority !== undefined) payload.priority = fields.priority;
-  if (fields.tags !== undefined) payload.tags = fields.tags;
-  if (fields.features !== undefined) payload.features = fields.features;
-
-  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
-    let count = 0;
-    for (const game of mockGames) {
-      if (!gameIds.includes(game.id)) continue;
-      if (fields.playCompatibility !== undefined)
-        game.playCompatibility = fields.playCompatibility;
-      if (fields.status !== undefined) game.status = fields.status;
-      if (fields.favorite !== undefined) game.favorite = fields.favorite;
-      if (fields.developer !== undefined) game.developer = fields.developer;
-      if (fields.publisher !== undefined) game.publisher = fields.publisher;
-      if (fields.series !== undefined) game.series = fields.series;
-      if (fields.ageRating !== undefined) game.ageRating = fields.ageRating;
-      if (fields.tags !== undefined) game.tags = fields.tags;
-      if (fields.features !== undefined) game.features = fields.features;
-      count++;
-    }
-    return count;
-  }
-
-  const response = await fetch("/api/game/bulk-update", {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) throw await failedRequest(response);
-  const result: { updated: number } = await response.json();
-  invalidateGameLibrary();
-  return result.updated;
-}
-
 // PATCHes `collections` alone rather than the whole game through updateGame,
 // so adding/removing a collection can't overwrite an edit made elsewhere in
 // the meantime.
