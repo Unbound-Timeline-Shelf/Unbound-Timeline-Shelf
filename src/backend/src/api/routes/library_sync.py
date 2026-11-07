@@ -200,6 +200,9 @@ class EnrichOutcome:
     artwork_download_failed: list[str] = dataclasses.field(default_factory=list)
     # metadata field -> the provider whose value the pass stored (recorded by `record_sources`)
     field_sources: dict[str, str | None] = dataclasses.field(default_factory=dict)
+    # metadata field -> the value that provider reported (the stored tags also keep the
+    # import's source tag, which is the library's own, not the provider's)
+    field_values: dict[str, object] = dataclasses.field(default_factory=dict)
 
 
 async def record_sources(db: AsyncSession, game: Game, outcome: EnrichOutcome | None) -> None:
@@ -211,7 +214,9 @@ async def record_sources(db: AsyncSession, game: Game, outcome: EnrichOutcome | 
         return
     grouped: dict[str | None, dict[str, object]] = {}
     for field, provider in outcome.field_sources.items():
-        grouped.setdefault(provider, {})[field] = getattr(game, field)
+        grouped.setdefault(provider, {})[field] = outcome.field_values.get(
+            field, getattr(game, field)
+        )
     for provider, values in grouped.items():
         await field_provenance.record_field_sources(
             db, game, values, origin=FieldValueOrigin.METADATA, provider=provider
@@ -285,8 +290,13 @@ async def _enrich_new_game(
         if field.startswith("time_to_beat") and not preferences.get("save_time_to_beat", True):
             continue
         value = match.get(field)
-        if value:
-            apply_metadata_updates(game, {field: value})
+        if not value:
+            continue
+        if field == "tags" and isinstance(value, list):
+            # the source tag the import just added (Steam, PlayStation...) stays with them
+            outcome.field_values["tags"] = value
+            value = [*value, *(tag for tag in game.tags or [] if tag not in value)]
+        apply_metadata_updates(game, {field: value})
     if match.get("series"):
         _add_to_series_collection(game, match["series"])
     # a Plugin API 1.1.20 first_release keeps its precision (C5.4), as a refresh stores it
