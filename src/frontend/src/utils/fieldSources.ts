@@ -12,7 +12,6 @@ export const FIELD_LABELS: Record<string, string> = {
   features: "Features",
   publisher: "Publisher",
   release_date: "Release date",
-  releases: "Releases",
   series: "Series",
   tags: "Tags",
 };
@@ -25,9 +24,10 @@ export function sourcesDisagree(entry: FieldSourceEntry | undefined): boolean {
 
 /**
  * A preference that the value shown does not follow: the preferred source is
- * not the one that supplied the current value. The backend only stores the
- * winning value of a merge, so a preferred source that lost has nothing to
- * apply; a lock or a value edited by hand also outranks a preference.
+ * not the one that supplied the current value. A refresh keeps every
+ * provider's value, also one that lost the merge, so this now means a lock or
+ * a value edited by hand outranks the preference, or the preferred source has
+ * not reported a value for the field yet.
  */
 export function preferenceNotInEffect(
   entry: FieldSourceEntry | undefined,
@@ -35,6 +35,14 @@ export function preferenceNotInEffect(
   if (!entry?.preferred) return false;
   const current = entry.sources.find((s) => s.current);
   return current?.sourceKey !== entry.preferred;
+}
+
+/** The preferred source has no value listed for this field yet. */
+export function preferenceAwaitingValue(
+  entry: FieldSourceEntry | undefined,
+): boolean {
+  if (!entry?.preferred) return false;
+  return !entry.sources.some((s) => s.sourceKey === entry.preferred);
 }
 
 /**
