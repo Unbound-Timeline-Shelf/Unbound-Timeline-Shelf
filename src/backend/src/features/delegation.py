@@ -287,6 +287,7 @@ async def exchange_request(db: AsyncSession, request_id: UUID, verifier: str) ->
     grant.token_hash = hash_token(token)
     row.state = "claimed"
     record_audit(db, "exchanged", client_id=row.client_id, user_id=grant.user_id, grant_id=grant.id)
+    await _replace_same_device_grants(db, row, grant)
     await db.commit()
     return {
         "state": "connected",
@@ -295,6 +296,42 @@ async def exchange_request(db: AsyncSession, request_id: UUID, verifier: str) ->
         "expires_at": grant.expires_at,
         "scopes": grant.scopes,
     }
+
+
+async def _replace_same_device_grants(
+    db: AsyncSession, request: DelegationRequest, grant: DelegatedGrant
+) -> None:
+    """A desktop app that signs in again on the same device replaces its earlier connection.
+
+    Relinking Playnite (for example after this instance's address changed) used to leave the
+    old connection listed and usable beside the new one (#460). Once the new credential has
+    actually been handed to the device, every other active grant this user gave the same
+    desktop app for the same `device_id` is revoked, exactly as revoking it by hand would. Other
+    devices, other apps, other users and web integrations are untouched, and the audit records
+    each replacement."""
+    device = (request.external_account or {}).get("subject")
+    client = await db.get(IntegrationClient, request.client_id)
+    if not device or client is None or client.kind != DESKTOP:
+        return
+    earlier = (
+        await db.scalars(
+            select(DelegatedGrant)
+            .join(DelegationRequest, DelegatedGrant.request_id == DelegationRequest.id)
+            .where(
+                DelegatedGrant.user_id == grant.user_id,
+                DelegatedGrant.client_id == grant.client_id,
+                DelegatedGrant.id != grant.id,
+                DelegatedGrant.revoked_at.is_(None),
+                DelegationRequest.external_account["subject"].astext == device,
+            )
+            .with_for_update(of=DelegatedGrant)
+        )
+    ).all()
+    now = int(time.time())
+    for old in earlier:
+        old.revoked_at = now
+        old.token_hash = None
+        record_audit(db, "replaced", client_id=old.client_id, user_id=old.user_id, grant_id=old.id)
 
 
 async def authenticate_grant(db: AsyncSession, token: str) -> tuple[DelegatedGrant, User]:
