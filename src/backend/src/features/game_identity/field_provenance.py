@@ -50,6 +50,20 @@ def stored(value: Any) -> Any:
     return value
 
 
+def stored_field(game: Game, field: str, value: Any) -> Any:
+    """`stored(value)` for `game`'s `field`, where a release date that is the game's own keeps
+    its precision: a year-only date is recorded as ``"2011"`` and a month as ``"2011-04"``, so
+    preferring that source later restores the precision instead of a day (C5.5)."""
+    if (
+        field == "release_date"
+        and isinstance(value, date)
+        and value == game.release_date
+        and game.release_date_precision in ("year", "month")
+    ):
+        return value.isoformat()[: 4 if game.release_date_precision == "year" else 7]
+    return stored(value)
+
+
 def field_values_of(game: Game, fields: Collection[str]) -> Select[tuple[GameFieldValue]]:
     """The recorded values of `fields` for one game (callers narrow by state and origin)."""
     return select(GameFieldValue).where(
@@ -98,7 +112,7 @@ async def record_field_sources(
     }
     stamp = int(time.time())
     for field in sorted(fields):
-        value = stored(values[field])
+        value = stored_field(game, field, values[field])
         existing = current.get(field)
         if (
             existing is not None
@@ -127,6 +141,37 @@ async def record_field_sources(
                 locked=locked,
                 lock_origin="user" if locked else None,
             )
+        )
+
+
+async def relabel_unchanged(
+    db: AsyncSession, game: Game, values: Mapping[str, Any], *, provider: str | None
+) -> None:
+    """Re-attribute fields a refresh left unchanged (field -> the game's value) to `provider`
+    when their current row is a refresh's under another label or value.
+
+    Before per-field sources (#348) a refresh recorded every field under the merged record's
+    lead, "Library"; a value that has not changed since would otherwise keep that label for
+    good. A value the person entered (origin `user`) or one with no row yet is left as it is."""
+    label = (provider or "").strip()[:_LABEL_LENGTH] or None
+    fields = PROVENANCE_FIELDS & values.keys()
+    if label is None or not fields:
+        return
+    rows = await db.scalars(
+        field_values_of(game, fields).where(
+            GameFieldValue.state == FieldValueState.CURRENT.value,
+            GameFieldValue.origin == FieldValueOrigin.METADATA.value,
+        )
+    )
+    stale = {
+        row.field: values[row.field]
+        for row in rows
+        if row.source_label != label
+        or row.value != stored_field(game, row.field, values[row.field])
+    }
+    if stale:
+        await record_field_sources(
+            db, game, stale, origin=FieldValueOrigin.METADATA, provider=label
         )
 
 

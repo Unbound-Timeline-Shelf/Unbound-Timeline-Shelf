@@ -12,7 +12,7 @@ A source is a metadata provider (`provider:<id>`, known from the values a refres
 from __future__ import annotations
 
 import time
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -34,6 +34,11 @@ from src.features.game_identity.field_provenance import PROVENANCE_FIELDS
 PROVIDER_PREFIX = "provider:"
 COPY_PREFIX = "copy:"
 _LABEL_LENGTH = 64
+# Before per-field sources (#348) a refresh recorded every field under the merged record's lead,
+# "Library", so the only provider a person could prefer was this one. It always meant "whatever
+# the refresh merges"; it is kept meaning that, never a lock on an old value.
+LEGACY_MERGED_LABEL = "Library"
+LEGACY_MERGED_SOURCE = f"{PROVIDER_PREFIX}{LEGACY_MERGED_LABEL}"
 
 
 class InvalidPreference(ValueError):
@@ -50,10 +55,16 @@ def is_present(value: Any) -> bool:
     return value is not None and value != "" and value != []
 
 
-def _from_stored(field: str, value: Any) -> Any:
+def _from_stored(field: str, value: Any) -> tuple[Any, str | None]:
+    """A recorded value as the game stores it, with the release date's precision (a year
+    ``"2011"`` or a month ``"2011-04"`` is the first day of that period, C5.4)."""
     if field == "release_date" and isinstance(value, str):
-        return date.fromisoformat(value)
-    return value
+        if len(value) == 4:
+            return date(int(value), 1, 1), "year"
+        if len(value) == 7:
+            return date.fromisoformat(f"{value}-01"), "month"
+        return date.fromisoformat(value), None
+    return value, None
 
 
 async def _copies(db: AsyncSession, game: Game) -> list[Game]:
@@ -117,7 +128,12 @@ async def source_values(
     """Per field, the value each known source reports, with the current one marked."""
     wanted = sorted(PROVENANCE_FIELDS if fields is None else PROVENANCE_FIELDS & set(fields))
     out: dict[str, list[dict[str, Any]]] = {field: [] for field in wanted}
-    for (field, label), value in sorted((await _provider_values(db, game, wanted)).items()):
+    reported = await _provider_values(db, game, wanted)
+    # the legacy merged label is offered only while no real provider has a value for the field
+    named = {field for field, label in reported if label != LEGACY_MERGED_LABEL}
+    for (field, label), value in sorted(reported.items()):
+        if label == LEGACY_MERGED_LABEL and field in named:
+            continue
         if is_present(value):
             out[field].append(
                 {
@@ -140,7 +156,7 @@ async def source_values(
                     }
                 )
     for field, entries in out.items():
-        current = field_provenance.stored(getattr(game, field, None))
+        current = field_provenance.stored_field(game, field, getattr(game, field, None))
         for entry in entries:
             entry["current"] = entry["value"] == current
     return out
@@ -158,7 +174,9 @@ async def _validated_source(db: AsyncSession, game: Game, field: str, source_key
         for copy in await _copies(db, game):
             if copy.id == copy_id:
                 value = getattr(copy, field, None)
-                return field_provenance.stored(value) if is_present(value) else None
+                return (
+                    field_provenance.stored_field(copy, field, value) if is_present(value) else None
+                )
         raise InvalidPreference("That copy is not linked to this game.")
     if source_key.startswith(PROVIDER_PREFIX):
         label = source_key[len(PROVIDER_PREFIX) :]
@@ -193,10 +211,17 @@ async def set_preference(db: AsyncSession, game: Game, field: str, source_key: s
         row.source_key = source_key
     if value is None or field in (game.locked_fields or []):
         return False
-    new_value = _from_stored(field, value)
-    if new_value == getattr(game, field, None):
+    new_value, precision = _from_stored(field, value)
+    if field == "release_date":
+        if (new_value, precision) == (game.release_date, game.release_date_precision):
+            return False
+        game.release_date = new_value
+        # after the date: a changed date resets the precision (see `Game`)
+        game.release_date_precision = precision
+    elif new_value == getattr(game, field, None):
         return False
-    setattr(game, field, new_value)
+    else:
+        setattr(game, field, new_value)
     label = source_key[len(PROVIDER_PREFIX) :] if source_key.startswith(PROVIDER_PREFIX) else None
     await field_provenance.record_field_sources(
         db, game, {field: new_value}, origin=FieldValueOrigin.METADATA, provider=label
@@ -220,17 +245,25 @@ async def clear_preference(db: AsyncSession, game: Game, field: str) -> bool:
 
 
 async def fields_held_by_other_source(
-    db: AsyncSession, game: Game, provider: object, fields: Collection[str]
+    db: AsyncSession,
+    game: Game,
+    provider: object,
+    fields: Collection[str],
+    *,
+    field_providers: Mapping[str, object] | None = None,
 ) -> set[str]:
     """Fields of `fields` a refresh from `provider` must leave alone.
 
     That is each field whose preferred source is a different one that reports a value; a
-    preferred source with no value for the field is ignored so the refresh can fill it."""
+    preferred source with no value for the field is ignored so the refresh can fill it. A
+    merged result names, in `field_providers`, the provider each field's value came from."""
     chosen = {field: key for field, key in (await preferences(db, game)).items() if field in fields}
-    own = provider_key(provider)
     held: set[str] = set()
     for field, key in chosen.items():
-        if key == own:
+        if key in (
+            LEGACY_MERGED_SOURCE,
+            provider_key((field_providers or {}).get(field) or provider),
+        ):
             continue
         try:
             value = await _validated_source(db, game, field, key)

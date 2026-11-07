@@ -80,7 +80,17 @@ for games with a single source.
 1. **Implemented.** Provenance rows are written for the in-scope fields on a metadata refresh
    and on a manual edit (`features/game_identity/field_provenance.py`, migration
    `e5a1c7d93b46`). `GET /api/game/{id}/field-sources` returns, per recorded field, the origin,
-   provider, time and lock. Sync paths (Playnite, store imports) do not write rows yet.
+   provider, time and lock. A refresh merges several providers into one result (each field
+   from the highest-priority provider that has it); every field is recorded under the provider
+   whose value was stored (the handler's `field_providers`), and the release date under the
+   provider of the `first_release` or day it was taken from. The new-game enrichment of a store
+   import (Steam, PlayStation, RetroAchievements) records its fields the same way. Playnite
+   and the other sync paths do not write rows yet. Before per-field sources a refresh recorded
+   every field under the merged result's lead, `Library`; a refresh now also re-attributes a
+   value it leaves unchanged when its current row is a refresh's under another provider (a
+   person's own edit keeps origin `user`). Two providers with the same display name are recorded
+   as `name (id)`. A year or month release date is recorded as `2011` or `2011-04`, so preferring
+   that source restores the precision rather than the first day of the period.
 2. **Implemented.** `game_field_preferences` (migration `b7d2e4f19a38`,
    `features/game_identity/field_preferences.py`). `PUT` and `DELETE`
    `/api/game/{id}/field-preferences/{field}` set and clear a preference (owner only; the field
@@ -91,7 +101,13 @@ for games with a single source.
    the field. `GET /api/game/{id}/field-sources` now also returns `preferred` and, per field,
    `sources`: the value each known source reports with the current one marked. Provider values are
    those a refresh recorded (the newest per provider); a refresh skipped because of a preference
-   does not record its value, so that provider's last applied value is what the list shows.
+   does not record its value, so that provider's last applied value is what the list shows. A
+   value that lost the merge to a higher-priority provider is not recorded either, so a provider
+   appears in the list only once one of its values has been stored. A preference is judged
+   against the provider each field came from, not the result's lead provider. A
+   `provider:Library` preference, the only provider an older refresh could offer, keeps meaning
+   "the refresh's merged value": it never holds a field, and `Library` is no longer listed for a
+   field once a real provider has a recorded value for it.
 3. **Implemented.** `GameFieldSource.vue` shows a compact label beside developer and publisher,
    description, tags, features, series and age rating only when sources disagree; it opens the list
    with "Prefer this source" and "Clear preference". The Sources summary gains a "Metadata" row
