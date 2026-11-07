@@ -213,11 +213,13 @@ the Counters tab in the Advanced dialog, so the two always agree.
 A **Metadata** row names the source of each metadata field (for example
 **Developer IGDB**, **Release date RAWG**). A lock icon marks a locked field, and a
 field whose preferred source is not the one shown is highlighted with
-"*X* preferred, not shown": only the value that won the last refresh is stored, so a
-preferred source that lost has no value to apply. Beside the field itself, the same
-label appears when sources disagree, when the field is locked or when a preference is
-not in effect; selecting it lists each source's value. If you prefer a source and the
-value shown does not change, the list says so.
+"*X* preferred, not shown". That happens when the field is locked or was edited by
+hand, or when the preferred source has not reported a value for it yet; the next
+refresh that reports one applies it. Beside the field itself, the same label appears
+when sources disagree, when the field is locked or when a preference is not in effect;
+selecting it opens a list of each source's value over the page. If you prefer a source
+and the value shown does not change, the list says why: it already matched, the field
+is locked, or the source has no value yet.
 
 ![Where each metadata field comes from](../assets/ui-modernization/game-overview-desktop-light-after.png)
 
