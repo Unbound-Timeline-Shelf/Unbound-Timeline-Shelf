@@ -22,6 +22,8 @@ import {
   unlockedOn,
   KIND_LABEL,
   MEDAL_LABEL,
+  achievementLabel,
+  visibleMedal,
   iconOf,
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
@@ -220,12 +222,6 @@ const {
 // regional and edition releases, oldest first, in the date style the person chose
 const releases = computed(() => releaseRows(game.value?.releases));
 
-// a hidden one that is still locked is named by its placeholder everywhere,
-// screen-reader labels included, so nothing spoils it
-function achievementLabel(achievement: Achievement): string {
-  return isHiddenLocked(achievement) ? "hidden achievement" : achievement.name;
-}
-
 const editingAchievement = ref<Achievement | null>(null);
 function openAchievementEditor(achievement: Achievement) {
   progressError.value = "";
@@ -250,8 +246,10 @@ async function onCopiesChanged() {
   await refreshCopies();
 }
 
-// Where each metadata value came from; a label shows beside a field only when
-// sources disagree. Loading it is best effort: the page works without it.
+// Where each metadata value came from; a label shows beside a field when
+// sources disagree, when the field is locked, or when a preferred source is
+// not the one shown (showsFieldSource). Loading it is best effort: the page
+// works without it.
 const fieldSources = ref<FieldSources>({});
 // a credit name can be the developer, the publisher or both
 function creditFields(name: string): string[] {
@@ -893,15 +891,9 @@ async function onFieldSourceChanged() {
         </div>
 
         <div v-if="releases.length" class="more-block">
-          <h3 class="more-title">
-            Releases
-            <GameFieldSource
-              :game-id="game.id"
-              field="releases"
-              :entry="fieldSources.releases"
-              @changed="onFieldSourceChanged"
-            />
-          </h3>
+          <!-- no source label: the backend records provenance for the first
+               release date (release_date), not for the release list -->
+          <h3 class="more-title">Releases</h3>
           <ul class="release-list">
             <li v-for="release in releases" :key="release.key">
               <span class="release-date">{{ release.date }}</span>
@@ -1234,10 +1226,10 @@ async function onFieldSourceChanged() {
                   >{{ KIND_LABEL[a.kind] }}</span
                 >
                 <span
-                  v-if="a.tierOverride && !isHiddenLocked(a)"
+                  v-if="visibleMedal(a, isHiddenLocked(a))"
                   class="ach-tag ach-medal"
-                  :class="`medal-${a.tierOverride}`"
-                  >{{ MEDAL_LABEL[a.tierOverride] }}</span
+                  :class="`medal-${visibleMedal(a, isHiddenLocked(a))}`"
+                  >{{ MEDAL_LABEL[visibleMedal(a, isHiddenLocked(a))!] }}</span
                 >
                 <span v-if="a.manualOverride" class="ach-tag">Manual</span>
                 <span v-if="a.points && !isHiddenLocked(a)" class="ach-tag"
@@ -1328,7 +1320,7 @@ async function onFieldSourceChanged() {
                 class="ach-btn"
                 :class="{ on: isPinned(a) }"
                 :aria-pressed="isPinned(a)"
-                :aria-label="`${isPinned(a) ? 'Unpin' : 'Pin'} ${achievementLabel(a)}`"
+                :aria-label="`${isPinned(a) ? 'Unpin' : 'Pin'} ${achievementLabel(a, isHiddenLocked(a))}`"
                 @click="togglePin(a)"
               >
                 {{ isPinned(a) ? "Unpin" : "Pin" }}
@@ -1337,7 +1329,7 @@ async function onFieldSourceChanged() {
                 type="button"
                 class="ach-btn"
                 :disabled="progressUpdating.has(a.id)"
-                :aria-label="`Edit ${achievementLabel(a)}`"
+                :aria-label="`Edit ${achievementLabel(a, isHiddenLocked(a))}`"
                 @click="openAchievementEditor(a)"
               >
                 Edit

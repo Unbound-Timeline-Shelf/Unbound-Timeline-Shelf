@@ -1,14 +1,26 @@
 // @vitest-environment happy-dom
 // Game page presentation helpers: release rows at their known precision,
 // the "Released" fact, provider medals and the Plugin Manager status words.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ref } from "vue";
 import { useGameAchievements } from "../composables/useGameAchievements";
 import type { Achievement, Game } from "../types/game";
 import { mapReleaseFields } from "../services/gameApiTypes";
 import type { DateFormatPreferences } from "../utils/dates";
-import { regionName, releaseFacts, releaseRows } from "../utils/releaseDate";
-import { isPlatinum, MEDAL_LABEL } from "../utils/achievements";
+import {
+  platformName,
+  regionName,
+  releaseFacts,
+  releaseRows,
+} from "../utils/releaseDate";
+import {
+  achievementLabel,
+  isPlatinum,
+  MEDAL_LABEL,
+  visibleMedal,
+} from "../utils/achievements";
 import {
   healthTone,
   pluginStatusLabel,
@@ -80,6 +92,20 @@ describe("release rows", () => {
       edition: "Game of the Year Edition",
       category: "Re-release",
     });
+  });
+
+  it("names common platform codes and keeps others readable", () => {
+    expect(platformName("pc")).toBe("PC");
+    expect(platformName("ps4")).toBe("PlayStation 4");
+    expect(platformName("xbox_series")).toBe("Xbox Series X|S");
+    expect(platformName("Xbox-One")).toBe("Xbox One");
+    expect(platformName("nintendo switch")).toBe("Nintendo Switch");
+    expect(platformName("PlayStation 5")).toBe("PlayStation 5");
+    expect(platformName("sega_saturn")).toBe("Sega Saturn");
+    expect(platformName("pc_engine")).toBe("PC Engine");
+    expect(platformName("atari_2600")).toBe("Atari 2600");
+    expect(platformName("  ")).toBeNull();
+    expect(platformName(null)).toBeNull();
   });
 
   it("names a country code and keeps an unknown one readable", () => {
@@ -199,5 +225,60 @@ describe("the achievement summary", () => {
     expect(
       statsFor([ach({ name: "x", tierOverride: "gold" })]).join(),
     ).not.toContain("Platinum");
+  });
+});
+
+describe("a hidden achievement that is still locked", () => {
+  const hidden = (over: Partial<Achievement> = {}): Achievement => ({
+    id: "h1",
+    name: "The Keeper Lives",
+    unlockedAt: null,
+    unlocked: false,
+    hidden: true,
+    tierOverride: "gold",
+    ...over,
+  });
+  const model = (a: Achievement) =>
+    useGameAchievements(
+      ref({ id: "g1", achievements: [a] } as unknown as Game),
+    );
+
+  it("is named by its placeholder and shows no medal", () => {
+    const a = hidden();
+    const m = model(a);
+    expect(achievementLabel(a, m.isHiddenLocked(a))).toBe("hidden achievement");
+    expect(achievementLabel(a, m.isHiddenLocked(a))).not.toContain("Keeper");
+    expect(visibleMedal(a, m.isHiddenLocked(a))).toBeNull();
+  });
+
+  it("shows its name and medal once revealed or unlocked", () => {
+    const a = hidden();
+    const m = model(a);
+    m.revealAchievement(a);
+    expect(achievementLabel(a, m.isHiddenLocked(a))).toBe("The Keeper Lives");
+    expect(visibleMedal(a, m.isHiddenLocked(a))).toBe("gold");
+    const done = hidden({ unlocked: true, unlockedAt: "2026-11-07T10:00:00Z" });
+    expect(achievementLabel(done, model(done).isHiddenLocked(done))).toBe(
+      "The Keeper Lives",
+    );
+    expect(visibleMedal(done, model(done).isHiddenLocked(done))).toBe("gold");
+  });
+
+  it("is what the game page's Pin, Edit and medal use", () => {
+    // GameDetail is too large to mount here; keep its template on the helpers
+    const page = readFileSync(
+      resolve(__dirname, "..", "views/GameDetail.vue"),
+      "utf8",
+    );
+    const labels = page.match(/:aria-label="`[^"]*`"/g) ?? [];
+    const pin = labels.filter((l) => /Unpin|Edit \$/.test(l));
+    expect(pin).toHaveLength(2);
+    for (const label of pin)
+      expect(label).toContain("achievementLabel(a, isHiddenLocked(a))");
+    expect(labels.some((l) => l.includes("a.name"))).toBe(false);
+    expect(page).toMatch(
+      /v-if="visibleMedal\(a, isHiddenLocked\(a\)\)"\s+class="ach-tag ach-medal"/,
+    );
+    expect(page).not.toMatch(/MEDAL_LABEL\[a\.tierOverride\]/);
   });
 });

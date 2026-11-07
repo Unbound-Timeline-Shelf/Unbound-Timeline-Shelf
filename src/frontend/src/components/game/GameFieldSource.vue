@@ -4,16 +4,18 @@
 // preferred source is not the one shown; selecting it lists what each source
 // reports, with the current value marked and a "Prefer this source" action
 // (#348, #349). A lock still wins: the list says so instead of hiding it.
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch, type CSSProperties } from "vue";
 import {
   clearFieldSource,
   preferFieldSource,
   type FieldSourceEntry,
+  type PreferenceResult,
 } from "../../services/gameFieldSources";
 import {
   FIELD_LABELS,
   currentSourceLabel,
   formatSourceValue,
+  preferenceAwaitingValue,
   preferenceNotInEffect,
   showsFieldSource,
   sourceLabelFor,
@@ -27,14 +29,60 @@ const props = defineProps<{
 const emit = defineEmits<{ changed: [] }>();
 
 const open = ref(false);
+const chip = ref<HTMLButtonElement | null>(null);
+// The list floats above the page (position: fixed) so opening it never moves
+// the title, the credits or a facts grid, and the hero's clipping cannot cut
+// it off. It sits under the label, kept inside the window; on a phone the
+// stylesheet docks it to the bottom of the screen instead.
+const listStyle = ref<CSSProperties>({});
+function placeList(): void {
+  const el = chip.value;
+  if (!el || window.matchMedia?.("(max-width: 640px)").matches) {
+    listStyle.value = {};
+    return;
+  }
+  const rect = el.getBoundingClientRect();
+  const width = Math.min(448, window.innerWidth - 32);
+  const left = Math.min(
+    Math.max(16, rect.left),
+    window.innerWidth - width - 16,
+  );
+  const below = window.innerHeight - rect.bottom - 22;
+  const above = rect.top - 22;
+  const flip = below < 200 && above > below;
+  listStyle.value = {
+    left: `${left}px`,
+    width: `${width}px`,
+    maxHeight: `${Math.max(120, Math.min(384, flip ? above : below))}px`,
+    ...(flip
+      ? { bottom: `${window.innerHeight - rect.top + 6}px` }
+      : { top: `${rect.bottom + 6}px` }),
+  };
+}
+watch(open, (isOpen) => {
+  if (isOpen) {
+    placeList();
+    window.addEventListener("scroll", placeList, true);
+    window.addEventListener("resize", placeList);
+  } else {
+    window.removeEventListener("scroll", placeList, true);
+    window.removeEventListener("resize", placeList);
+  }
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("scroll", placeList, true);
+  window.removeEventListener("resize", placeList);
+});
 const busy = ref<string | null>(null);
 const error = ref<string | null>(null);
-// the server saved a preference but kept the value shown (applied: false)
-const notApplied = ref(false);
+// the server saved a preference but kept the value shown (applied: false):
+// what to tell the person, from the PUT's `outcome`
+const notApplied = ref<string | null>(null);
 
 const visible = computed(() => showsFieldSource(props.entry));
 const fieldName = computed(() => FIELD_LABELS[props.field] ?? props.field);
 const ignored = computed(() => preferenceNotInEffect(props.entry));
+const awaiting = computed(() => preferenceAwaitingValue(props.entry));
 const preferredLabel = computed(() =>
   props.entry?.preferred
     ? sourceLabelFor(props.entry, props.entry.preferred)
@@ -47,16 +95,30 @@ const chipTitle = computed(() => {
   return `${fieldName.value}: sources disagree`;
 });
 
+function notAppliedMessage(result: PreferenceResult, label: string): string {
+  if (result.outcome === "unchanged")
+    return "Preference saved. The value shown already matches it.";
+  if (result.outcome === "locked")
+    return "Preference saved. This field is locked, so the value shown stays until you unlock it.";
+  if (result.outcome === "awaiting_value")
+    return `Preference saved. ${label} has not reported a value for this field yet; the next refresh that reports one applies it.`;
+  return "Preference saved. The value shown did not change.";
+}
+
 async function run(
   key: string,
-  action: () => Promise<{ applied: boolean } | void>,
+  action: () => Promise<PreferenceResult | void>,
 ): Promise<void> {
   busy.value = key;
   error.value = null;
-  notApplied.value = false;
+  notApplied.value = null;
   try {
     const result = await action();
-    notApplied.value = !!result && !result.applied;
+    if (result && !result.applied)
+      notApplied.value = notAppliedMessage(
+        result,
+        props.entry ? sourceLabelFor(props.entry, key) : key,
+      );
     emit("changed");
   } catch (cause) {
     error.value =
@@ -80,6 +142,7 @@ const clear = () =>
   >
     <button
       :id="`field-source-${field}`"
+      ref="chip"
       type="button"
       class="source-chip"
       :class="{ locked: entry.locked, warn: ignored && !entry.locked }"
@@ -109,6 +172,7 @@ const clear = () =>
     <div
       v-if="open"
       class="source-list"
+      :style="listStyle"
       role="group"
       :aria-label="`${fieldName} sources`"
     >
@@ -119,11 +183,13 @@ const clear = () =>
         You prefer {{ preferredLabel }} here, but the value shown was edited by
         hand.
       </p>
+      <p v-else-if="ignored && awaiting" class="note">
+        You prefer {{ preferredLabel }} here, but it has not reported a value
+        for this field yet. The next refresh that reports one applies it.
+      </p>
       <p v-else-if="ignored" class="note">
         You prefer {{ preferredLabel }} here, but the value shown comes from
-        {{ currentSourceLabel(entry) }}. Only the value that won the last
-        refresh is stored, so {{ preferredLabel }}'s value is not available to
-        apply.
+        {{ currentSourceLabel(entry) }}.
       </p>
       <ul>
         <li v-for="source in entry.sources" :key="source.sourceKey">
@@ -157,9 +223,7 @@ const clear = () =>
       >
         Clear preference
       </button>
-      <p v-if="notApplied" class="note" role="status">
-        Preference saved. The value shown did not change.
-      </p>
+      <p v-if="notApplied" class="note" role="status">{{ notApplied }}</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </div>
   </span>
@@ -169,6 +233,7 @@ const clear = () =>
 .field-source {
   display: inline-block;
   margin-left: 6px;
+  position: relative;
   vertical-align: middle;
 }
 .source-chip {
@@ -183,6 +248,11 @@ const clear = () =>
   font: inherit;
   font-size: 0.72rem;
   font-weight: 600;
+  line-height: 1.4;
+  /* a label, not a control row: keep it the height of the text it sits in,
+     wherever a page gives buttons a minimum control height */
+  min-height: 0;
+  min-width: 0;
   padding: 1px 8px;
 }
 .source-chip.locked {
@@ -205,22 +275,37 @@ const clear = () =>
   white-space: nowrap;
   width: 1px;
 }
+/* placed by placeList(); on a phone it docks to the bottom of the screen */
 .source-list {
-  background: var(--ui-surface, transparent);
+  background: var(--ui-surface, var(--ui-bg));
   border: 1px solid var(--ui-border);
   border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
   display: grid;
   font-size: 0.85rem;
   gap: 8px;
-  margin-top: 6px;
-  max-width: 28rem;
+  max-height: min(24rem, 70vh);
+  overflow-y: auto;
   padding: 10px 12px;
+  position: fixed;
+  z-index: 60;
   /* inside a section title or the hero credits, keep body text */
   color: var(--ui-text);
   font-weight: 400;
   letter-spacing: normal;
   text-align: left;
   text-transform: none;
+}
+
+@media (max-width: 640px) {
+  .source-list {
+    bottom: 16px;
+    left: 16px;
+    max-height: 60vh;
+    right: 16px;
+    top: auto;
+    width: auto;
+  }
 }
 
 ul {

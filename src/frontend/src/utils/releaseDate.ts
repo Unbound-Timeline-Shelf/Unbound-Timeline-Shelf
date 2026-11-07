@@ -74,6 +74,80 @@ export function regionName(code: string | null | undefined): string | null {
   }
 }
 
+// Release platforms are free text from the providers (C5: up to 128
+// characters), usually a short code such as "pc" or "ps4". The app keeps no
+// platform list of its own, so the common codes are named here and anything
+// else is made readable: separators become spaces, two-letter or numbered
+// words are upper-cased ("pc_engine" is "PC Engine"), the rest capitalised.
+// Text that already has capitals ("PlayStation 5") is shown as sent.
+const PLATFORM_NAMES: Record<string, string> = {
+  pc: "PC",
+  windows: "Windows",
+  win: "Windows",
+  mac: "macOS",
+  macos: "macOS",
+  osx: "macOS",
+  linux: "Linux",
+  ios: "iOS",
+  android: "Android",
+  web: "Web",
+  browser: "Web",
+  stadia: "Stadia",
+  ps1: "PlayStation",
+  psx: "PlayStation",
+  ps2: "PlayStation 2",
+  ps3: "PlayStation 3",
+  ps4: "PlayStation 4",
+  ps5: "PlayStation 5",
+  psp: "PSP",
+  vita: "PS Vita",
+  psvita: "PS Vita",
+  ps_vita: "PS Vita",
+  xbox: "Xbox",
+  xbox360: "Xbox 360",
+  xbox_360: "Xbox 360",
+  xboxone: "Xbox One",
+  xbox_one: "Xbox One",
+  xbox_series: "Xbox Series X|S",
+  xbox_series_x: "Xbox Series X|S",
+  xbox_series_xs: "Xbox Series X|S",
+  xsx: "Xbox Series X|S",
+  switch: "Nintendo Switch",
+  nintendo_switch: "Nintendo Switch",
+  switch2: "Nintendo Switch 2",
+  switch_2: "Nintendo Switch 2",
+  nintendo_switch_2: "Nintendo Switch 2",
+  wii: "Wii",
+  wiiu: "Wii U",
+  wii_u: "Wii U",
+  "3ds": "Nintendo 3DS",
+  n3ds: "Nintendo 3DS",
+  ds: "Nintendo DS",
+  nds: "Nintendo DS",
+  gamecube: "GameCube",
+  gc: "GameCube",
+  n64: "Nintendo 64",
+};
+
+export function platformName(
+  platform: string | null | undefined,
+): string | null {
+  const text = platform?.trim();
+  if (!text) return null;
+  const key = text.toLowerCase().replace(/[\s-]+/g, "_");
+  if (PLATFORM_NAMES[key]) return PLATFORM_NAMES[key];
+  if (/[A-Z]/.test(text)) return text;
+  return text
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((word) =>
+      word.length <= 2 || /\d/.test(word)
+        ? word.toUpperCase()
+        : word[0].toUpperCase() + word.slice(1),
+    )
+    .join(" ");
+}
+
 export interface ReleaseRow {
   key: string;
   date: string;
@@ -101,14 +175,7 @@ export function releaseRows(
         release.date,
       ].join("|"),
       date: formatPartialDate(release.date, release.precision, prefs),
-      where: [
-        release.platform
-          ? release.platform.length <= 4
-            ? release.platform.toUpperCase()
-            : release.platform[0].toUpperCase() + release.platform.slice(1)
-          : null,
-        regionName(release.region),
-      ]
+      where: [platformName(release.platform), regionName(release.region)]
         .filter(Boolean)
         .join(" · "),
       edition: release.edition,

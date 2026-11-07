@@ -233,13 +233,47 @@ export async function fetchUmbrellaOverview(
   ).json();
 }
 
+// The game page mounts several panels that each read a game's sources (the
+// launch button, Related games, Sources) in the same render, and remounts two
+// of them together after a copy changes. Requests for one game started in the
+// same task share one response; a later call always asks the server again, so
+// nothing is served from before a change. Each caller parses its own copy and
+// can still stop waiting with its own signal.
+const sourcesInFlight = new Map<string, Promise<string>>();
+
+function sharedSourcesText(gameId: string): Promise<string> {
+  let pending = sourcesInFlight.get(gameId);
+  if (!pending) {
+    const forget = () => {
+      if (sourcesInFlight.get(gameId) === pending)
+        sourcesInFlight.delete(gameId);
+    };
+    pending = call(`/games/${gameId}/sources`).then((r) => r.text());
+    sourcesInFlight.set(gameId, pending);
+    setTimeout(forget, 0);
+    pending.then(forget, forget);
+  }
+  return pending;
+}
+
 export async function fetchIdentitySources(
   gameId: string,
   signal?: AbortSignal,
 ): Promise<IdentitySources> {
-  return (
-    await call(`/games/${gameId}/sources`, "GET", undefined, signal)
-  ).json();
+  const abortError = () =>
+    signal?.reason ??
+    new DOMException("The request was aborted.", "AbortError");
+  if (signal?.aborted) throw abortError();
+  const text = sharedSourcesText(gameId);
+  if (!signal) return JSON.parse(await text);
+  const aborted = new Promise<never>((_, reject) => {
+    signal.addEventListener("abort", () => reject(abortError()), {
+      once: true,
+    });
+  });
+  // an abort after the response arrived has nobody left to tell
+  aborted.catch(() => undefined);
+  return JSON.parse(await Promise.race([text, aborted]));
 }
 
 export type MainChoice = "target" | "source" | "auto";
