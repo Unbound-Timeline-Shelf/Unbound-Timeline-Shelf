@@ -26,7 +26,7 @@ from src.database.models.user import User
 from src.features.achievement_catalogue import store_catalogue
 from src.main import app  # noqa: F401 — register the complete application model graph
 
-BEFORE = "b7d3a9e14c52"
+BEFORE = "a6c2e9d4b871"
 UNIQUE = "edf13797f129"
 REKEY_LOG = "c558a537a476"
 CONSTRAINT = "uq_achievements_game_provider_external_id"
