@@ -11,6 +11,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from pydantic import TypeAdapter, ValidationError
 
+from src.core.config import settings
 from src.plugin_api.notification_story_contracts import (
     SPOOFING_CHARACTERS,
     ApplicationPath,
@@ -107,8 +108,25 @@ def url_is_safe(value: str) -> bool:
             adapter.validate_python(value)
         except ValidationError:
             continue
-        return not _has_secret_query(value)
+        return not _has_secret_query(value) and not _names_own_api(value)
     return False
+
+
+def _names_own_api(url: str) -> bool:
+    """An absolute link into this app's own API (#398, defence in depth).
+
+    An application path to `/api/...` is already refused; the same address written as
+    `https://<this app>/api/...` must not pass as an "external" link either. Plugin pages under
+    `/api/plugins/.../frontend/` are sandboxed, but a notification has no reason to link there."""
+    own = urlsplit(settings.PUBLIC_APP_URL.strip()).hostname if settings.PUBLIC_APP_URL else None
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return True
+    if not own or not parts.hostname or parts.hostname.lower() != own.lower():
+        return False
+    path = parts.path or "/"
+    return path == "/api" or path.startswith("/api/")
 
 
 def _has_secret_query(url: str) -> bool:
