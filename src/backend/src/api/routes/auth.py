@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -43,18 +43,13 @@ from src.core.env_handler import EnvConfigHandler
 from src.core.metrics import AUTH_ATTEMPTS, AUTH_SESSION_TRANSITIONS
 from src.core.password_work import PasswordWorkBusy, run_password_job
 from src.core.session_manager import create_session
-from src.database.models.admin_user_audit import AdminUserAudit
+from src.database.models.account_storage_cleanup import AccountStorageCleanup
 from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.auth import UserApiKey
 from src.database.models.game import Game
 from src.database.models.user import User
 from src.database.session import get_db
-from src.features.account_storage import (
-    TRASH_FAILURE_ACTION,
-    cleanup_account_storage,
-    failed_trash_labels,
-    storage_present,
-)
+from src.features.account_storage import cleanup_account_storage, storage_present
 from src.features.admin_users import is_primary_user, record_audit
 from src.features.game_ingestion.legacy import PLAYSTATION, record_disconnect
 from src.features.local_auth import local_login_attempt, verify_login_password
@@ -614,19 +609,19 @@ async def update_user_admin_status(
     }
 
 
-async def _pending_trash_ids(db: AsyncSession, user_id: UUID) -> list[UUID]:
+async def _manifest_game_ids(db: AsyncSession, user_id: UUID) -> list[UUID]:
+    """Game ids whose trash folders a deleted account still has to have removed."""
     rows = await db.scalars(
-        select(AdminUserAudit.detail).where(
-            AdminUserAudit.target_id == user_id, AdminUserAudit.action == TRASH_FAILURE_ACTION
-        )
+        select(AccountStorageCleanup.game_id)
+        .where(AccountStorageCleanup.user_id == user_id)
+        .order_by(AccountStorageCleanup.game_id)
     )
-    ids: list[UUID] = []
-    for detail in rows:
-        try:
-            ids.append(UUID(detail))
-        except ValueError:
-            continue
-    return list(dict.fromkeys(ids))
+    return list(rows)
+
+
+async def _finish_manifest(db: AsyncSession, user_id: UUID) -> None:
+    """Drop the manifest once every listed path is gone (staged in the caller's transaction)."""
+    await db.execute(delete(AccountStorageCleanup).where(AccountStorageCleanup.user_id == user_id))
 
 
 async def _commit_audit(db: AsyncSession, user_id: UUID) -> None:
@@ -634,7 +629,7 @@ async def _commit_audit(db: AsyncSession, user_id: UUID) -> None:
         await db.commit()
     except SQLAlchemyError:
         await db.rollback()
-        logger.exception("Could not record the storage audit for account %s", user_id)
+        logger.exception("Could not record the storage audit or manifest for account %s", user_id)
 
 
 @router.delete("/users/{user_id}")
@@ -647,12 +642,14 @@ async def delete_user(
     if user is None:
         # No account has this id, so any files still named for it are leftovers of an
         # interrupted deletion and belong to nobody: finish that cleanup. Trash folders are
-        # named for the (already deleted) games, so their ids come from the audit rows a
-        # failed attempt left behind.
-        trash_ids = await _pending_trash_ids(db, user_id)
-        if await run_in_threadpool(storage_present, user_id, trash_ids):
+        # named for the (already deleted) games, so their ids come from the cleanup manifest
+        # the delete transaction wrote; it stays until a cleanup completes.
+        trash_ids = await _manifest_game_ids(db, user_id)
+        present = await run_in_threadpool(storage_present, user_id, trash_ids)
+        if trash_ids or present:
             leftover = await cleanup_account_storage(user_id, trash_ids)
             if leftover.complete:
+                await _finish_manifest(db, user_id)
                 record_audit(
                     db,
                     admin,
@@ -694,6 +691,9 @@ async def delete_user(
     # a deleted game's folder waits in a trash directory named for the game, not the owner.
     game_ids = list(await db.scalars(select(Game.id).where(Game.user_id == user.id)))
     username = user.username
+    # The manifest commits with the delete, so whatever happens to this process afterwards a
+    # retry can still find every trash folder; it is removed only once the cleanup completes.
+    db.add_all(AccountStorageCleanup(user_id=user_id, game_id=game_id) for game_id in game_ids)
     record_audit(db, admin, "account.delete", target_id=user.id, target_label=username)
     await db.delete(user)
     await db.commit()
@@ -701,6 +701,10 @@ async def delete_user(
     # data. A failure here is recoverable because the cleanup is idempotent (see below).
     cleanup = await cleanup_account_storage(user_id, game_ids)
     if cleanup.complete:
+        if game_ids:
+            await _finish_manifest(db, user_id)
+            # Files are already gone; a manifest left behind only makes a retry a no-op.
+            await _commit_audit(db, user_id)
         return {"status": "deleted", "user_id": str(user_id)}
     record_audit(
         db,
@@ -711,17 +715,6 @@ async def delete_user(
         target_label=username,
         detail="Files could not be removed: " + ", ".join(sorted(cleanup.failed)),
     )
-    # One row per game trash folder so a retry (which has no game rows left) can find them.
-    for game_id in failed_trash_labels(cleanup.failed):
-        record_audit(
-            db,
-            admin,
-            TRASH_FAILURE_ACTION,
-            outcome="failure",
-            target_id=user_id,
-            target_label=username,
-            detail=str(game_id),
-        )
     # The account is already deleted: a failure to record this must not turn into a 500.
     await _commit_audit(db, user_id)
     return {

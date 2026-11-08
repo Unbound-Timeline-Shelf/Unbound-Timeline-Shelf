@@ -11,6 +11,7 @@ from src.database.base import Base
 # Import every model module here so its table gets registered on
 # Base.metadata before autogenerate compares it against the database.
 from src.database.models import (
+    account_storage_cleanup,  # noqa: F401
     achievement,  # noqa: F401
     achievement_override,  # noqa: F401
     achievement_sync_queue,  # noqa: F401
