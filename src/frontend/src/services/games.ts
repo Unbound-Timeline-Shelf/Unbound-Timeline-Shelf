@@ -198,17 +198,40 @@ export function mapBackendGame(raw: BackendGame): Game {
 
 // Bulk list consumers still page through the endpoint to completion. The
 // Games view uses fetchGamesForViewport below so its first paint stays bounded.
-export async function fetchGames(): Promise<Game[]> {
-  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
-    return mockGames;
-  }
-  const started = gameLibraryRevision();
+//
+// One complete read costs about 0.4 s and 1.9 MB (64 KB gzipped) per 1000
+// games in-process, 1.7 s and 9.7 MB for 5000 (#469; measured with
+// tests/measure_full_library_reads.py in the backend). Callers that ask while
+// an identical read is still in flight share it instead of starting another.
+// "Identical" means same account and same library revision: a mutation, an
+// import or an account change since it started gives the next caller a fresh
+// read, so nothing older than an in-flight answer is ever reused, and a
+// failure is not remembered. Finished reads are never reused.
+let inFlightList: { revision: number; read: Promise<Game[]> } | null = null;
+
+async function readAllGames(started: number): Promise<Game[]> {
   const all = await fetchAllGamePages<BackendGame>();
   const games = all.map((raw) =>
     rememberFetchedGame(mapBackendGame(raw), started),
   );
   markGameListLoaded(started);
   return games;
+}
+
+export async function fetchGames(): Promise<Game[]> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    return mockGames;
+  }
+  const started = gameLibraryRevision();
+  let shared = inFlightList;
+  if (shared?.revision !== started) {
+    const read = readAllGames(started).finally(() => {
+      if (inFlightList?.read === read) inFlightList = null;
+    });
+    shared = inFlightList = { revision: started, read };
+  }
+  // Each caller gets its own array, so sorting one result cannot reorder another.
+  return [...(await shared.read)];
 }
 
 export async function fetchGamesForViewport(
