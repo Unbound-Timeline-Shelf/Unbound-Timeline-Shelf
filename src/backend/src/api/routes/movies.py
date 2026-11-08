@@ -1,6 +1,5 @@
 """API routes for managing movies."""
 
-from datetime import date
 from typing import Annotated
 from uuid import UUID
 
@@ -25,6 +24,7 @@ from src.api.schemas.movie import MovieCreate, MovieRead, MovieUpdate
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse
 from src.core.auth import AuthenticatedActor, get_current_actor, get_current_user
 from src.core.titles import derive_sort_title as _derive_sort_title
+from src.core.viewer_day import viewer_today
 from src.database.models.media_extras import ActivityEventType
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.user import User
@@ -221,7 +221,7 @@ async def update_movie(
                 movie.id,
                 movie.title,
                 ActivityEventType.STATUS_CHANGED,
-                date.today(),
+                viewer_today(),
                 detail=change,
             )
 
