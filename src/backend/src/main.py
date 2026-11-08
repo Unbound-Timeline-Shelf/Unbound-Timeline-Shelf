@@ -99,6 +99,7 @@ from src.core.config import settings as app_settings
 from src.core.password_work import PasswordWorkBusy
 from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.core.session_manager import purge_old_sessions
+from src.core.viewer_day import ViewerTimezoneMiddleware
 from src.database.auth_limits import auth_limit_engine
 from src.database.migration_safety import publish_last_recovery_status
 from src.database.session import SessionLocal
@@ -130,6 +131,8 @@ app.add_middleware(
     https_only=app_settings.AUTH_COOKIE_SECURE,
 )
 
+# Innermost: the activity writers record a calendar day in the device's own zone (#473).
+app.add_middleware(ViewerTimezoneMiddleware)
 # The anime list alone is several MB of JSON; it compresses roughly tenfold.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(AuthThrottleMiddleware)
