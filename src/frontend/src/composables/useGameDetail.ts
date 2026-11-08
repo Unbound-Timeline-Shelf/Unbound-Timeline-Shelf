@@ -83,6 +83,7 @@ import {
 } from "../state/taskProgress";
 import type { Achievement, Game, GameStatus } from "../types/game";
 import { computeScore } from "../utils/scoring";
+import { overflows } from "../utils/gameDetailDisplay";
 import DOMPurify from "dompurify";
 import { useConfirm, usePrompt } from "../state/dialog";
 import { matchesShortcut } from "../state/shortcuts";
@@ -146,11 +147,7 @@ export function useGameDetail() {
   });
 
   const descriptionExpanded = ref(false);
-  const descriptionOverflows = computed(
-    () =>
-      (new DOMParser().parseFromString(descriptionHtml.value, "text/html").body
-        .textContent?.length ?? 0) > 320,
-  );
+  const descriptionOverflows = computed(() => overflows(descriptionHtml.value));
 
   // resolved separately from game.value.parentGameId (which is only an id),
   // see loadGame()
