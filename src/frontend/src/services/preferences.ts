@@ -107,6 +107,8 @@ export interface Preferences {
   steam_user_tags: boolean;
   // also add the Steam wishlist, as Wishlist games, when importing from Steam
   steam_import_wishlist: boolean;
+  // the client a game's Play button uses on every device (#319); "" is automatic
+  launch_default_client: "" | "playnite" | "steam" | "gog";
   metadata_automatic_search_enabled: boolean;
   metadata_automatic_search_providers: Record<string, boolean>;
   metadata_providers_enabled: Record<string, boolean>;
@@ -167,6 +169,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   anilist_import_update_existing: false,
   steam_user_tags: true,
   steam_import_wishlist: false,
+  launch_default_client: "",
   metadata_automatic_search_enabled: true,
   metadata_automatic_search_providers: {},
   metadata_providers_enabled: {},

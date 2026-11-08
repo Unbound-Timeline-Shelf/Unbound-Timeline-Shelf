@@ -93,16 +93,20 @@ export function launchTargets(
  * The default action: the client the person used last, else the one this copy was added
  * from, else Playnite (it launches games from every library), then Steam, then GOG.
  * A store page is never the default while something can be launched.
+ * A client chosen for the account (`preferred`, #319) comes before all of these on every
+ * device, whenever this game can be opened with it.
  */
 export function defaultTarget(
   targets: LaunchTarget[],
   game: Pick<LaunchableGame, "source">,
   remembered: string | null,
+  preferred: string | null = null,
 ): LaunchTarget | null {
   const usable = targets.filter((target) => target.action !== "store");
   const pool = usable.length ? usable : targets;
   const source = game.source?.trim().toLowerCase() ?? "";
   return (
+    (preferred ? pool.find((target) => target.id === preferred) : undefined) ??
     pool.find((target) => target.id === remembered) ??
     pool.find((target) => target.id === source) ??
     pool[0] ??
