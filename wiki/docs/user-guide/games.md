@@ -359,6 +359,16 @@ Settings defers achievements, it saves Steam's playtime first and waits for the
 game's achievement batch to choose between Played and Mastered. Optional store plugins
 using the public game-import operation share the host's ownership/playtime policy.
 
+Plugin connections synced with **Sync now** in Settings > Connections, or from
+**Sync / import** on the Games page, run on the server, so leaving the page does
+not stop them. One sync runs at most 25 saved steps. When a plugin still has saved
+work after that, the connection reads "More to sync" and the button becomes
+**Continue sync** (Games: **Continue syncing**), which runs the next 25 steps from
+the plugin's checkpoint. Continuing never turns autosync on; with autosync on, the
+schedule also picks up the rest. A service that is limiting requests is reported as
+such rather than as a failed sync, and a paused task or a removed permission is
+shown instead of a sync button that cannot run.
+
 Provider settings show each source's active library game count and the time of
 its last successful sync. Trashed games are excluded; restoring them returns
 them to the count.
