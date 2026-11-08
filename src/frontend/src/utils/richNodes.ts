@@ -20,6 +20,8 @@ const APP_PATH = /^\/(?!\/)[A-Za-z0-9._~!$&'()*+,;=:@/?-]*$/;
 export function safeHref(value: string | undefined | null): SafeHref | null {
   if (!value || value.length > 2048) return null;
   if (HTTPS_URL.test(value) && !value.includes("@")) {
+    // a link into this app's own API is never an "external" link (#398)
+    if (namesOwnApi(value)) return null;
     return { kind: "external", href: value };
   }
   if (
@@ -30,6 +32,19 @@ export function safeHref(value: string | undefined | null): SafeHref | null {
     return { kind: "route", href: value };
   }
   return null;
+}
+
+function namesOwnApi(value: string): boolean {
+  if (typeof window === "undefined" || !window.location?.host) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.host.toLowerCase() === window.location.host.toLowerCase() &&
+      /^\/api(\/|$)/.test(url.pathname)
+    );
+  } catch {
+    return true;
+  }
 }
 
 export function headingTag(level: number | undefined): string {

@@ -185,6 +185,21 @@ async def test_credential_shaped_text_is_withheld_from_the_device(
         assert (await ask(client, endpoint_id, notice_id))["preview"]["generic"] is True
 
 
+async def test_markdown_body_reaches_the_device_as_plain_text(push_account, push_http, monkeypatch):
+    """#398: the push preview showed raw Markdown source such as `**Now** streaming`."""
+    monkeypatch.setattr(settings, "NOTIFICATION_BROWSER_PREVIEWS", "story")
+    endpoint_id, [notice_id] = await setup(push_account, row("available"))
+    await drain()
+    async with SessionLocal() as db, api(db, push_account) as client:
+        await db.execute(
+            update(Notification).values(body="**Now** streaming on _Friday_\n\n- episode `5`")
+        )
+        await db.commit()
+        shown = (await ask(client, endpoint_id, notice_id))["preview"]
+        assert shown["generic"] is False
+        assert shown["body"] == "Now streaming on Friday - episode 5"
+
+
 async def test_gone_expired_foreign_or_unrouted_items_have_no_preview(push_account, push_http):
     endpoint_id, [notice_id] = await setup(push_account, row("available"))
     await drain()

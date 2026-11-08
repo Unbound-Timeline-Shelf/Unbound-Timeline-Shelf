@@ -253,6 +253,27 @@ it("only follows https or application-path links", () => {
   expect(safeHref("/settings?section=notifications")?.kind).toBe("route");
 });
 
+it("never treats a link into this app's own API as external (#398)", () => {
+  const original = window.location.href;
+  (
+    window as unknown as { happyDOM: { setURL(url: string): void } }
+  ).happyDOM.setURL("https://tracker.example.com/games");
+  try {
+    expect(
+      safeHref("https://tracker.example.com/api/plugins/x/frontend/index.html"),
+    ).toBeNull();
+    expect(safeHref("https://TRACKER.example.com/api")).toBeNull();
+    expect(safeHref("https://tracker.example.com/games/1")?.kind).toBe(
+      "external",
+    );
+    expect(safeHref("https://other.example.com/api/x")?.kind).toBe("external");
+  } finally {
+    (
+      window as unknown as { happyDOM: { setURL(url: string): void } }
+    ).happyDOM.setURL(original);
+  }
+});
+
 it("renders block and inline nodes as text only", () => {
   const wrapper = mount(RichNodes, {
     props: {
