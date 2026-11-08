@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -120,8 +122,41 @@ from src.plugin_api.runtime_client import (
     close_runtime_transport,
 )
 
+# Startup and shutdown work, in the order it is registered below. FastAPI's
+# `on_event` is deprecated (#397); this lifespan runs the same handlers the same
+# way: every startup handler in order, then, when the server stops, every
+# shutdown handler in order. A startup failure stops the server before shutdown
+# runs, exactly as Starlette's on_event lifespan did.
+Handler = Callable[[], Awaitable[None]]
+STARTUP_HANDLERS: list[Handler] = []
+SHUTDOWN_HANDLERS: list[Handler] = []
+
+
+def _on_startup(handler: Handler) -> Handler:
+    STARTUP_HANDLERS.append(handler)
+    return handler
+
+
+def _on_shutdown(handler: Handler) -> Handler:
+    SHUTDOWN_HANDLERS.append(handler)
+    return handler
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    for handler in STARTUP_HANDLERS:
+        await handler()
+    yield
+    for handler in SHUTDOWN_HANDLERS:
+        await handler()
+
+
 app = FastAPI(
-    title="My API", docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json"
+    title="My API",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 app.add_middleware(
     SessionMiddleware,
@@ -162,7 +197,7 @@ async def authentication_retry(request: Request, exc: Exception) -> JSONResponse
     )
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def close_auth_limit_connections() -> None:
     await auth_limit_engine.dispose()
 
@@ -258,7 +293,7 @@ app.include_router(calendar_feed.public_router)
 app.include_router(misc_router)
 
 
-@app.on_event("startup")
+@_on_startup
 async def bootstrap_primary_user() -> None:
     async with SessionLocal() as db:
         if (
@@ -283,22 +318,22 @@ async def bootstrap_primary_user() -> None:
             await core_registration(db, provider_id)
 
 
-@app.on_event("startup")
+@_on_startup
 async def start_image_prefetch() -> None:
     image_prefetch.enable()
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def stop_image_prefetch() -> None:
     await image_prefetch.disable()
 
 
-@app.on_event("startup")
+@_on_startup
 async def start_provider_health_loop() -> None:
     app.state.provider_health_task = asyncio.create_task(provider_health_monitor.run())
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def stop_provider_health_loop() -> None:
     await provider_health_monitor.close()
     task = getattr(app.state, "provider_health_task", None)
@@ -310,7 +345,7 @@ async def stop_provider_health_loop() -> None:
             pass
 
 
-@app.on_event("startup")
+@_on_startup
 async def start_session_retention_loop() -> None:
     async def loop() -> None:
         next_session_cleanup = asyncio.get_running_loop().time() + 24 * 60 * 60
@@ -329,7 +364,7 @@ async def start_session_retention_loop() -> None:
     asyncio.create_task(loop())
 
 
-@app.on_event("startup")
+@_on_startup
 async def start_jobs_loop() -> None:
     # scheduled jobs (see features/jobs.py), including the airing check
 
@@ -366,7 +401,7 @@ reserve_host_routes(
 app.include_router(plugin_host_routes)
 
 
-@app.on_event("startup")
+@_on_startup
 async def start_direct_metrics_listener() -> None:
     if not app_settings.METRICS_ENABLED or not app_settings.METRICS_DIRECT_LISTENER_ENABLED:
         return
@@ -375,7 +410,7 @@ async def start_direct_metrics_listener() -> None:
     app.state.metrics_listener = listener
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def stop_direct_metrics_listener() -> None:
     listener = getattr(app.state, "metrics_listener", None)
     if listener is not None:
@@ -383,7 +418,7 @@ async def stop_direct_metrics_listener() -> None:
         app.state.metrics_listener = None
 
 
-@app.on_event("startup")
+@_on_startup
 async def start_cache_inventory_loop() -> None:
     if not app_settings.METRICS_ENABLED:
         return
@@ -396,7 +431,7 @@ async def start_cache_inventory_loop() -> None:
     app.state.cache_inventory_task = asyncio.create_task(loop())
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def stop_cache_inventory_loop() -> None:
     task = getattr(app.state, "cache_inventory_task", None)
     if task is not None:
@@ -408,7 +443,7 @@ async def stop_cache_inventory_loop() -> None:
         app.state.cache_inventory_task = None
 
 
-@app.on_event("startup")
+@_on_startup
 async def start_notification_backlog_loop() -> None:
     if not app_settings.METRICS_ENABLED:
         return
@@ -423,7 +458,7 @@ async def start_notification_backlog_loop() -> None:
     app.state.notification_backlog_task = asyncio.create_task(loop())
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def stop_notification_backlog_loop() -> None:
     task = getattr(app.state, "notification_backlog_task", None)
     if task is not None:
@@ -435,6 +470,6 @@ async def stop_notification_backlog_loop() -> None:
         app.state.notification_backlog_task = None
 
 
-@app.on_event("shutdown")
+@_on_shutdown
 async def close_plugin_runtime_transport() -> None:
     await close_runtime_transport()
