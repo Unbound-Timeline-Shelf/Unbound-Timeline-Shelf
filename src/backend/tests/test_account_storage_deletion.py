@@ -6,10 +6,11 @@ import os
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.config import settings
+from src.database.models.account_storage_cleanup import AccountStorageCleanup
 from src.database.models.admin_user_audit import AdminUserAudit
 from src.database.models.game import Game
 from src.database.models.user import User
@@ -21,7 +22,7 @@ from tests.test_admin_users import api
 
 
 @pytest.fixture
-def roots(monkeypatch, tmp_path):
+async def roots(monkeypatch, tmp_path):
     """A data root that is not the default /data, with the profile and game roots apart."""
     data = tmp_path / "custom-data"
     profile_root, game_root = data / "user", data / "users"
@@ -29,7 +30,15 @@ def roots(monkeypatch, tmp_path):
     game_root.mkdir()
     monkeypatch.setattr(profile_pictures, "_USER_DATA_ROOT", profile_root)
     monkeypatch.setattr(save_game_asset, "DATA_ROOT", game_root)
-    return profile_root, game_root
+    yield profile_root, game_root
+    async with SessionLocal() as db:
+        # Manifests left by tests that never finish a cleanup; none belongs to a live account.
+        await db.execute(
+            delete(AccountStorageCleanup).where(
+                AccountStorageCleanup.user_id.not_in(select(User.id))
+            )
+        )
+        await db.commit()
 
 
 def _populate(user_id: UUID, profile_root, game_root, game_ids=()) -> dict[str, bytes]:
@@ -60,6 +69,17 @@ async def _add_game(user_id: UUID, title: str) -> UUID:
         db.add(game)
         await db.commit()
     return game.id
+
+
+async def _manifest(user_id: UUID) -> list[UUID]:
+    async with SessionLocal() as db:
+        return list(
+            await db.scalars(
+                select(AccountStorageCleanup.game_id).where(
+                    AccountStorageCleanup.user_id == user_id
+                )
+            )
+        )
 
 
 async def _user_exists(user_id: UUID) -> bool:
@@ -296,6 +316,186 @@ async def test_a_failed_audit_commit_after_the_delete_still_reports_incomplete(
     assert response.status_code == 200
     assert response.json()["storage"] == "incomplete"
     assert not await _user_exists(accounts.target)
+
+
+class _Interrupted(Exception):
+    """Stands in for the process stopping (crash, restart, kill) after the delete committed."""
+
+
+@pytest.mark.asyncio
+async def test_an_interruption_before_cleanup_does_not_lose_the_trashed_game_folders(
+    accounts, roots, monkeypatch
+):
+    """Review on #490: the game ids lived only in memory once the delete committed."""
+    from src.api.routes import auth as auth_routes
+
+    profile_root, game_root = roots
+    trashed = await _add_game(accounts.target, "Trashed Game")
+    mine = _populate(accounts.target, profile_root, game_root, [trashed])
+    trash = game_root / "_trash" / str(trashed)
+
+    async def stop_here(*_args, **_kwargs):
+        raise _Interrupted()
+
+    monkeypatch.setattr(auth_routes, "cleanup_account_storage", stop_here)
+    async with api(accounts.admin, accounts.admin_name) as client:
+        with pytest.raises(_Interrupted):
+            await client.delete(f"/api/auth/users/{accounts.target}")
+    # The delete committed together with the manifest, and no file was touched.
+    assert not await _user_exists(accounts.target)
+    assert await _game_count(accounts.target) == 0
+    assert await _manifest(accounts.target) == [trashed]
+    _assert_untouched(mine)
+
+    monkeypatch.undo()
+    monkeypatch.setattr(profile_pictures, "_USER_DATA_ROOT", profile_root)
+    monkeypatch.setattr(save_game_asset, "DATA_ROOT", game_root)
+    async with api(accounts.admin, accounts.admin_name) as client:
+        retry = await client.delete(f"/api/auth/users/{accounts.target}")
+        assert retry.status_code == 200, retry.text
+        assert retry.json()["status"] == "storage_cleaned"
+        # storage_cleaned must mean it: the trashed game's folder is gone too.
+        assert not trash.exists()
+        assert not any(os.path.lexists(path) for path in mine)
+        assert await _manifest(accounts.target) == []  # kept only until the cleanup completes
+        assert (await client.delete(f"/api/auth/users/{accounts.target}")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_an_interruption_after_only_the_trash_was_left_is_still_retried(
+    accounts, roots, monkeypatch
+):
+    """The account folders are gone, only a trash folder remains, and the failure audit
+    never committed: the retry must still find the folder, not answer 404."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    profile_root, game_root = roots
+    trashed = await _add_game(accounts.target, "Trashed Game")
+    _populate(accounts.target, profile_root, game_root, [trashed])
+    trash = game_root / "_trash" / str(trashed)
+    real_rmtree = account_storage._rmtree
+
+    def deny_trash(path):
+        if path == trash:
+            raise PermissionError("denied")
+        real_rmtree(path)
+
+    real_commit = AsyncSession.commit
+
+    async def stop_before_failure_audit(self):
+        if any(
+            isinstance(o, AdminUserAudit) and o.action.startswith("account.delete.storage")
+            for o in self.new
+        ):
+            raise _Interrupted()
+        return await real_commit(self)
+
+    monkeypatch.setattr(account_storage, "_rmtree", deny_trash)
+    monkeypatch.setattr(AsyncSession, "commit", stop_before_failure_audit)
+    async with api(accounts.admin, accounts.admin_name) as client:
+        with pytest.raises(_Interrupted):
+            await client.delete(f"/api/auth/users/{accounts.target}")
+    assert not await _user_exists(accounts.target)
+    assert not (game_root / str(accounts.target)).exists()
+    assert trash.exists()
+    assert await _manifest(accounts.target) == [trashed]
+
+    monkeypatch.setattr(account_storage, "_rmtree", real_rmtree)
+    monkeypatch.setattr(AsyncSession, "commit", real_commit)
+    async with api(accounts.admin, accounts.admin_name) as client:
+        retry = await client.delete(f"/api/auth/users/{accounts.target}")
+        assert retry.status_code == 200, retry.text
+        assert retry.json()["status"] == "storage_cleaned"
+        assert not trash.exists()
+        assert (await client.delete(f"/api/auth/users/{accounts.target}")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_the_manifest_is_dropped_after_a_complete_cleanup_and_kept_after_a_failed_one(
+    accounts, roots, monkeypatch
+):
+    profile_root, game_root = roots
+    first_game = await _add_game(accounts.target, "First")
+    second_game = await _add_game(accounts.target, "Second")
+    _populate(accounts.target, profile_root, game_root, [first_game, second_game])
+    second_trash = game_root / "_trash" / str(second_game)
+    real_rmtree = account_storage._rmtree
+
+    def deny_second(path):
+        if path == second_trash:
+            raise PermissionError("denied")
+        real_rmtree(path)
+
+    monkeypatch.setattr(account_storage, "_rmtree", deny_second)
+    async with api(accounts.admin, accounts.admin_name) as client:
+        first = await client.delete(f"/api/auth/users/{accounts.target}")
+        assert first.json()["storage"] == "incomplete"
+        assert sorted(await _manifest(accounts.target), key=str) == sorted(
+            [first_game, second_game], key=str
+        )
+        monkeypatch.setattr(account_storage, "_rmtree", real_rmtree)
+        retry = await client.delete(f"/api/auth/users/{accounts.target}")
+        assert retry.json()["status"] == "storage_cleaned"
+    assert not second_trash.exists()
+    assert await _manifest(accounts.target) == []
+
+
+@pytest.mark.asyncio
+async def test_a_clean_delete_leaves_no_manifest(accounts, roots):
+    profile_root, game_root = roots
+    game_id = await _add_game(accounts.target, "Some Game")
+    _populate(accounts.target, profile_root, game_root, [game_id])
+    async with api(accounts.admin, accounts.admin_name) as client:
+        response = await client.delete(f"/api/auth/users/{accounts.target}")
+    assert response.json() == {"status": "deleted", "user_id": str(accounts.target)}
+    assert await _manifest(accounts.target) == []
+
+
+@pytest.mark.asyncio
+async def test_a_retry_with_only_a_manifest_left_finishes_it(accounts, roots):
+    """Stopped after the files went but before the manifest was dropped: the retry is a
+    harmless no-op on disk that clears the manifest."""
+    game_id = uuid4()
+    async with SessionLocal() as db:
+        await db.delete(await db.get(User, accounts.target))
+        db.add(AccountStorageCleanup(user_id=accounts.target, game_id=game_id))
+        await db.commit()
+    async with api(accounts.admin, accounts.admin_name) as client:
+        retry = await client.delete(f"/api/auth/users/{accounts.target}")
+        assert retry.json()["status"] == "storage_cleaned"
+        assert await _manifest(accounts.target) == []
+        assert (await client.delete(f"/api/auth/users/{accounts.target}")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_failed_delete_commit_writes_no_manifest_and_touches_no_file(
+    accounts, roots, monkeypatch
+):
+    """The manifest shares the delete transaction: both commit or neither does."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    profile_root, game_root = roots
+    game_id = await _add_game(accounts.target, "Some Game")
+    mine = _populate(accounts.target, profile_root, game_root, [game_id])
+    real_commit = AsyncSession.commit
+
+    async def fail_delete(self):
+        if any(isinstance(o, AccountStorageCleanup) for o in self.new):
+            raise SQLAlchemyError("database down")
+        return await real_commit(self)
+
+    monkeypatch.setattr(AsyncSession, "commit", fail_delete)
+    async with api(accounts.admin, accounts.admin_name) as client:
+        with pytest.raises(SQLAlchemyError):
+            await client.delete(f"/api/auth/users/{accounts.target}")
+    monkeypatch.setattr(AsyncSession, "commit", real_commit)
+    assert await _user_exists(accounts.target)
+    assert await _game_count(accounts.target) == 1
+    assert await _manifest(accounts.target) == []
+    _assert_untouched(mine)
+    async with SessionLocal() as db:
+        await db.execute(delete(Game).where(Game.user_id == accounts.target))
+        await db.commit()
 
 
 @pytest.mark.asyncio

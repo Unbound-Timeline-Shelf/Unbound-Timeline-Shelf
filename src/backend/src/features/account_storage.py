@@ -9,7 +9,8 @@ An account owns files under two roots, each in a directory named after its id:
 
 Deleted games also leave ``<game root>/_trash/<game id>``. That directory is keyed by
 the game, so the caller passes the ids of the account's games, read before the database
-rows disappear.
+rows disappear and kept in the ``account_storage_cleanup`` manifest (written in the delete
+transaction) until the cleanup has finished.
 
 The roots are the ones the cleanup helpers expose (default /data/user and /data/users); the
 other writers keep equal constants, which a test pins so they cannot drift apart.
@@ -132,24 +133,11 @@ async def cleanup_account_storage(user_id: UUID, game_ids: Iterable[UUID] = ()) 
 def storage_present(user_id: UUID, game_ids: Iterable[UUID] = ()) -> bool:
     """Whether any owned account directory (or listed game trash folder) still exists.
 
-    Used to retry an interrupted cleanup; ``game_ids`` are the trash folders a previous
-    attempt failed to remove.
+    Used to retry an interrupted cleanup; ``game_ids`` come from the account's durable
+    cleanup manifest (``account_storage_cleanup``).
     """
     roots = (profile_pictures.user_data_root(), save_game_asset.DATA_ROOT)
     if any(os.path.lexists(_owned_path(root, user_id)) for root in roots):
         return True
     trash_root = save_game_asset.DATA_ROOT / "_trash"
     return any(os.path.lexists(_owned_path(trash_root, game_id)) for game_id in game_ids)
-
-
-TRASH_FAILURE_ACTION = "account.delete.storage.trash"
-_TRASH_PREFIX = "game-trash:"
-
-
-def failed_trash_labels(failed: Iterable[str]) -> list[UUID]:
-    """Game ids behind the ``game-trash:<uuid>`` entries of a cleanup's failed paths."""
-    ids: list[UUID] = []
-    for label in failed:
-        if label.startswith(_TRASH_PREFIX):
-            ids.append(UUID(label[len(_TRASH_PREFIX) :]))
-    return ids
