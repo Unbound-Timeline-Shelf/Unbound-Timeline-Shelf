@@ -1,7 +1,7 @@
 """one achievement row per (game, provider, external id)
 
 Revision ID: edf13797f129
-Revises: b7d3a9e14c52
+Revises: a6c2e9d4b871
 Create Date: 2026-10-31 20:00:00.000000
 
 """
@@ -15,7 +15,7 @@ from src.database import migration_helpers as h
 
 # revision identifiers, used by Alembic.
 revision: str = "edf13797f129"
-down_revision: Union[str, None] = "b7d3a9e14c52"
+down_revision: Union[str, None] = "a6c2e9d4b871"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
