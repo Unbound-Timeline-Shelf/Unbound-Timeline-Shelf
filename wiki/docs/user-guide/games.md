@@ -114,6 +114,21 @@ full editor discards them. Offered search covers are in the full editor's
 Artwork tab. Opening a game from its own page or a collection still goes
 straight to the full editor.
 
+## Logging play
+
+Under **More details > Log play** on a game's page, **Log play** records that you
+played the game. **+ Log 30 min played** records a play and adds 30 minutes to the
+total. Leave **Played on** empty for today, or pick an earlier date to log a past
+session (a date is kept on that calendar day in your timezone). Each log moves
+**Last played** forward to that time and never back: logging an older session
+after a newer one keeps the newer one.
+
+Correcting the total playtime is different. Editing the total, a store reporting
+a larger lifetime total on its next sync, and changing the status to Playing are
+not plays: they do not change Last played, Continue playing on Home or the
+"games played" count in This week. A retried log (for example after a dropped
+connection) is recorded once.
+
 ## Completion estimates
 
 The full editor's **Play** tab has four estimates in hours: **Main story**,
