@@ -11,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.image_responses import original_image_response
 from src.core.auth import get_current_user
-from src.database.models.anime import Anime
+from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
 from src.database.models.movies import Movie
-from src.database.models.tv_show import TVShow
+from src.database.models.tv_show import TVEpisode, TVSeason, TVShow
 from src.database.models.user import User
 from src.database.session import get_db
 from src.helpers.image_prefetch import MEDIA_ROOT, WIDTHS
@@ -28,6 +28,11 @@ router = APIRouter(
 
 _DATA_ROOT = MEDIA_ROOT
 _MODELS: dict[str, Any] = {"movie": Movie, "tv": TVShow, "anime": Anime}
+_EPISODES: dict[str, tuple[Any, Any, Any]] = {
+    "tv": (TVEpisode, TVSeason, TVShow),
+    "anime": (AnimeEpisode, AnimeSeason, Anime),
+}
+STILL_WIDTH = 640
 
 
 @router.get("/{media_type}/{item_id}/{which}")
@@ -65,6 +70,46 @@ async def get_media_image(
     if not target.is_file():
         try:
             await asyncio.to_thread(fetch_and_store, url, target, WIDTHS[which])
+        except RemoteImageError:
+            return original_image_response(url)
+    return FileResponse(
+        target,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=3600, must-revalidate"},
+    )
+
+
+@router.get("/{media_type}/episodes/{episode_id}/still")
+async def get_episode_still(
+    media_type: Literal["tv", "anime"],
+    episode_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """An episode still from this server's own disk (#398).
+
+    Stills come from metadata providers and plugins and used to be loaded by the browser from
+    whatever address was stored, private hosts included. They now go through the same cache and
+    the same refusal of private addresses as posters."""
+    episode_model, season_model, show_model = _EPISODES[media_type]
+    url = await db.scalar(
+        select(episode_model.still_url)
+        .join(season_model, episode_model.season_id == season_model.id)
+        .join(show_model, season_model.show_id == show_model.id)
+        .where(episode_model.id == episode_id, show_model.user_id == current_user.id)
+    )
+    if not url:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such image.")
+    target = cache_path(
+        _DATA_ROOT / str(current_user.id) / ".cache",
+        f"{media_type}-episode",
+        str(episode_id),
+        "still",
+        url,
+    )
+    if not target.is_file():
+        try:
+            await asyncio.to_thread(fetch_and_store, url, target, STILL_WIDTH)
         except RemoteImageError:
             return original_image_response(url)
     return FileResponse(

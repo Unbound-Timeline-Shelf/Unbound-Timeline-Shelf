@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   pluginExternalDestination,
+  requireSaveActivation,
   requireUserActivation,
   type UiAction,
 } from "./pluginUi";
@@ -59,5 +60,21 @@ describe("a plugin frame asking to leave the app", () => {
   it("gives browsers that cannot tell the benefit of the doubt", () => {
     vi.stubGlobal("navigator", {});
     expect(() => requireUserActivation(action)).not.toThrow();
+  });
+});
+
+describe("a plugin frame asking to save its secrets or settings (#398)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("is refused without a click or key press", () => {
+    vi.stubGlobal("navigator", { userActivation: { isActive: false } });
+    expect(() => requireSaveActivation()).toThrow("after you click");
+  });
+
+  it("is allowed after a gesture, and where the browser cannot tell", () => {
+    vi.stubGlobal("navigator", { userActivation: { isActive: true } });
+    expect(() => requireSaveActivation()).not.toThrow();
+    vi.stubGlobal("navigator", {});
+    expect(() => requireSaveActivation()).not.toThrow();
   });
 });

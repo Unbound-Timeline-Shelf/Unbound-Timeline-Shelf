@@ -1,3 +1,4 @@
+import { episodeStillUrl } from "../utils/episodeStill";
 import {
   createMediaApi,
   handle,
@@ -135,7 +136,7 @@ function mapBackendEpisode(raw: BackendEpisode): AnimeEpisode {
     description: raw.description,
     airDate: raw.air_date,
     runtimeMinutes: raw.runtime_minutes,
-    stillUrl: raw.still_url,
+    stillUrl: episodeStillUrl("anime", raw.id, raw.still_url),
     watched: raw.watched,
     rating: toNumberOrNull(raw.rating),
     note: raw.note ?? null,
