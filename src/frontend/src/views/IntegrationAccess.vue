@@ -21,6 +21,12 @@ const error = ref("");
 const outcome = ref("");
 const instanceOrigin = window.location.origin;
 const desktop = computed(() => access.value?.kind === "desktop");
+// Relinking a desktop app (for example after this instance's address changed)
+// would otherwise leave the device's old connection beside the new one (#460).
+// The device ID is only what the app reports, so replacing is the person's
+// choice here, never automatic.
+const earlier = computed(() => access.value?.same_device_connections ?? []);
+const replaceEarlier = ref(true);
 // Where the person goes back to after deciding.
 const returnTo = computed(() =>
   desktop.value
@@ -43,6 +49,9 @@ async function decide(approve: boolean) {
       approve,
       approve ? selected.value : [],
       hours.value === "until_revoked" ? null : hours.value,
+      approve && replaceEarlier.value
+        ? earlier.value.map((grant) => grant.id)
+        : [],
     );
     outcome.value = result.state;
   } catch (err) {
@@ -157,6 +166,32 @@ onMounted(async () => {
               </option>
             </select>
           </label>
+          <fieldset v-if="earlier.length" class="replace">
+            <legend>Already connected from this device</legend>
+            <p class="sub">
+              {{ access.name }} on this device already has
+              {{
+                earlier.length === 1
+                  ? "a connection"
+                  : `${earlier.length} connections`
+              }}, last approved
+              {{
+                new Date(
+                  earlier[earlier.length - 1].created_at * 1000,
+                ).toLocaleDateString()
+              }}. Signing in again, for example after this instance's address
+              changed, usually replaces it.
+            </p>
+            <label class="capability">
+              <input v-model="replaceEarlier" type="checkbox" />
+              <span
+                >Revoke the earlier
+                {{ earlier.length === 1 ? "connection" : "connections" }} when I
+                approve. Leave this unchecked if another computer reports the
+                same device.</span
+              >
+            </label>
+          </fieldset>
           <p v-if="hours === 'until_revoked'" class="sub">
             Access continues until you revoke it or the instance owner switches
             it off. Review ongoing access in Connected apps.

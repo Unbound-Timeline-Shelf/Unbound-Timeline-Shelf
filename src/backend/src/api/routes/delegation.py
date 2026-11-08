@@ -178,9 +178,9 @@ async def register_client(payload: ClientWrite, db: AsyncSession = _DB) -> dict:
 
 @router.get("/requests/{request_id}")
 async def request_summary(
-    request_id: UUID, _user: User = _BROWSER_USER, db: AsyncSession = _DB
+    request_id: UUID, user: User = _BROWSER_USER, db: AsyncSession = _DB
 ) -> dict:
-    return await delegation.request_summary(db, request_id)
+    return await delegation.request_summary(db, request_id, user)
 
 
 @router.post("/requests/{request_id}/decision")

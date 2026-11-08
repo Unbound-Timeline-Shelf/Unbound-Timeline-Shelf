@@ -200,10 +200,42 @@ async def pending_request(
     return row
 
 
-async def request_summary(db: AsyncSession, request_id: UUID) -> dict:
+async def same_device_grants(
+    db: AsyncSession, user_id: UUID, request: DelegationRequest, *, lock: bool = False
+) -> list[DelegatedGrant]:
+    """The user's active grants to the same desktop app for the device this request reports.
+
+    The reported `device_id` is display context the app chooses, not proof of identity, so two
+    approvals that report it stay separate receivers unless the person chooses otherwise on the
+    consent page (#460)."""
+    device = (request.external_account or {}).get("subject")
+    client = await db.get(IntegrationClient, request.client_id)
+    if not device or client is None or client.kind != DESKTOP:
+        return []
+    now = int(time.time())
+    query = (
+        select(DelegatedGrant)
+        .join(DelegationRequest, DelegatedGrant.request_id == DelegationRequest.id)
+        .where(
+            DelegatedGrant.user_id == user_id,
+            DelegatedGrant.client_id == request.client_id,
+            DelegatedGrant.request_id != request.id,
+            DelegatedGrant.revoked_at.is_(None),
+            or_(DelegatedGrant.expires_at.is_(None), DelegatedGrant.expires_at > now),
+            DelegationRequest.external_account["subject"].astext == device,
+        )
+        .order_by(DelegatedGrant.created_at, DelegatedGrant.id)
+    )
+    if lock:
+        query = query.with_for_update(of=DelegatedGrant)
+    return list((await db.scalars(query)).all())
+
+
+async def request_summary(db: AsyncSession, request_id: UUID, user: User) -> dict:
     row = await pending_request(db, request_id)
     client = await enabled_client(db, row.client_id)
     policy = await integration_policy(db)
+    earlier = await same_device_grants(db, user.id, row) if row.state == "pending" else []
     return {
         "id": str(row.id),
         "name": client.name,
@@ -214,6 +246,17 @@ async def request_summary(db: AsyncSession, request_id: UUID) -> dict:
         "expires_at": row.expires_at,
         "maximum_grant_hours": policy.maximum_grant_hours,
         "external_account": row.external_account,
+        # This person's existing connections from the same device, which the consent page
+        # offers to replace (relinking after the instance address changed, #460).
+        "same_device_connections": [
+            {
+                "id": str(grant.id),
+                "scopes": grant.scopes,
+                "created_at": grant.created_at,
+                "expires_at": grant.expires_at,
+            }
+            for grant in earlier
+        ],
         "capabilities": [
             {
                 "scope": scope,
@@ -253,15 +296,42 @@ async def decide_request(
                 else None
             ),
         )
+        replaced = await _chosen_replacements(db, user, row, payload.replace_grant_ids)
         db.add(grant)
         await db.flush()
         row.state = "approved"
         record_audit(db, "approved", client_id=row.client_id, user_id=user.id, grant_id=grant.id)
+        now = int(time.time())
+        for old in replaced:
+            old.revoked_at = now
+            old.token_hash = None
+            record_audit(db, "replaced", client_id=old.client_id, user_id=user.id, grant_id=old.id)
     else:
         row.state = "denied"
         record_audit(db, "denied", client_id=row.client_id, user_id=user.id)
     await db.commit()
     return {"state": row.state}
+
+
+async def _chosen_replacements(
+    db: AsyncSession, user: User, request: DelegationRequest, chosen: list[UUID]
+) -> list[DelegatedGrant]:
+    """The earlier same-device connections the person chose to replace with this approval.
+
+    Only this person's active grants to the same desktop app for the same reported device can be
+    named; anything else is refused rather than silently ignored, so a stale consent page cannot
+    revoke a connection it never showed."""
+    if not chosen:
+        return []
+    eligible = {
+        grant.id: grant for grant in await same_device_grants(db, user.id, request, lock=True)
+    }
+    wanted = list(dict.fromkeys(chosen))
+    if any(grant_id not in eligible for grant_id in wanted):
+        raise HTTPException(
+            409, "A connection chosen for replacement is no longer active. Reload and try again."
+        )
+    return [eligible[grant_id] for grant_id in wanted]
 
 
 async def exchange_request(db: AsyncSession, request_id: UUID, verifier: str) -> dict:
@@ -287,7 +357,6 @@ async def exchange_request(db: AsyncSession, request_id: UUID, verifier: str) ->
     grant.token_hash = hash_token(token)
     row.state = "claimed"
     record_audit(db, "exchanged", client_id=row.client_id, user_id=grant.user_id, grant_id=grant.id)
-    await _replace_same_device_grants(db, row, grant)
     await db.commit()
     return {
         "state": "connected",
@@ -296,42 +365,6 @@ async def exchange_request(db: AsyncSession, request_id: UUID, verifier: str) ->
         "expires_at": grant.expires_at,
         "scopes": grant.scopes,
     }
-
-
-async def _replace_same_device_grants(
-    db: AsyncSession, request: DelegationRequest, grant: DelegatedGrant
-) -> None:
-    """A desktop app that signs in again on the same device replaces its earlier connection.
-
-    Relinking Playnite (for example after this instance's address changed) used to leave the
-    old connection listed and usable beside the new one (#460). Once the new credential has
-    actually been handed to the device, every other active grant this user gave the same
-    desktop app for the same `device_id` is revoked, exactly as revoking it by hand would. Other
-    devices, other apps, other users and web integrations are untouched, and the audit records
-    each replacement."""
-    device = (request.external_account or {}).get("subject")
-    client = await db.get(IntegrationClient, request.client_id)
-    if not device or client is None or client.kind != DESKTOP:
-        return
-    earlier = (
-        await db.scalars(
-            select(DelegatedGrant)
-            .join(DelegationRequest, DelegatedGrant.request_id == DelegationRequest.id)
-            .where(
-                DelegatedGrant.user_id == grant.user_id,
-                DelegatedGrant.client_id == grant.client_id,
-                DelegatedGrant.id != grant.id,
-                DelegatedGrant.revoked_at.is_(None),
-                DelegationRequest.external_account["subject"].astext == device,
-            )
-            .with_for_update(of=DelegatedGrant)
-        )
-    ).all()
-    now = int(time.time())
-    for old in earlier:
-        old.revoked_at = now
-        old.token_hash = None
-        record_audit(db, "replaced", client_id=old.client_id, user_id=old.user_id, grant_id=old.id)
 
 
 async def authenticate_grant(db: AsyncSession, token: str) -> tuple[DelegatedGrant, User]:
