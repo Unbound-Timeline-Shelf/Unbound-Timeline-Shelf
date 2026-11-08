@@ -731,9 +731,12 @@ example a Steam import on one copy and Playnite on another, once they are merged
 **Open in GOG Galaxy** (opens the game's page in Galaxy; it does not start it) and **Open Steam store
 page**.
 
-The button's default is chosen in this order: the client you used last time on this browser, the
-library the copy was added from (for example a Steam import), then Playnite (it launches games from every
-library), then Steam, then GOG. A store page is the default only when nothing can be launched.
+The button's default is chosen in this order: the client you chose for your account under
+**Settings → Game page → Play button opens games in** (when the game can be opened with it), the
+client you used last time on this browser, the library the copy was added from (for example a Steam
+import), then Playnite (it launches games from every library), then Steam, then GOG. The account
+choice follows you to every browser you sign in to; **Automatic** (the default) skips it. A store
+page is the default only when nothing can be launched.
 
 A wishlisted game is not owned yet, so it only offers its store page, which opens in a new tab.
 

@@ -4,7 +4,9 @@
 // Saved on the server as it is changed.
 import { ref, onMounted } from "vue";
 import PageSettingsEditor from "../PageSettingsEditor.vue";
+import SegmentedControl from "./SegmentedControl.vue";
 import { queuePreferences } from "../../services/preferences";
+import type { Preferences } from "../../services/preferences";
 import {
   preferences as sharedPreferences,
   preferencesLoaded,
@@ -26,6 +28,7 @@ onMounted(async () => {
     await loadSharedPreferences();
     if (preferencesError.value) throw new Error(preferencesError.value);
     settings.value = resolvePage(sharedPreferences.value.game_page, null);
+    launchClient.value = sharedPreferences.value.launch_default_client ?? "";
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to load settings.";
   } finally {
@@ -48,6 +51,36 @@ async function change(next: PageSettings) {
     settings.value = previous;
   }
 }
+
+// The client a game's Play button uses on every device (#319). Automatic keeps the
+// choice made in this browser, then the store the game came from.
+type LaunchClient = Preferences["launch_default_client"];
+const launchClient = ref<LaunchClient>(
+  sharedPreferences.value.launch_default_client ?? "",
+);
+const launchOptions = [
+  { value: "", label: "Automatic" },
+  { value: "playnite", label: "Playnite" },
+  { value: "steam", label: "Steam" },
+  { value: "gog", label: "GOG Galaxy" },
+];
+async function changeLaunchClient(next: LaunchClient) {
+  const previous = launchClient.value;
+  launchClient.value = next;
+  error.value = null;
+  try {
+    const { prefs, latest } = await queuePreferences({
+      launch_default_client: next,
+    });
+    if (latest) {
+      launchClient.value = prefs.launch_default_client ?? "";
+      sharedPreferences.value = prefs;
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Failed to save.";
+    launchClient.value = previous;
+  }
+}
 </script>
 
 <template>
@@ -65,6 +98,21 @@ async function change(next: PageSettings) {
       :model-value="settings"
       @update:model-value="change($event as PageSettings)"
     />
+    <div v-if="loaded" class="field launch-default">
+      <span id="launch-default-label">Play button opens games in</span>
+      <SegmentedControl
+        aria-labelledby="launch-default-label"
+        :model-value="launchClient"
+        :options="launchOptions"
+        @update:model-value="changeLaunchClient($event as LaunchClient)"
+      />
+      <small
+        >Used in every browser you sign in to, whenever the game can be opened
+        there. Automatic uses the app you last picked in this browser, then the
+        store the game came from. The other options stay in the Play
+        menu.</small
+      >
+    </div>
   </section>
 </template>
 
@@ -81,6 +129,17 @@ async function change(next: PageSettings) {
   font-size: 0.82rem;
   line-height: 1.6;
   margin: 0 0 20px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 20px 0 0;
+  font-size: 0.82rem;
+  color: var(--ui-text);
+}
+.field small {
+  color: var(--ui-faint);
 }
 .error {
   color: var(--ui-error);
