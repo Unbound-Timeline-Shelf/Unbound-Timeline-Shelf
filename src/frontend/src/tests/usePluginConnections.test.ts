@@ -4,7 +4,12 @@ import {
   SYNC_POLL_MS,
   usePluginConnections,
 } from "../composables/usePluginConnections";
-import { pluginConnectionKey } from "../services/pluginConnections";
+import {
+  canContinueSync,
+  pluginConnectionKey,
+  syncOutcome,
+  syncOutcomeText,
+} from "../services/pluginConnections";
 import type {
   PluginConnectionState,
   PluginConnectionSync,
@@ -247,5 +252,102 @@ describe("usePluginConnections", () => {
     await done;
     expect(tasks[0].status).toBe("error");
     expect(tasks[0].detail).toContain("Lost contact");
+  });
+
+  it("reports a step-bound run as incomplete, then continues it on request (#466)", async () => {
+    const incomplete = sync({
+      status: "partial",
+      outcome: "incomplete",
+      can_continue: true,
+      step_limit_reached: true,
+      last_summary: "40 of 90 games saved",
+    });
+    const fetch = stubReplies([
+      reply({ connections: [connection()] }),
+      reply({ sync: sync({ running: true }) }),
+      reply({ connections: [connection(incomplete)] }),
+      reply({ sync: sync({ running: true }) }),
+      reply({
+        connections: [
+          connection(
+            sync({
+              status: "completed",
+              outcome: "completed",
+              last_summary: "90 games saved",
+            }),
+          ),
+        ],
+      }),
+    ]);
+    const { state } = setup();
+    await state.load();
+    const first = state.sync(KEY, "Epic Games");
+    await vi.advanceTimersByTimeAsync(SYNC_POLL_MS);
+    await first;
+    expect(tasks[0]).toMatchObject({ status: "done" });
+    expect(tasks[0].detail).toContain("40 of 90 games saved");
+    expect(tasks[0].detail).toContain("step limit");
+    expect(tasks[0].detail).toContain("Continue");
+
+    const second = state.sync(KEY, "Epic Games");
+    await vi.advanceTimersByTimeAsync(SYNC_POLL_MS);
+    await second;
+    const posts = (fetch.mock.calls as unknown as [string, RequestInit?][])
+      .filter(([, init]) => init?.method === "POST")
+      .map(([url]) => url);
+    // continuing is the same server-run sync; nothing turns autosync on
+    expect(posts).toEqual([
+      "/api/connections/plugins/official.epic-games/epic-games/sync",
+      "/api/connections/plugins/official.epic-games/epic-games/sync",
+    ]);
+    expect(tasks.at(-1)).toMatchObject({
+      status: "done",
+      detail: "90 games saved",
+    });
+  });
+
+  it("says a rate limit is a rate limit, not a broken plugin", async () => {
+    stubReplies([
+      reply({ connections: [connection()] }),
+      reply({ sync: sync({ running: true }) }),
+      reply({
+        connections: [
+          connection(
+            sync({
+              status: "failed",
+              outcome: "rate_limited",
+              last_summary: "Epic is busy.",
+            }),
+          ),
+        ],
+      }),
+    ]);
+    const { state } = setup();
+    await state.load();
+    const done = state.sync(KEY, "Epic Games");
+    await vi.advanceTimersByTimeAsync(SYNC_POLL_MS);
+    await done;
+    expect(tasks[0].status).toBe("error");
+    expect(tasks[0].detail).toContain("Epic is busy.");
+    expect(tasks[0].detail).toContain("limiting requests");
+  });
+});
+
+describe("sync outcomes from an older host", () => {
+  it("are worked out from the status when the host sends none", () => {
+    expect(syncOutcome(sync({ status: "partial" }))).toBe("incomplete");
+    expect(canContinueSync(sync({ status: "partial" }))).toBe(true);
+    expect(canContinueSync(sync({ status: "partial", paused: true }))).toBe(
+      false,
+    );
+    expect(syncOutcome(sync({ available: false }))).toBe("disconnected");
+    expect(syncOutcome(sync({ status: "completed", last_run_at: 5 }))).toBe(
+      "completed",
+    );
+    expect(syncOutcome(sync())).toBe("never");
+    expect(syncOutcomeText(sync({ status: "completed" }))).toBeNull();
+    expect(
+      syncOutcomeText(sync({ available: false, unavailable_reason: "Gone" })),
+    ).toBe("Gone");
   });
 });

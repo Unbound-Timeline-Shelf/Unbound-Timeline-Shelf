@@ -4,6 +4,8 @@ import {
   fetchPluginConnections,
   pluginConnectionKey,
   startPluginConnectionSync,
+  syncOutcome,
+  syncOutcomeText,
 } from "../services/pluginConnections";
 import type { PluginConnectionState } from "../services/pluginConnections";
 import { completeTask, errorTask, startTask } from "../state/taskProgress";
@@ -98,7 +100,19 @@ export function usePluginConnections() {
           "Lost contact with the server. The sync keeps running; reload to check on it.",
         );
       } else if (FAILED.has(sync.status)) {
-        errorTask(taskId, sync.last_summary || "Sync failed");
+        const outcome = syncOutcome(sync);
+        errorTask(
+          taskId,
+          outcome === "rate_limited"
+            ? `${sync.last_summary || "Rate limited."} ${syncOutcomeText(sync)}`
+            : sync.last_summary || "Sync failed",
+        );
+      } else if (syncOutcome(sync) === "incomplete") {
+        // saved work remains; the person continues on purpose (autosync is not turned on)
+        completeTask(
+          taskId,
+          `${sync.last_summary ? `${sync.last_summary} ` : ""}${syncOutcomeText(sync)}`,
+        );
       } else {
         completeTask(taskId, sync.last_summary || "Sync complete");
       }
