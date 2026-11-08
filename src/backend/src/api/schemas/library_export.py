@@ -21,5 +21,8 @@ class LibraryExport(BaseModel):
     # the user's own achievements and completion choices (#97); absent in older exports
     manual_achievements: list[dict[str, Any]] = []
     manual_completion: list[dict[str, Any]] = []
+    # explicit "Log play" events (#467); absent in older exports. Import keeps each game's own
+    # last_played_at and does not replay these.
+    play_events: list[dict[str, Any]] = []
     # private tag labels, aliases and suppressed defaults (#267); absent in older exports
     tag_catalogue: dict[str, Any] | None = None

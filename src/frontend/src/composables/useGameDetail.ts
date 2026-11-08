@@ -1,4 +1,5 @@
 import { useGameChecklist } from "./useGameChecklist";
+import { useGamePlayLog } from "./useGamePlayLog";
 import { releaseFacts } from "../utils/releaseDate";
 import { usePageTitle } from "../state/pageTitle";
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from "vue";
@@ -13,7 +14,6 @@ import {
   setRatings,
   setStatus,
   setResumeNote,
-  setPlaytimeSeconds,
 } from "../services/games";
 import type { FieldChange, GameRatings } from "../services/games";
 import { peekAdjacentGameId } from "../state/libraryNav";
@@ -468,28 +468,14 @@ export function useGameDetail() {
     }
   }
 
-  // --- quick playtime logging --------------------------------------------
-  const loggingPlaytime = ref(false);
-  async function logPlaytime(minutes: number) {
-    if (!game.value || loggingPlaytime.value) return;
-    loggingPlaytime.value = true;
-    try {
-      const currentSeconds = game.value.platforms.reduce(
-        (sum, p) => sum + p.playtimeMinutes * 60,
-        0,
-      );
-      const updated = await setPlaytimeSeconds(
-        game.value.id,
-        currentSeconds + minutes * 60,
-      );
-      game.value.platforms = updated.platforms;
-      game.value.lastPlayedAt = updated.lastPlayedAt;
-    } catch {
-      // the button just doesn't reflect the change, not worth a whole error banner for this
-    } finally {
-      loggingPlaytime.value = false;
-    }
-  }
+  const {
+    loggingPlaytime,
+    playLogMessage,
+    playLogError,
+    playedOn,
+    logPlaytime,
+    logPlayNow,
+  } = useGamePlayLog(game);
 
   // --- similar games in the library, by shared tags -----------------------
   // fetched once per page visit (not per-game), cheap enough at this
@@ -1880,6 +1866,10 @@ export function useGameDetail() {
     saveResumeNote,
     loggingPlaytime,
     logPlaytime,
+    logPlayNow,
+    playLogMessage,
+    playLogError,
+    playedOn,
     similarGames,
     toggleFavorite,
     STATUS_OPTIONS,

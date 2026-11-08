@@ -1396,3 +1396,33 @@
   text-transform: none;
   letter-spacing: normal;
 }
+
+/* Log play (#467): logging activity sits apart from correcting the total */
+.play-log {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+.play-log-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ui-font-small);
+  color: var(--ui-dim);
+}
+.play-log-date input {
+  min-height: 32px;
+  max-width: 100%;
+}
+.play-log-hint,
+.play-log-error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--ui-font-small);
+  color: var(--ui-dim);
+}
+.play-log-error {
+  color: var(--ui-danger, var(--ui-text));
+}
