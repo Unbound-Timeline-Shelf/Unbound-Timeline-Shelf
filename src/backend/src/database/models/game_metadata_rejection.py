@@ -11,7 +11,7 @@ from sqlalchemy import BigInteger, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.database.base import Base, unix_timestamp
+from src.database.base import Base, owner_user_id_column, unix_timestamp
 
 
 class GameMetadataRejection(Base):
@@ -23,12 +23,7 @@ class GameMetadataRejection(Base):
     )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    user_id: Mapped[UUID] = owner_user_id_column()
     game_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("games.id", ondelete="CASCADE"), nullable=False
     )

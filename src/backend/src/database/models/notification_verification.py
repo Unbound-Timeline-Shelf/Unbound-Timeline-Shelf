@@ -6,7 +6,7 @@ from sqlalchemy import BigInteger, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.database.base import Base, unix_timestamp
+from src.database.base import Base, owner_user_id_column, unix_timestamp
 
 
 class NotificationVerification(Base):
@@ -19,12 +19,7 @@ class NotificationVerification(Base):
         nullable=False,
         index=True,
     )
-    user_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    user_id: Mapped[UUID] = owner_user_id_column()
     destination_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     notification_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
