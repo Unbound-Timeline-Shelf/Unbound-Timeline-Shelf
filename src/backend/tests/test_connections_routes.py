@@ -10,6 +10,7 @@ from sqlalchemy import delete
 from starlette.requests import Request
 
 from src.api.routes import connections as routes
+from src.api.routes import jobs as job_routes
 from src.api.routes.plugin_manager import runtime
 from src.database.models.job_setting import JobSetting
 from src.database.models.plugin_permissions import PluginPermissionGrant
@@ -174,6 +175,11 @@ async def test_status_and_sync_state_are_resolved_by_the_host(library):
                 "status": "idle",
                 "last_run_at": None,
                 "last_summary": "",
+                "outcome": "never",
+                "can_continue": False,
+                "step_limit_reached": False,
+                "autosync_enabled": False,
+                "next_run_at": None,
             },
         }
     ]
@@ -237,6 +243,7 @@ async def test_a_rate_limit_stops_the_run_and_is_reported(library):
     transport.run_scheduled_task.assert_awaited_once()
     sync = (await _load(user_id))["connections"][0]["sync"]
     assert sync["status"] == "failed" and sync["last_summary"].startswith("Epic is rate")
+    assert sync["outcome"] == "rate_limited" and sync["can_continue"] is False
 
 
 @pytest.mark.asyncio
@@ -250,6 +257,100 @@ async def test_sync_is_bounded_to_a_fixed_number_of_checkpoints(library):
     await _start(user_id)
     await asyncio.gather(*list(plugin_jobs._running.values()))
     assert transport.run_scheduled_task.await_count == plugin_jobs.MAX_SYNC_STEPS
+    sync = (await _load(user_id))["connections"][0]["sync"]
+    assert sync["outcome"] == "incomplete" and sync["step_limit_reached"] is True
+
+
+async def _run_to_the_bound_then_continue(library, autosync: bool):
+    """A run that needs more than the step bound stops visibly incomplete, and a deliberate
+    continuation finishes it from the plugin's checkpoint without turning autosync on (#466)."""
+    _, transport, installation_id, user_id = library
+    job_id = plugin_jobs.task_job_id(installation_id, "autosync", user_id)
+    if autosync:
+        async with SessionLocal() as db:
+            user = await db.get(User, user_id)
+            await job_routes.update_user_job(job_id, job_routes.JobUpdate(enabled=True), db, user)
+    more = {"completed": False, "summary": "40 of 90 games saved", "continue_after_seconds": 60}
+    transport.run_scheduled_task.side_effect = [more] * plugin_jobs.MAX_SYNC_STEPS + [
+        {"completed": True, "summary": "90 games saved"}
+    ]
+    await _start(user_id)
+    await asyncio.gather(*list(plugin_jobs._running.values()))
+    sync = (await _load(user_id))["connections"][0]["sync"]
+    assert sync["outcome"] == "incomplete" and sync["status"] == "partial"
+    assert sync["can_continue"] is True and sync["step_limit_reached"] is True
+    assert sync["last_summary"] == "40 of 90 games saved"
+    assert sync["autosync_enabled"] is autosync
+    # with autosync on the schedule resumes soon; with it off nothing is scheduled
+    assert (sync["next_run_at"] is not None) is autosync
+
+    # a second start while the first is still running is the same run, not a duplicate
+    first = await _start(user_id)
+    second = await _start(user_id)
+    assert first["sync"]["running"] and second["sync"]["running"]
+    assert len(plugin_jobs._running) == 1
+    await asyncio.gather(*list(plugin_jobs._running.values()))
+    assert transport.run_scheduled_task.await_count == plugin_jobs.MAX_SYNC_STEPS + 1
+    calls = transport.run_scheduled_task.await_args_list
+    assert all(call.args[3] == "manual" for call in calls)
+    sync = (await _load(user_id))["connections"][0]["sync"]
+    assert sync["outcome"] == "completed" and sync["can_continue"] is False
+    assert sync["step_limit_reached"] is False and sync["autosync_enabled"] is autosync
+
+
+@pytest.mark.asyncio
+async def test_a_bounded_run_is_incomplete_and_can_be_continued_with_autosync_off(library):
+    await _run_to_the_bound_then_continue(library, autosync=False)
+
+
+@pytest.mark.asyncio
+async def test_a_bounded_run_is_incomplete_and_can_be_continued_with_autosync_on(library):
+    await _run_to_the_bound_then_continue(library, autosync=True)
+
+
+@pytest.mark.asyncio
+async def test_paused_and_disconnected_outcomes(library):
+    _, transport, installation_id, user_id = library
+    job_id = plugin_jobs.task_job_id(installation_id, "autosync", user_id)
+    async with SessionLocal() as db:
+        user = await db.get(User, user_id)
+        await job_routes.control_user_job(job_id, "pause", db, user)
+    sync = (await _load(user_id))["connections"][0]["sync"]
+    assert sync["outcome"] == "paused" and sync["can_continue"] is False
+    with pytest.raises(HTTPException) as paused:
+        await _start(user_id)
+    assert paused.value.status_code == 409
+    async with SessionLocal() as db:
+        user = await db.get(User, user_id)
+        await job_routes.control_user_job(job_id, "resume", db, user)
+        await db.execute(
+            delete(PluginPermissionGrant).where(
+                PluginPermissionGrant.user_id == user_id,
+                PluginPermissionGrant.capability == "tasks.background",
+            )
+        )
+        await db.commit()
+    sync = (await _load(user_id))["connections"][0]["sync"]
+    assert sync["outcome"] == "disconnected" and sync["can_continue"] is False
+    transport.run_scheduled_task.assert_not_awaited()
+
+
+def test_outcome_words_cover_every_job_state():
+    def outcome(**job):
+        return routes.sync_outcome(
+            {"available": True, "running": False, "paused": False, "last_result": {}, **job}
+        )
+
+    assert outcome(status="idle") == "never"
+    assert outcome(status="idle", last_run_at=1) == "idle"
+    assert outcome(status="completed", running=True) == "running"
+    assert outcome(status="partial") == "incomplete"
+    assert outcome(status="failed", last_result={"retry_after_seconds": 30}) == "rate_limited"
+    assert outcome(status="failed") == "failed"
+    assert outcome(status="partial", paused=True) == "paused"
+    assert outcome(status="cancelled") == "cancelled"
+    assert outcome(status="disabled") == "disabled"
+    assert outcome(status="completed", available=False) == "disconnected"
 
 
 @pytest.mark.asyncio

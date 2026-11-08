@@ -114,10 +114,34 @@ async def _run_status(
     return _status_view(result)
 
 
+def sync_outcome(job: dict[str, Any]) -> str:
+    """One word for what the last run means to the person (#466).
+
+    ``incomplete`` is a run that stopped with saved work left (the step bound of a manual run,
+    or a scheduled step that will continue later); it can be continued on purpose. A provider
+    rate limit is ``rate_limited``, not a failure of the plugin. A connection that lost its
+    account or grant is ``disconnected`` whatever the last run said."""
+    result = job.get("last_result") or {}
+    status = job.get("status")
+    if job.get("running"):
+        return "running"
+    if not job.get("available"):
+        return "disconnected"
+    if job.get("paused") or status == "paused":
+        return "paused"
+    if status == "failed" and result.get("retry_after_seconds"):
+        status = "rate_limited"
+    by_status = {"partial": "incomplete", "disabled": "disabled", "cancelled": "cancelled"}
+    by_status |= {"completed": "completed", "failed": "failed", "rate_limited": "rate_limited"}
+    return by_status.get(str(status), "never" if not job.get("last_run_at") else "idle")
+
+
 async def _sync_view(db: AsyncSession, spec: JobSpec | None) -> dict[str, Any] | None:
     if spec is None:
         return None
     job = await describe(db, spec)
+    outcome = sync_outcome(job)
+    result = job["last_result"] or {}
     return {
         "available": job["available"],
         "unavailable_reason": job["unavailable_reason"],
@@ -126,6 +150,13 @@ async def _sync_view(db: AsyncSession, spec: JobSpec | None) -> dict[str, Any] |
         "status": job["status"],
         "last_run_at": job["last_run_at"],
         "last_summary": job["last_summary"],
+        "outcome": outcome,
+        # a deliberate continuation runs the same bounded "complete" sync from the checkpoint;
+        # it never turns autosync on
+        "can_continue": outcome == "incomplete",
+        "step_limit_reached": result.get("step_limit_reached") is True,
+        "autosync_enabled": job["enabled"],
+        "next_run_at": job["next_run_at"],
     }
 
 
