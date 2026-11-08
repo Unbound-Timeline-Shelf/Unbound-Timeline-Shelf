@@ -35,3 +35,11 @@ export function formatPlaytime(minutes: number) {
   const mins = minutes % 60;
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
+
+// Whether the rendered text of `html` (its markup not counted) is longer than `limit`
+// characters, as the game page measures a description before clamping it.
+export function overflows(html: string, limit = 320): boolean {
+  const text = new DOMParser().parseFromString(html, "text/html").body
+    .textContent;
+  return (text?.length ?? 0) > limit;
+}
