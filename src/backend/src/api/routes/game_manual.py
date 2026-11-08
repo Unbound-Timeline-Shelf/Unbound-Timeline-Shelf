@@ -15,13 +15,14 @@ from src.core.auth import get_current_user
 from src.database.models.game import GameStatus
 from src.database.models.game_identity_tracking import GameManualAchievement
 from src.database.session import get_db
-from src.features.game_identity import manual
+from src.features.game_identity import manual, plays
 from src.helpers.image_prefetch import ICON_ROOT
 
 router = APIRouter(prefix="/api/game-identity", tags=["game"])
 
 _Title = Annotated[str, Field(min_length=1, max_length=500)]
 _Time = Annotated[int | None, Field(ge=0, le=253_402_300_799)]
+_RequestId = Annotated[str | None, Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
 
 
 class AchievementCreate(_Body):
@@ -54,6 +55,13 @@ class EarnedInput(_Body):
 
 class CompletionInput(_Body):
     status: GameStatus
+
+
+class PlayInput(_Body):
+    """Omit `played_at` for "now"; `request_id` makes a retried request record one play."""
+
+    played_at: _Time = None
+    request_id: _RequestId = None
 
 
 @router.get("/games/{game_id}/tracking")
@@ -123,6 +131,19 @@ async def achievement_icon(
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such icon.")
     return await cached_icon_response(ICON_ROOT, url)
+
+
+@router.post("/games/{game_id}/plays", status_code=201)
+async def log_play(game_id: UUID, body: PlayInput, db: Db, user: Owner) -> dict[str, Any]:
+    """Log a play (now or at a chosen time); never confuse it with a playtime correction."""
+    return await run_action(
+        db, plays.log_play(db, user.id, game_id, body.played_at, body.request_id)
+    )
+
+
+@router.get("/games/{game_id}/plays")
+async def recent_plays(game_id: UUID, db: Db, user: Owner) -> list[dict[str, Any]]:
+    return await run_action(db, plays.recent_plays(db, user.id, game_id))
 
 
 @router.get("/games/{game_id}/completion")
