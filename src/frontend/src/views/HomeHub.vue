@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../utils/dates";
 import {
   computed,
   ref,
@@ -219,10 +220,8 @@ const lastUpdatedItems = computed(() =>
   }),
 );
 function formatUpdateTime(timestamp: number) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(timestamp);
+  // milliseconds
+  return formatInstant(new Date(timestamp));
 }
 async function refreshHome() {
   if (refreshing.value || !refreshTargets.value.length) return;

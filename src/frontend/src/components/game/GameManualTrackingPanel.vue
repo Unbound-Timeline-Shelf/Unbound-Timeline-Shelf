@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { computed, ref, watch } from "vue";
 import { copyName } from "../../utils/gameCopies";
 import {
@@ -187,7 +188,7 @@ async function remove(item: ManualAchievement): Promise<void> {
     await act(async () => removeManualAchievement(item.id));
 }
 const when = (seconds: number | null) =>
-  seconds ? new Date(seconds * 1000).toLocaleString() : "";
+  seconds ? formatInstant(seconds) : "";
 const manualItems = computed(() => totals.value?.manual ?? []);
 const several = computed(() => (totals.value?.versions.length ?? 0) > 1);
 </script>

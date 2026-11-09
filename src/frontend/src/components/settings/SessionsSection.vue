@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import {
@@ -58,9 +59,7 @@ const visibleUserCount = computed(
 );
 
 function when(value: number | null) {
-  return value == null
-    ? "Unavailable"
-    : new Date(value * 1000).toLocaleString();
+  return value == null ? "Unavailable" : formatInstant(value);
 }
 
 async function load() {

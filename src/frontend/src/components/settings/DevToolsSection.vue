@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { computed, onMounted, ref } from "vue";
 import {
   createTestNotification,
@@ -255,7 +256,7 @@ async function sendRequest() {
       <dl v-else-if="info" class="info-list">
         <div class="info-row">
           <dt>Server time</dt>
-          <dd>{{ new Date(info.server_time * 1000).toLocaleString() }}</dd>
+          <dd>{{ formatInstant(info.server_time, { seconds: true }) }}</dd>
         </div>
         <div class="info-row">
           <dt>Uptime</dt>

@@ -5,6 +5,7 @@
 // an editor with a formatting bar and a live preview. A note can be pinned,
 // tagged, tied to an achievement, started from a template, duplicated, moved to
 // another game, and wound back to an earlier version.
+import { formatInstant, formatTime } from "../utils/dates";
 import {
   ref,
   computed,
@@ -161,13 +162,8 @@ function excerpt(text: string): string {
     .trim()
     .slice(0, 280);
 }
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
 function when(seconds: number): string {
-  return seconds ? dateFormat.format(new Date(seconds * 1000)) : "";
+  return seconds ? formatInstant(seconds, { time: false }) : "";
 }
 function dates(n: GameNoteSummary): string {
   const created = when(n.created_at);
@@ -1245,16 +1241,11 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKey));
                   @click="previewVersion(v)"
                 >
                   <strong>{{
-                    dateFormat.format(new Date(v.saved_at * 1000))
+                    formatInstant(v.saved_at, { time: false })
                   }}</strong>
                   <span
-                    >{{
-                      new Date(v.saved_at * 1000).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })
-                    }}
-                    · {{ wordLabel(v.words) }}</span
+                    >{{ formatTime(v.saved_at) }} ·
+                    {{ wordLabel(v.words) }}</span
                   >
                   <em>{{ v.preview }}</em>
                 </button>

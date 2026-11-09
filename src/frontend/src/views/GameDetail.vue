@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
-import { formatDisplayDate } from "../utils/dates";
+import {
+  formatDisplayDate,
+  formatInstant,
+  toLocalDateInput,
+} from "../utils/dates";
 import { releaseRows } from "../utils/releaseDate";
 import { activePriority, priorityLabel, isFinished } from "../utils/priority";
 import { HERO_WIDTH, POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
@@ -523,7 +527,7 @@ async function onFieldSourceChanged() {
             <span
               v-if="game.staleSince"
               class="badge stale-badge"
-              :title="`Last sync (${new Date(game.staleSince).toLocaleDateString()}) no longer saw this in your ${game.source} library.`"
+              :title="`Last sync (${formatInstant(game.staleSince, { time: false })}) no longer saw this in your ${game.source} library.`"
             >
               Not currently in your {{ game.source }} library
             </span>
@@ -868,7 +872,7 @@ async function onFieldSourceChanged() {
                 >
                 <span v-if="p.lastPlayedAt"
                   >last played
-                  {{ new Date(p.lastPlayedAt).toLocaleDateString() }}</span
+                  {{ formatInstant(p.lastPlayedAt, { time: false }) }}</span
                 >
               </div>
             </li>
@@ -901,7 +905,7 @@ async function onFieldSourceChanged() {
               <input
                 v-model="playedOn"
                 type="date"
-                :max="new Date().toLocaleDateString('en-CA')"
+                :max="toLocalDateInput(new Date())"
                 aria-describedby="play-log-hint"
               />
             </label>
@@ -994,13 +998,13 @@ async function onFieldSourceChanged() {
             <div v-if="game.dateAdded" class="kv-row">
               <span class="kv-label">Added</span>
               <span class="kv-value">{{
-                new Date(game.dateAdded).toLocaleDateString()
+                formatInstant(game.dateAdded, { time: false })
               }}</span>
             </div>
             <div v-if="recentActivity" class="kv-row">
               <span class="kv-label">Last played</span>
               <span class="kv-value">{{
-                new Date(recentActivity).toLocaleDateString()
+                formatInstant(recentActivity, { time: false })
               }}</span>
             </div>
             <div v-if="game.source" class="kv-row">

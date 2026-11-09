@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../utils/dates";
 import AutomaticMatchBanner from "../components/game/AutomaticMatchBanner.vue";
 import { preloadImage, sizedAssetUrl } from "../utils/gameImages";
 import HeartIcon from "../components/HeartIcon.vue";
@@ -1029,7 +1030,7 @@ async function openRandomPicker() {
                 <div class="stat-cell">
                   {{
                     gameLastPlayed(game)
-                      ? new Date(gameLastPlayed(game)!).toLocaleDateString()
+                      ? formatInstant(gameLastPlayed(game), { time: false })
                       : "–"
                   }}
                 </div>
@@ -1139,7 +1140,7 @@ async function openRandomPicker() {
                   <div v-if="selectedGame.dateAdded" class="preview-detail-row">
                     <span class="preview-detail-label">Added</span>
                     <span>{{
-                      new Date(selectedGame.dateAdded).toLocaleDateString()
+                      formatInstant(selectedGame.dateAdded, { time: false })
                     }}</span>
                   </div>
                   <div

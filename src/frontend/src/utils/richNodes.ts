@@ -1,3 +1,4 @@
+import { formatInstant } from "./dates";
 // The server renders Markdown to a tree of plain nodes; clients draw it with
 // text interpolation only. This module re-checks every link before it is drawn
 // so a bug on either side cannot turn content into a script or unsafe URL.
@@ -52,5 +53,5 @@ export function headingTag(level: number | undefined): string {
 }
 
 export function formatStamp(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleString();
+  return formatInstant(seconds);
 }

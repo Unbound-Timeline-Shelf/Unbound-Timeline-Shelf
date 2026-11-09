@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { computed, nextTick, ref, watch } from "vue";
 import UiModal from "../UiModal.vue";
 import PermissionRiskSummary from "./PermissionRiskSummary.vue";
@@ -473,7 +474,7 @@ watch(
             >
               <div class="event-heading">
                 <time :datetime="event.timestamp">{{
-                  new Date(event.timestamp).toLocaleString()
+                  formatInstant(event.timestamp, { seconds: true })
                 }}</time>
                 <strong>{{ event.level }}</strong>
                 <code>{{ event.event }}</code>

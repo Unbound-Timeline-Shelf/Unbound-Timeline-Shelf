@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { currentUser } from "../../state/auth";
 import { useConfirm } from "../../state/dialog";
@@ -129,7 +130,7 @@ async function remove(source: CalendarSource) {
   if (removed && editing.value === source.id) reset();
 }
 const timestamp = (value: number | null) =>
-  value ? new Date(value * 1000).toLocaleString() : "Never";
+  value ? formatInstant(value) : "Never";
 </script>
 
 <template>
