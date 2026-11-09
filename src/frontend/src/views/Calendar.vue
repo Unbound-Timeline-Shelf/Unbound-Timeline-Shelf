@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatMonthYear } from "../utils/dates";
+import { formatDay, formatMonthYear } from "../utils/dates";
 import { WEEKDAY_NAMES, type WeekStart } from "../utils/calendarWeeks";
 import UiModal from "../components/UiModal.vue";
 import AppTopBar from "../components/AppTopBar.vue";
@@ -1070,7 +1070,7 @@ const {
           >
             Search and add it
           </button>
-          You will come back here with the day {{ manualDate }} kept.
+          You will come back here with the day {{ formatDay(manualDate) }} kept.
         </p>
         <div
           v-if="manualSearchState === 'results'"
