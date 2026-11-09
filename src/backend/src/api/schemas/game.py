@@ -243,11 +243,48 @@ _CREATED_AT_DESCRIPTION = (
 )
 
 
+# A person can type only a year or a month as a release date (C5.1, SPEC-UI-POLISH-PASS 7).
+# The date is then the first day of that period, within 1950-2100 like a provider's value.
+_RELEASE_PRECISION_DESCRIPTION = (
+    "How much of release_date is known, sent with it: 'year' (release_date is 1 January), "
+    "'month' (the 1st of the month) or 'day'/null (a full day)."
+)
+_PARTIAL_RELEASE_YEARS = (1950, 2100)
+
+
+def _checked_release_precision(
+    release_date: date | None,
+    precision: Literal["year", "month", "day"] | None,
+    fields_set: set[str],
+) -> Literal["year", "month"] | None:
+    """The precision to store: None for a day; refuses a period that does not match the date."""
+    if precision is None or precision == "day":
+        return None
+    if "release_date" not in fields_set or release_date is None:
+        raise ValueError("release_date_precision needs a release_date in the same request")
+    low, high = _PARTIAL_RELEASE_YEARS
+    if not low <= release_date.year <= high:
+        raise ValueError(f"A year or month release date must be from {low} to {high}")
+    if release_date.day != 1 or (precision == "year" and release_date.month != 1):
+        raise ValueError(f"A {precision} release date must be the first day of that {precision}")
+    return precision
+
+
 class GameCreate(GameBase):
     """Payload for creating a game. sort_title is derived if not given."""
 
     sort_title: str | None = Field(default=None, max_length=500)
     created_at: int | None = Field(default=None, ge=0, description=_CREATED_AT_DESCRIPTION)
+    release_date_precision: Literal["year", "month", "day"] | None = Field(
+        default=None, description=_RELEASE_PRECISION_DESCRIPTION
+    )
+
+    @model_validator(mode="after")
+    def _release_precision(self) -> "GameCreate":
+        self.release_date_precision = _checked_release_precision(
+            self.release_date, self.release_date_precision, self.model_fields_set
+        )
+        return self
 
 
 class GameUpdate(TitleProtectionUpdate):
@@ -258,6 +295,10 @@ class GameUpdate(TitleProtectionUpdate):
     created_at: int | None = Field(default=None, ge=0, description=_CREATED_AT_DESCRIPTION)
     description: str | None = None
     release_date: date | None = None
+    # after release_date: the update applies fields in order, and a new date resets the precision
+    release_date_precision: Literal["year", "month", "day"] | None = Field(
+        default=None, description=_RELEASE_PRECISION_DESCRIPTION
+    )
     developer: str | None = Field(default=None, max_length=200)
     publisher: str | None = Field(default=None, max_length=200)
     series: str | None = Field(default=None, max_length=200)
@@ -339,6 +380,14 @@ class GameUpdate(TitleProtectionUpdate):
             raise ValueError(f"Invalid currency code: {value}")
 
         return value
+
+    @model_validator(mode="after")
+    def _release_precision(self) -> "GameUpdate":
+        if "release_date_precision" in self.model_fields_set:
+            self.release_date_precision = _checked_release_precision(
+                self.release_date, self.release_date_precision, self.model_fields_set
+            )
+        return self
 
 
 # Each removal moves a whole game folder, so one request stays small; the app sends a larger
