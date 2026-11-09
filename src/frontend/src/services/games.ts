@@ -27,6 +27,7 @@ import {
 } from "../utils/gameImages";
 import type { ContentCounts, PageOverrides } from "../utils/gamePage";
 import { mapReleaseFields, type BackendGame } from "./gameApiTypes";
+import type { DatePrecision } from "../utils/dates";
 export type { BackendGame } from "./gameApiTypes";
 import type {
   Achievement,
@@ -733,6 +734,8 @@ export interface NewGameInput {
   parentGameId: string | null;
   relationshipType: GameRelationshipType | null;
   releaseDate: string | null;
+  // sent only with a release date: "year" or "month" when only that is known
+  releaseDatePrecision?: DatePrecision | null;
   dateAdded: string | null;
   completionDate: string | null;
   source: string | null;
@@ -773,6 +776,27 @@ function mockPlatforms(input: NewGameInput, saved: Game["platforms"]) {
   ];
 }
 
+// A release date's precision goes with the date it describes, never alone.
+function releasePrecisionField(input: {
+  releaseDate: string | null;
+  releaseDatePrecision?: DatePrecision | null;
+}): { release_date_precision?: DatePrecision } {
+  return input.releaseDate && input.releaseDatePrecision !== undefined
+    ? { release_date_precision: input.releaseDatePrecision ?? "day" }
+    : {};
+}
+
+function mockPrecision(input: {
+  releaseDate: string | null;
+  releaseDatePrecision?: DatePrecision | null;
+}): DatePrecision | null {
+  return input.releaseDate &&
+    input.releaseDatePrecision &&
+    input.releaseDatePrecision !== "day"
+    ? input.releaseDatePrecision
+    : null;
+}
+
 export async function createGame(input: NewGameInput): Promise<Game> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     const newGame: Game = {
@@ -807,6 +831,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       playCompatibility: input.playCompatibility,
       folderLocation: input.folderLocation || null,
       releaseDate: input.releaseDate,
+      releaseDatePrecision: mockPrecision(input),
       source: input.source,
       providerIds: input.providerIds,
       ageRating: input.ageRating,
@@ -850,6 +875,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       parent_game_id: input.parentGameId,
       relationship_type: input.relationshipType,
       release_date: input.releaseDate,
+      ...releasePrecisionField(input),
       source: input.source,
       provider_ids: input.providerIds,
       platform: input.platform ?? null,
@@ -920,6 +946,7 @@ export async function updateGame(
       tags: input.tags,
       folderLocation: input.folderLocation || null,
       releaseDate: input.releaseDate,
+      releaseDatePrecision: mockPrecision(input),
       source: input.source,
       ageRating: input.ageRating,
       timeToBeatHours: input.timeToBeatHours,
@@ -974,6 +1001,7 @@ export async function updateGame(
     parent_game_id: input.parentGameId,
     relationship_type: input.relationshipType,
     release_date: input.releaseDate,
+    ...releasePrecisionField(input),
     source: input.source,
     provider_ids: input.providerIds,
     region: input.region,
