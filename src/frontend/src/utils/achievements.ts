@@ -99,3 +99,11 @@ export function isPlatinum(a: Achievement): boolean {
   return a.tierOverride === "platinum";
 }
 
+// The game's platinum trophy for the header summary, unless it is a hidden
+// one still locked (then nothing about it is shown).
+export function platinumOf(
+  achievements: readonly Achievement[],
+  hiddenLocked: (a: Achievement) => boolean,
+): Achievement | null {
+  return achievements.find((a) => isPlatinum(a) && !hiddenLocked(a)) ?? null;
+}

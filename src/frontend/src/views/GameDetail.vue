@@ -29,6 +29,7 @@ import {
   achievementLabel,
   visibleMedal,
   iconOf,
+  platinumOf,
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameLaunchButton from "../components/game/GameLaunchButton.vue";
@@ -1103,6 +1104,18 @@ async function onFieldSourceChanged() {
         <h2 class="ach-title">Achievements</h2>
         <span class="ach-count"
           >{{ unlockedCount }} / {{ game.achievements.length }}</span
+        >
+        <span
+          v-if="platinumOf(game.achievements, isHiddenLocked)"
+          class="ach-tag ach-medal medal-platinum ach-platinum-summary"
+          :class="{
+            earned: isUnlocked(platinumOf(game.achievements, isHiddenLocked)!),
+          }"
+          >{{
+            isUnlocked(platinumOf(game.achievements, isHiddenLocked)!)
+              ? "Platinum earned"
+              : "Platinum to earn"
+          }}</span
         >
         <div class="ach-tools">
           <input
