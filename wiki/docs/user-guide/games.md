@@ -644,8 +644,8 @@ period, so a game released on 19 April 2011 comes before one known only as "2011
 ### Release dates
 
 Some providers know only a game's release year or month. Such a date is shown as
-known: **2011** or **April 2011**, never "1 January 2011" and never a numeric
-`04/2011`. Every date in the app follows one setting, **Settings › Media
+known: **2011** or **April 2011** (or `2011-04` with ISO), never "1 January
+2011" and never a numeric `04/2011`. Month names are in English. Every date in the app follows one setting, **Settings › Media
 Preferences › Date format**:
 
 | Format | A day | A month | A time |
@@ -658,8 +658,10 @@ Preferences › Date format**:
 **Time format** chooses 24-hour or 12-hour clocks; **Automatic** uses 12-hour
 with mm/dd/yyyy and 24-hour otherwise. Dates are stored and sent as ISO whatever
 is chosen. On the first visit from a browser set to US English or a US time zone,
-the app asks once which format to use; closing that dialog keeps dd/mm/yyyy and it
-is not shown again on any device. Accounts that had chosen **As stored** under the
+the app asks once which format to use, after the welcome dialog and any quick
+tour; closing that dialog keeps dd/mm/yyyy and it is not shown again on any
+device. If the app cannot save that answer, the dialog still closes and is offered
+again on a later visit. Accounts that had chosen **As stored** under the
 old Release dates setting now use ISO.
 
 In the edit dialog the release date is typed in the chosen order, as a day, a

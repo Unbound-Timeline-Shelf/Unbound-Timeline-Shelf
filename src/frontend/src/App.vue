@@ -29,7 +29,9 @@ import {
   preferencesError,
   loadSharedPreferences,
   resetSharedPreferences,
+  dateOfferHiddenFor,
 } from "./state/preferences";
+import { quickTourActive } from "./state/quickTour";
 import { shouldOfferDateFormat } from "./utils/dates";
 import {
   effectiveSidebarMode,
@@ -286,7 +288,10 @@ const KEPT_ALIVE = [
         currentUser &&
         preferencesLoaded &&
         !preferencesError &&
-        shouldOfferDateFormat(preferences)
+        shouldOfferDateFormat(preferences, {
+          tourActive: quickTourActive,
+          hidden: dateOfferHiddenFor === currentUser.id,
+        })
       "
       :key="`date-${currentUser.id}`"
     />
