@@ -70,10 +70,16 @@ DEFAULTS: dict[str, Any] = {
     "library_version_display": "grouped",
     "library_relationship_display": {},
     "title_language": "english",
-    # release dates (CONTRACTS-v1 C5.5): the browser's language or the stored value as written,
-    # and a month known without its day as "April 2011" (long) or "Apr 2011" (short)
-    "date_display": "locale",
-    "partial_date_style": "long",
+    # how every date is shown (SPEC-UI-POLISH-PASS section 6): 17/09/2020 (dmy, the default),
+    # 17 September 2020 (long), 09/17/2020 (mdy) or 2020-09-17 (iso). Storage and the API stay
+    # ISO. A month known without its day is always "September 2020" ("2020-09" in iso).
+    "date_format": "dmy",
+    # None is 24h, except mdy which reads as 12h
+    "time_format": None,
+    # the person picked a date format (settings or the first-visit offer)
+    "date_format_chosen": False,
+    # the one-time first-visit date-format offer was shown and answered
+    "date_format_offered": False,
     "lists_default_sort": "custom",
     "stats_include_plan": True,
     "anilist_import_username": "",
@@ -105,8 +111,8 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "library_version_display": ("grouped", "separate"),
     "lists_default_sort": ("custom", "name", "count", "recent"),
     "title_language": ("english", "romaji", "native"),
-    "date_display": ("locale", "iso"),
-    "partial_date_style": ("short", "long"),
+    "date_format": ("dmy", "long", "mdy", "iso"),
+    "time_format": (None, "24h", "12h"),
     "launch_default_client": ("", "playnite", "steam", "gog"),
 }
 
@@ -191,6 +197,35 @@ def _validate_theme_package(value: Any) -> str:
     if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", value):
         raise ValueError("ui_theme_package must be a bounded theme identifier")
     return value
+
+
+# Retired C5.5 keys. A browser still running an older build may send them for a while after an
+# upgrade, so they are accepted on write, translated, and never stored or returned.
+_LEGACY_DATE_CHOICES: dict[str, tuple[str, ...]] = {
+    "date_display": ("locale", "iso"),
+    "partial_date_style": ("short", "long"),
+}
+
+
+def translate_legacy_date_preferences(values: dict[str, Any]) -> dict[str, Any]:
+    """`values` without the retired date keys: `date_display: "iso"` becomes an explicit
+    `date_format: "iso"` (unless the same values already carry a `date_format`); `"locale"`
+    and `partial_date_style` are dropped, so the default (and the first-visit offer) applies."""
+    if not _LEGACY_DATE_CHOICES.keys() & values.keys():
+        return values
+    out = {k: v for k, v in values.items() if k not in _LEGACY_DATE_CHOICES}
+    if values.get("date_display") == "iso" and "date_format" not in values:
+        out["date_format"] = "iso"
+        out.setdefault("date_format_chosen", True)
+    return out
+
+
+def _check_legacy_date_values(changes: dict[str, Any]) -> None:
+    for key, choices in _LEGACY_DATE_CHOICES.items():
+        if key in changes:
+            value = changes[key]
+            if isinstance(value, bool) or value not in choices:
+                raise ValueError(f"{key} must be one of {list(choices)}")
 
 
 def validate_preference(key: str, value: Any) -> Any:
@@ -377,7 +412,7 @@ async def load_preferences(
     row = await db.scalar(
         query.with_for_update().execution_options(populate_existing=True) if lock else query
     )
-    data = row.data if row else {}
+    data = translate_legacy_date_preferences(row.data if row else {})
     # Existing stored choices remain overrides; new accounts inherit the server default.
     if "notification_retention_days" in data and "notification_retention_inherit" not in data:
         data = {**data, "notification_retention_inherit": False}
@@ -387,7 +422,10 @@ async def load_preferences(
 async def save_preferences(
     db: AsyncSession, user_id: UUID, changes: dict[str, Any], *, commit: bool = True
 ) -> dict[str, Any]:
-    clean = {k: validate_preference(k, v) for k, v in changes.items()}
+    _check_legacy_date_values(changes)
+    clean = {
+        k: validate_preference(k, v) for k, v in translate_legacy_date_preferences(changes).items()
+    }
     if "notification_retention_days" in clean:
         clean.setdefault("notification_retention_inherit", False)
     row = await db.scalar(
@@ -399,7 +437,7 @@ async def save_preferences(
     if row is None:
         row = UserPreferences(user_id=user_id, data={})
         db.add(row)
-    row.data = {**row.data, **clean}
+    row.data = {**translate_legacy_date_preferences(row.data), **clean}
     if commit:
         await db.commit()
     else:
