@@ -8,6 +8,7 @@ import { computed, ref, watch } from "vue";
 import CheckIcon from "./CheckIcon.vue";
 import { formatAiringCountdown } from "../utils/countdown";
 import { blurOnLeave } from "../utils/blurOnLeave";
+import { formatDay } from "../utils/dates";
 
 export interface EpisodeVM {
   id: string;
@@ -322,7 +323,7 @@ function goToPage(p: number) {
               {{ countdownFor(ep.episodeNumber) }}</span
             >
             <span v-else-if="ep.airDate" class="episode-air">{{
-              ep.airDate
+              formatDay(ep.airDate)
             }}</span>
           </div>
           <p v-if="ep.description" class="episode-desc">{{ ep.description }}</p>
