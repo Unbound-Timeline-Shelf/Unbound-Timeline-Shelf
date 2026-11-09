@@ -3,6 +3,7 @@
 // urgency limits. They extend the routing choices above and are saved with the
 // same preferences; they only change when a permitted notification is sent,
 // never who may receive it or how much it may show.
+import { deviceTimeZone, formatInstant } from "../../utils/dates";
 import { computed, onMounted, ref } from "vue";
 import ToggleButton from "./ToggleButton.vue";
 import {
@@ -52,7 +53,7 @@ const zones = computed(() => {
   ).supportedValuesOf;
   return supported ? supported("timeZone") : [];
 });
-const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const deviceZone = deviceTimeZone();
 
 const modes: { value: TimingMode; label: string }[] = [
   { value: "inherit", label: "Default for this type" },
@@ -169,11 +170,7 @@ const actionText: Record<string, string> = {
 };
 function when(stamp: number | null) {
   return stamp
-    ? new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-        timeZone: timing.value.timezone || "UTC",
-      }).format(new Date(stamp * 1000))
+    ? formatInstant(stamp, { timeZone: timing.value.timezone || "UTC" })
     : "";
 }
 </script>

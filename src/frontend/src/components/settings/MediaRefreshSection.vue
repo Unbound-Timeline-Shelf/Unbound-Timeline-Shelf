@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import {
   startMediaRefresh,
@@ -65,10 +66,7 @@ onMounted(async () => {
 onBeforeUnmount(stopPolling);
 
 function formatTime(epochSeconds: number): string {
-  return new Date(epochSeconds * 1000).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatInstant(epochSeconds, { date: false });
 }
 </script>
 

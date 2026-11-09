@@ -1,6 +1,7 @@
 // Pure helpers for the Statistics activity heatmap and its day dialog. Days
 // are calendar dates ("2026-10-16") in the zone the server was asked about;
 // all arithmetic here is UTC-based so the browser's own zone never shifts them.
+import { formatInstant, monthName as nameOfMonth } from "./dates";
 import type { ActivityDayItem } from "../services/mediaStats";
 
 const DAY_MS = 86_400_000;
@@ -19,20 +20,15 @@ export function addDays(value: string, days: number): string {
 }
 
 export function longDay(value: string): string {
-  return parseDay(value).toLocaleDateString(undefined, {
+  return formatInstant(parseDay(value), {
+    time: false,
     weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
     timeZone: "UTC",
   });
 }
 
 export function monthName(value: string): string {
-  return parseDay(value).toLocaleDateString(undefined, {
-    month: "short",
-    timeZone: "UTC",
-  });
+  return nameOfMonth(parseDay(value).getUTCMonth() + 1, "short");
 }
 
 function plural(n: number, noun: string): string {

@@ -5,6 +5,7 @@
 // tied to (achievement, account, tags). The title is only a name inside the
 // app; the file keeps its own. It opens over the page, so the gallery behind
 // it never reflows.
+import { formatInstant, toLocalDateInput } from "../utils/dates";
 import UiModal from "./UiModal.vue";
 import { ref, computed, watch } from "vue";
 import AchievementPicker from "./AchievementPicker.vue";
@@ -61,13 +62,7 @@ const unlock = computed(() =>
   unlockSeconds(list.value.find((a) => a.id === linked.value)),
 );
 const unlockLabel = computed(() =>
-  unlock.value
-    ? new Date(unlock.value * 1000).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "",
+  unlock.value ? formatInstant(unlock.value, { time: false }) : "",
 );
 const dateChanged = computed(() => date.value !== dateInputValue(props.item));
 
@@ -81,7 +76,7 @@ const dateNote = computed(() => {
 function takeUnlockDate() {
   if (unlock.value === null) return;
   pending.value = unlock.value;
-  date.value = new Date(unlock.value * 1000).toLocaleDateString("en-CA");
+  date.value = toLocalDateInput(new Date(unlock.value * 1000));
   detectMessage.value = "";
 }
 function onDateInput() {

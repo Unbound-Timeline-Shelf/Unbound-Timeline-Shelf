@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { ref, computed, defineAsyncComponent, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import SettingsTabs from "./SettingsTabs.vue";
@@ -45,12 +46,7 @@ onMounted(async () => {
   }
 });
 function formatBackupDate(epochSeconds: number): string {
-  return new Date(epochSeconds * 1000).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatInstant(epochSeconds);
 }
 
 const exporting = ref(false);

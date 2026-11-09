@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../utils/dates";
 import { ref, watch } from "vue";
 import type { MediaType } from "../services/mediaExtras";
 
@@ -36,7 +37,7 @@ const offset = ref(0);
 const busy = ref(false);
 let sequence = 0;
 const formatDate = (value: number | null) =>
-  value == null ? "Unknown" : new Date(value * 1000).toLocaleString();
+  value == null ? "Unknown" : formatInstant(value);
 async function load() {
   const current = ++sequence;
   busy.value = true;

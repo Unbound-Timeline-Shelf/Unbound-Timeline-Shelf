@@ -4,6 +4,7 @@
 // and the favorite heart — one component instead of tripling this UI.
 // The airing countdown lives on the Episodes tab instead (see
 // utils/countdown.ts), not here.
+import { formatDay, toLocalDateInput } from "../utils/dates";
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { useRouter } from "vue-router";
 import { useConfirm } from "../state/dialog";
@@ -65,22 +66,14 @@ function goToLists() {
 const rewatches = ref<Rewatch[]>([]);
 const rewatchesError = ref<string | null>(null);
 const showRewatchPopover = ref(false);
-const logDate = ref(new Date().toISOString().slice(0, 10));
+// today as a local day; toISOString() would be the UTC day
+const logDate = ref(toLocalDateInput(new Date()));
 const logNote = ref("");
 const logging = ref(false);
 
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
 function formatRewatchDate(iso: string): string {
-  // finished_on comes back as a bare "YYYY-MM-DD" — parsing that with
-  // `new Date(...)` directly reads it as UTC midnight and can print the
-  // previous day in a negative-UTC-offset timezone, so it's split apart
-  // and built as a local date instead.
-  const [y, m, d] = iso.split("-").map(Number);
-  return dateFormatter.format(new Date(y, m - 1, d));
+  // finished_on comes back as a bare "YYYY-MM-DD", a calendar day
+  return formatDay(iso);
 }
 
 async function loadRewatches() {
@@ -105,7 +98,7 @@ async function submitRewatch() {
       b.finishedOn.localeCompare(a.finishedOn),
     );
     logNote.value = "";
-    logDate.value = new Date().toISOString().slice(0, 10);
+    logDate.value = toLocalDateInput(new Date());
   } catch (e) {
     rewatchesError.value =
       e instanceof Error ? e.message : "Failed to log rewatch.";

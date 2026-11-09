@@ -1,3 +1,4 @@
+import { formatInstant } from "./dates";
 // Plain-language formatting for the identity views (#101).
 
 export function hoursLabel(seconds: number | null | undefined): string {
@@ -12,7 +13,7 @@ export function hoursLabel(seconds: number | null | undefined): string {
 
 export function dayLabel(timestamp: number | null | undefined): string {
   if (!timestamp) return "Never";
-  return new Date(timestamp * 1000).toLocaleDateString();
+  return formatInstant(timestamp, { time: false });
 }
 
 export function agoLabel(

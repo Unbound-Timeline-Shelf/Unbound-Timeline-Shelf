@@ -30,8 +30,9 @@ import {
 } from "../utils/pluginStatus";
 
 const iso: DateFormatPreferences = {
-  date_display: "iso",
-  partial_date_style: "long",
+  date_format: "iso",
+  time_format: null,
+  date_format_chosen: true,
 };
 
 describe("release rows", () => {

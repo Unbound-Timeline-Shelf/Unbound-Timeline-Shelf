@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatMonthYear } from "../utils/dates";
 import { WEEKDAY_NAMES, type WeekStart } from "../utils/calendarWeeks";
 import UiModal from "../components/UiModal.vue";
 import AppTopBar from "../components/AppTopBar.vue";
@@ -37,7 +38,6 @@ const {
   retryFailedLayers,
   refreshing,
   refreshAll,
-  MONTH_NAMES,
   WEEKDAY_LABELS,
   gridCells,
   prevMonth,
@@ -211,7 +211,7 @@ const {
               ‹
             </button>
             <label class="month-label month-picker" title="Jump to a month">
-              {{ MONTH_NAMES[viewMonth] }} {{ viewYear }}
+              {{ formatMonthYear(viewYear, viewMonth + 1) }}
               <input
                 type="month"
                 :value="jumpMonthValue"

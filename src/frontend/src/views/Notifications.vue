@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import {
+  formatWeekday,
+  formatDayMonth,
+  formatInstant,
+  formatTime,
+} from "../utils/dates";
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import AppTopBar from "../components/AppTopBar.vue";
@@ -187,28 +193,13 @@ function dayLabel(key: string): string {
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
   if (date.getTime() === yesterday.getTime()) return "Yesterday";
-  return date.toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-  });
+  return `${formatWeekday(date, "long")} ${formatDayMonth(date)}`;
 }
 function exactTime(unix: number): string {
-  return new Date(unix * 1000).toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
+  return formatInstant(unix, { weekday: "short", zoneName: true });
 }
 function timeOnly(unix: number): string {
-  return new Date(unix * 1000).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatTime(unix);
 }
 const TYPE_LABEL: Record<string, string> = {
   game: "Game",

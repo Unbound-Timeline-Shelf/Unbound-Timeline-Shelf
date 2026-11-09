@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { ref, onMounted } from "vue";
 import { currentUser } from "../../state/auth";
 import {
@@ -262,7 +263,7 @@ function openCreateForm() {
             <td class="joined" data-label="Joined">
               {{
                 user.created_at
-                  ? new Date(user.created_at * 1000).toLocaleDateString()
+                  ? formatInstant(user.created_at, { time: false })
                   : "N/A"
               }}
             </td>
@@ -311,7 +312,7 @@ function openCreateForm() {
             </td>
             <td class="joined" data-label="Joined">
               Expires
-              {{ new Date(invite.expires_at * 1000).toLocaleDateString() }}
+              {{ formatInstant(invite.expires_at, { time: false }) }}
             </td>
             <td class="actions">
               <button

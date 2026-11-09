@@ -1,3 +1,10 @@
+import {
+  formatTime,
+  formatWeekday,
+  formatDayMonth,
+  formatInstant,
+  monthName,
+} from "../utils/dates";
 import type { SegmentOption } from "../components/SegmentedTabs.vue";
 import { matchesShortcut } from "../state/shortcuts";
 
@@ -508,10 +515,7 @@ export function useCalendar() {
     return dayKey(d);
   }
   function timeLabel(airAt: number): string {
-    return new Date(airAt * 1000).toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    return formatTime(airAt);
   }
 
   function fromEntry(e: CalendarEntry): CalItem {
@@ -696,20 +700,8 @@ export function useCalendar() {
       .sort((x, y) => x.sortAt - y.sortAt);
   }
 
-  const MONTH_NAMES = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
+  // in the app's language (English today), from the one date formatter
+  const MONTH_NAMES = Array.from({ length: 12 }, (_, i) => monthName(i + 1));
   const WEEKDAY_LABELS = computed(() => weekdayLabels(weekStart.value));
 
   interface DayCell {
@@ -787,11 +779,7 @@ export function useCalendar() {
       const key = keyOfDate(d);
       return {
         key,
-        label: d.toLocaleDateString(undefined, {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-        }),
+        label: `${formatWeekday(d, "short")} ${formatDayMonth(d)}`,
         isToday: key === todayKey,
         isPast: key < todayKey,
         items: itemsForDay(key),
@@ -802,11 +790,7 @@ export function useCalendar() {
     const end = new Date(weekAnchor.value);
     end.setDate(end.getDate() + 6);
     const fmt = (d: Date, year: boolean) =>
-      d.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        ...(year ? { year: "numeric" } : {}),
-      });
+      year ? formatInstant(d, { time: false }) : formatDayMonth(d);
     return `${fmt(weekAnchor.value, false)} to ${fmt(end, true)}`;
   });
   const isCurrentWeek = computed(
@@ -883,11 +867,8 @@ export function useCalendar() {
   function longDayLabel(key: string): string {
     const yesterday = keyOfDate(new Date(today.getTime() - 86_400_000));
     const tomorrow = keyOfDate(new Date(today.getTime() + 86_400_000));
-    const base = new Date(`${key}T00:00:00`).toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-    });
+    const day = new Date(`${key}T00:00:00`);
+    const base = `${formatWeekday(day, "long")} ${formatDayMonth(day)}`;
     if (key === todayKey) return `Today · ${base}`;
     if (key === tomorrow) return `Tomorrow · ${base}`;
     if (key === yesterday) return `Yesterday · ${base}`;

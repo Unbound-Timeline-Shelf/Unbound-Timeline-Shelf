@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { ref, onMounted, onBeforeUnmount } from "vue";
 import {
   fetchJobs,
@@ -177,12 +178,7 @@ onBeforeUnmount(() => {
 
 function formatTime(epochSeconds: number | null): string {
   if (!epochSeconds) return "Never";
-  return new Date(epochSeconds * 1000).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatInstant(epochSeconds);
 }
 </script>
 

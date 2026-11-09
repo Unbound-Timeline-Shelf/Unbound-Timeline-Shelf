@@ -2,6 +2,7 @@
 // The consent page every user-approved integration opens: web integrations
 // such as the Discord Activity, and first-party desktop apps such as the
 // Playnite extension, which sign in here instead of using a pasted API key.
+import { formatInstant } from "../utils/dates";
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { currentUser } from "../state/auth";
@@ -176,9 +177,9 @@ onMounted(async () => {
                   : `${earlier.length} connections`
               }}, last approved
               {{
-                new Date(
-                  earlier[earlier.length - 1].created_at * 1000,
-                ).toLocaleDateString()
+                formatInstant(earlier[earlier.length - 1].created_at, {
+                  time: false,
+                })
               }}. Signing in again, for example after this instance's address
               changed, usually replaces it.
             </p>

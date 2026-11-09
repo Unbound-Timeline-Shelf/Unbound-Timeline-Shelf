@@ -1,3 +1,4 @@
+import { formatInstant, toLocalDateInput } from "./dates";
 // The date shown for an uploaded file. The server works out when it was really
 // taken (photo data, then the file name, then the file's modified date, then
 // the upload) and says which of those it used. Dates read from photo data, a
@@ -45,10 +46,8 @@ function zoneFor(source: DateSource): string | undefined {
 
 export function formatMediaDate(item: Dated): string {
   if (!mediaSeconds(item)) return "";
-  return new Date(mediaSeconds(item) * 1000).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+  return formatInstant(mediaSeconds(item), {
+    time: false,
     timeZone: zoneFor(mediaSource(item)),
   });
 }
@@ -89,9 +88,10 @@ export function setDateFromAchievementPref(on: boolean): void {
 
 // "2026-05-15", what a date input shows, in the same zone as the label
 export function dateInputValue(item: Dated): string {
-  return new Date(mediaSeconds(item) * 1000).toLocaleDateString("en-CA", {
-    timeZone: zoneFor(mediaSource(item)),
-  });
+  return toLocalDateInput(
+    new Date(mediaSeconds(item) * 1000),
+    zoneFor(mediaSource(item)),
+  );
 }
 
 // a typed date is stored as midnight UTC and shown back as the same day

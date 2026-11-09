@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Defaults for the Movies, TV and Anime libraries, Lists and Statistics.
 // Saved on the server as they are changed.
-import { ref, onMounted } from "vue";
+import { computed, ref, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import ToggleButton from "./ToggleButton.vue";
 import {
@@ -12,6 +12,13 @@ import {
 import type { Preferences } from "../../services/preferences";
 import { preferences as sharedPreferences } from "../../state/preferences";
 import { fillAlternateTitles } from "../../services/anime";
+import {
+  DATE_STYLES,
+  DATE_STYLE_LABELS,
+  formatMonthYear,
+  type DateStyle,
+  type TimeFormat,
+} from "../../utils/dates";
 
 const prefs = ref<Preferences>({ ...DEFAULT_PREFERENCES });
 const loaded = ref(false);
@@ -79,14 +86,11 @@ async function lookUpTitles() {
   }
 }
 
-const dateDisplayOptions = [
-  { value: "locale", label: "My language" },
-  { value: "iso", label: "As stored (2011-04)" },
-];
-const partialDateOptions = [
-  { value: "long", label: "April 2011" },
-  { value: "short", label: "Apr 2011" },
-];
+// what the person's choice looks like, from the one formatter
+const monthExample = computed(() => formatMonthYear(2011, 4, prefs.value));
+const autoClock = computed(() =>
+  prefs.value.date_format === "mdy" ? "2:05 PM" : "14:05",
+);
 
 const layoutOptions = [
   { value: "list", label: "List" },
@@ -105,8 +109,8 @@ const listSortOptions = [
   <section class="settings-section">
     <h2>Media Preferences</h2>
     <p class="section-hint">
-      Defaults for Movies, TV Shows, Anime, Lists and Statistics, and how
-      release dates are shown.
+      Defaults for Movies, TV Shows, Anime, Lists and Statistics, and how dates
+      and times are shown.
       <span v-if="savedNote" class="saved">{{ savedNote }}</span>
     </p>
     <p v-if="error" class="error">{{ error }}</p>
@@ -153,28 +157,48 @@ const listSortOptions = [
       <small v-if="titlesNote">{{ titlesNote }}</small>
     </div>
     <div class="field">
-      <span>Release dates</span>
-      <SegmentedControl
-        :model-value="prefs.date_display"
-        :options="dateDisplayOptions"
-        @update:model-value="
-          change({ date_display: $event as Preferences['date_display'] })
-        "
-      />
-      <SegmentedControl
-        v-if="prefs.date_display === 'locale'"
-        :model-value="prefs.partial_date_style"
-        :options="partialDateOptions"
-        @update:model-value="
+      <label for="date-format">Date format</label>
+      <select
+        id="date-format"
+        class="date-format-select"
+        :value="prefs.date_format"
+        :disabled="!loaded"
+        @change="
           change({
-            partial_date_style: $event as Preferences['partial_date_style'],
+            date_format: ($event.target as HTMLSelectElement)
+              .value as DateStyle,
+            date_format_chosen: true,
           })
         "
-      />
-      <small
-        >A date is never shown as more precise than it is known: a game known
-        only by its year shows 2011, never 1 January 2011.</small
       >
+        <option v-for="style in DATE_STYLES" :key="style" :value="style">
+          {{ DATE_STYLE_LABELS[style] }}
+        </option>
+      </select>
+      <small
+        >Every date in the app uses it. A date is never shown as more precise
+        than it is known: a game known only by its year shows 2011, never 1
+        January 2011, and a month shows as {{ monthExample }}.</small
+      >
+    </div>
+    <div class="field">
+      <label for="time-format">Time format</label>
+      <select
+        id="time-format"
+        class="date-format-select"
+        :value="prefs.time_format ?? ''"
+        :disabled="!loaded"
+        @change="
+          change({
+            time_format: (($event.target as HTMLSelectElement).value ||
+              null) as TimeFormat | null,
+          })
+        "
+      >
+        <option value="">Automatic ({{ autoClock }})</option>
+        <option value="24h">24-hour (14:05)</option>
+        <option value="12h">12-hour (2:05 PM)</option>
+      </select>
     </div>
     <div class="field">
       <span>Lists sort</span>
@@ -202,6 +226,17 @@ const listSortOptions = [
 </template>
 
 <style scoped>
+.date-format-select {
+  align-self: flex-start;
+  max-width: 100%;
+  min-height: var(--ui-control-height);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-control);
+  color: var(--ui-text);
+  padding: 10px 12px;
+  font: inherit;
+}
 .settings-section h2 {
   margin: 0 0 12px;
   font: var(--ui-weight-heading) var(--ui-font-heading)/1.4

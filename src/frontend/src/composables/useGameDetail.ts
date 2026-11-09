@@ -1,3 +1,4 @@
+import { formatInstant } from "../utils/dates";
 import { useGameChecklist } from "./useGameChecklist";
 import { useGamePlayLog } from "./useGamePlayLog";
 import { releaseFacts } from "../utils/releaseDate";
@@ -710,12 +711,12 @@ export function useGameDetail() {
     if (g.dateAdded && !pageSettings.value.hide_date_badge)
       facts.push({
         label: "Added",
-        value: new Date(g.dateAdded).toLocaleDateString(),
+        value: formatInstant(g.dateAdded, { time: false }),
       });
     if (g.updatedAt)
       facts.push({
         label: "Last modified",
-        value: new Date(g.updatedAt * 1000).toLocaleDateString(),
+        value: formatInstant(g.updatedAt, { time: false }),
       });
     // the furthest you are through it on any platform
     const completions = g.platforms
@@ -1487,12 +1488,7 @@ export function useGameDetail() {
   }
 
   function formatArchiveDate(unixSeconds: number): string {
-    return new Date(unixSeconds * 1000).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    return formatInstant(unixSeconds);
   }
 
   // --- Saves (named, versioned archives) --------------------------------------
