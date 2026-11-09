@@ -72,6 +72,23 @@ def apply_updates_with_locking(
     entity.locked_fields = sorted(locked)
 
 
+def lock_release_precision_edit(
+    entity: _LockableEntity, updates: dict[str, Any], edited: dict[str, Any]
+) -> None:
+    """Typing only a year or a month (SPEC-UI-POLISH-PASS 7) is a release-date edit even when the
+    first day of that period was already stored: lock the date and record the person as its
+    source (``edited`` is the field-provenance map of the same update)."""
+    if "release_date_precision" not in updates:
+        return
+    release_date = updates.get("release_date", getattr(entity, "release_date", None))
+    if updates["release_date_precision"] == getattr(
+        entity, "release_date_precision", None
+    ) and release_date == getattr(entity, "release_date", None):
+        return
+    entity.locked_fields = sorted({*(entity.locked_fields or []), "release_date"})
+    edited.setdefault("release_date", release_date)
+
+
 def apply_metadata_updates(entity: _LockableEntity, updates: dict[str, Any]) -> set[str]:
     """Apply provider/import updates without changing locks or protected fields.
 
