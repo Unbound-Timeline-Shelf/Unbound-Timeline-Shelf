@@ -1,6 +1,6 @@
 // SPEC-UI-POLISH-PASS §6.7: the shared date vectors, which the backend's
 // core/date_display.py also reads, run through the one formatter.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import vectors from "./fixtures/date-format-vectors.json";
 import {
   DEFAULT_DATE_PREFS,
@@ -110,10 +110,15 @@ describe("helpers", () => {
     expect(formatWeekday(new Date(2020, 8, 17))).toBe("Thu");
   });
 
-  it("follows another app language when the browser can name it", () => {
-    expect(monthName(9, "long", "fr")).toMatch(/^septembre$/i);
-    // an unknown language tag falls back to English
-    expect(monthName(9, "long", "zz-invalid-")).toBe("September");
+  it("keeps English names whatever the document language", () => {
+    // typed entry only reads English month names; display must agree
+    vi.stubGlobal("document", { documentElement: { lang: "ru" } });
+    try {
+      expect(monthName(1)).toBe("January");
+      expect(formatWeekday(new Date(2020, 8, 17), "long")).toBe("Thursday");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("formats months, short days and clocks in the person's style", () => {

@@ -94,55 +94,17 @@ const EN_WEEKDAYS = [
   "Saturday",
 ];
 
-// The app's interface language: the document's lang, which is "en" today.
-// Month and weekday names follow it; English is the fallback whenever the
-// language is English, unknown, or the browser cannot name it.
-export function appLanguage(): string {
-  try {
-    return document.documentElement.lang || "en";
-  } catch {
-    return "en";
-  }
-}
-
-const nameCache = new Map<string, string[]>();
-function localNames(
-  kind: "month" | "weekday",
-  width: "long" | "short",
-  language: string,
-): string[] | null {
-  if (/^en\b/i.test(language)) return null;
-  const key = `${kind}|${width}|${language}`;
-  const cached = nameCache.get(key);
-  if (cached) return cached;
-  try {
-    const format = new Intl.DateTimeFormat(language, {
-      timeZone: "UTC",
-      ...(kind === "month" ? { month: width } : { weekday: width }),
-    });
-    const names = Array.from({ length: kind === "month" ? 12 : 7 }, (_, i) =>
-      format.format(
-        kind === "month"
-          ? Date.UTC(2021, i, 15)
-          : // 3 January 2021 was a Sunday
-            Date.UTC(2021, 0, 3 + i),
-      ),
-    );
-    nameCache.set(key, names);
-    return names;
-  } catch {
-    return null;
-  }
-}
+// Month and weekday names are English. The app has no interface translation,
+// and typed entry (parseEntry) only understands English month names, so
+// display and entry always agree. A translated interface must bring its own
+// name tables here, including the genitive month forms that languages such as
+// Russian, Polish and Czech use inside a date ("17 января 2020").
 
 // month 1-12
 export function monthName(
   month: number,
   width: "long" | "short" = "long",
-  language = appLanguage(),
 ): string {
-  const local = localNames("month", width, language);
-  if (local) return local[month - 1] ?? "";
   const name = EN_MONTHS[month - 1] ?? "";
   return width === "short" ? name.slice(0, 3) : name;
 }
@@ -150,10 +112,7 @@ export function monthName(
 export function formatWeekday(
   date: Date,
   width: "long" | "short" = "short",
-  language = appLanguage(),
 ): string {
-  const local = localNames("weekday", width, language);
-  if (local) return local[date.getDay()] ?? "";
   const name = EN_WEEKDAYS[date.getDay()] ?? "";
   return width === "short" ? name.slice(0, 3) : name;
 }
@@ -740,16 +699,24 @@ export function looksAmerican(
 
 // Whether to show the one-time date-format offer: only to a browser that
 // looks American, only once (any answer sets date_format_offered), never to
-// someone who already picked a format, and not on top of the welcome dialog.
+// someone who already picked a format, and not on top of the welcome dialog
+// or the quick tour (the welcome dialog's "Save & take a tour" starts the tour
+// the moment it closes; the offer waits until the tour ends). `hidden` is the
+// offer being closed this session even though saving that failed.
 export function shouldOfferDateFormat(
   prefs: {
     date_format_offered?: boolean;
     date_format_chosen?: boolean;
     ui_welcome_completed?: boolean;
   },
-  american: () => boolean = () => looksAmerican(),
+  context: {
+    american?: () => boolean;
+    tourActive?: boolean;
+    hidden?: boolean;
+  } = {},
 ): boolean {
   if (prefs.date_format_offered || prefs.date_format_chosen) return false;
   if (prefs.ui_welcome_completed === false) return false;
-  return american();
+  if (context.tourActive || context.hidden) return false;
+  return (context.american ?? (() => looksAmerican()))();
 }
