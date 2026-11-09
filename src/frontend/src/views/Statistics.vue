@@ -8,7 +8,7 @@
 // counter), plus one more pass through those for each logged rewatch; a season counts as completed only when every one of
 // its episodes is watched. Anything with no runtime on record is reported
 // in a note, never given a guessed length.
-import { monthName, formatInstant } from "../utils/dates";
+import { monthName, formatInstant, formatDay } from "../utils/dates";
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import AppTopBar from "../components/AppTopBar.vue";
@@ -463,7 +463,8 @@ const episodic = computed<EpisodicStats | null>(() => {
                 :timezone="stats.overview.activity.timezone"
               />
               <p v-if="stats.overview.activity.busiest_day" class="note">
-                Busiest day: {{ stats.overview.activity.busiest_day.date }} with
+                Busiest day:
+                {{ formatDay(stats.overview.activity.busiest_day.date) }} with
                 {{ busiestDayText }}.
               </p>
             </section>

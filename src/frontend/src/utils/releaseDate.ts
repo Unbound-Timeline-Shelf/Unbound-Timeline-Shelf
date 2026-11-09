@@ -150,7 +150,8 @@ export function platformName(
 
 export interface ReleaseRow {
   key: string;
-  date: string;
+  // already formatted in the person's date style
+  when: string;
   where: string;
   edition: string | null;
   // null for an ordinary full release
@@ -174,7 +175,7 @@ export function releaseRows(
         release.category,
         release.date,
       ].join("|"),
-      date: formatPartialDate(release.date, release.precision, prefs),
+      when: formatPartialDate(release.date, release.precision, prefs),
       where: [platformName(release.platform), regionName(release.region)]
         .filter(Boolean)
         .join(" · "),

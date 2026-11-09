@@ -939,7 +939,7 @@ async function onFieldSourceChanged() {
           <h3 class="more-title">Releases</h3>
           <ul class="release-list">
             <li v-for="release in releases" :key="release.key">
-              <span class="release-date">{{ release.date }}</span>
+              <span class="release-date">{{ release.when }}</span>
               <span class="release-where">{{ release.where }}</span>
               <span v-if="release.edition" class="chip">{{
                 release.edition

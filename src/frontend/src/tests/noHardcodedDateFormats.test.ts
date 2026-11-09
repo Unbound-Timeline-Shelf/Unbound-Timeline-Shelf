@@ -33,6 +33,13 @@ const RULES: { name: string; pattern: RegExp }[] = [
     pattern:
       /\$\{[^}]*\}\/\$\{[^}]*\}\/\$\{[^}]*(?:year|Year|getFullYear)[^}]*\}/,
   },
+  {
+    // an API or input date dropped straight into a template, which shows ISO
+    // whatever the person chose: {{ ep.airDate }}, {{ day.date }}
+    name: "raw date in template",
+    pattern:
+      /\{\{\s*[\w.?]*(?:\bdate|[a-z](?<!UpTo)Date|_date|\bdate_\w+)\s*\}\}/,
+  },
 ];
 
 interface GuardHit {
@@ -96,6 +103,10 @@ describe("no hardcoded date formats", () => {
       'date.value = new Date(x).toLocaleDateString("en-CA");',
       "label = `${day}/${month}/${d.getFullYear()}`;",
       "row.createdAt.toLocaleString()",
+      "<span>{{ ep.airDate }}</span>",
+      "Busiest day: {{ stats.overview.activity.busiest_day.date }} with",
+      "with the day {{ manualDate }} kept.",
+      "{{ game.release_date }}",
     ];
     for (const line of bad)
       expect(scanSource("x.ts", line), line).toHaveLength(1);
@@ -109,6 +120,9 @@ describe("no hardcoded date formats", () => {
       "total.value.toLocaleString()",
       "s.amount.toLocaleString()",
       "formatInstant(d, { time: false })",
+      "{{ formatDay(ep.airDate) }}",
+      "{{ progress.skippedUpToDate }} already up to date",
+      "{{ unlockedOn(a.unlockedAt).date }}",
     ];
     for (const line of fine) expect(scanSource("x.ts", line), line).toEqual([]);
   });

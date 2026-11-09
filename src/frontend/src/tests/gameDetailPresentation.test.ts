@@ -72,7 +72,7 @@ describe("release rows", () => {
   }).releases;
 
   it("lists them oldest first, each no more precise than known", () => {
-    expect(releaseRows(releases, iso).map((r) => r.date)).toEqual([
+    expect(releaseRows(releases, iso).map((r) => r.when)).toEqual([
       "2015-03",
       "2015-09-21",
       "2016",
