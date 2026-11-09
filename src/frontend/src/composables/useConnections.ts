@@ -1,3 +1,4 @@
+import { formatInstant } from "../utils/dates";
 import { reactive, ref } from "vue";
 
 import { fetchPsnStatus, connectPsn, disconnectPsn } from "../services/psn";
@@ -415,15 +416,7 @@ export function useConnections() {
     status: ProviderCredentialStatus | undefined,
   ): string | null {
     if (!status?.last_synced_at) return null;
-    const when = new Date(status.last_synced_at * 1000).toLocaleString(
-      undefined,
-      {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      },
-    );
+    const when = formatInstant(status.last_synced_at);
     const count = status.library_games ?? 0;
     return `${count} game${count === 1 ? "" : "s"} · synced ${when}`;
   }

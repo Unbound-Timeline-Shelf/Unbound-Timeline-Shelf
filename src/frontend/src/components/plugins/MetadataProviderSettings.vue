@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { computed, onMounted, ref, watch } from "vue";
 import PasswordInput from "../PasswordInput.vue";
 import { currentUser } from "../../state/auth";
@@ -368,7 +369,7 @@ onMounted(() => void refresh());
         >
           <p v-if="provider.checked_at" class="tile-hint">
             Last checked
-            {{ new Date(provider.checked_at * 1000).toLocaleString() }}
+            {{ formatInstant(provider.checked_at) }}
           </p>
           <label class="automatic-search-setting">
             <input

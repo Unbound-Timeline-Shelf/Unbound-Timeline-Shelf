@@ -3,6 +3,7 @@
 // other recorded history, loaded from the same endpoint rule the grid uses.
 // Entries link to their own detail pages; nothing is guessed, so a title shows
 // how many episodes were recorded, not which ones.
+import { formatTime } from "../../utils/dates";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import UiModal from "../UiModal.vue";
@@ -66,11 +67,7 @@ const achievements = computed(() =>
 );
 const history = computed(() => items.value.filter((i) => i.kind === "history"));
 function time(unix: number): string {
-  return new Date(unix * 1000).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: props.timezone,
-  });
+  return formatTime(unix, { timeZone: props.timezone || undefined });
 }
 </script>
 

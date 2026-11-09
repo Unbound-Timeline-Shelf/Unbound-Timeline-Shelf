@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { onMounted, ref } from "vue";
 import PasswordInput from "../PasswordInput.vue";
 import {
@@ -186,7 +187,7 @@ onMounted(loadKeys);
               {{ key.key_prefix }} ·
               {{ key.scopes?.length ? key.scopes.join(", ") : "full access" }}
               · created
-              {{ new Date(key.created_at * 1000).toLocaleDateString() }}
+              {{ formatInstant(key.created_at, { time: false }) }}
             </span>
           </div>
           <button type="button" class="danger" @click="handleRevoke(key)">

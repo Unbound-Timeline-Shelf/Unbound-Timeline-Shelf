@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../utils/dates";
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -177,8 +178,7 @@ async function unlinkMedia(item: MediaItem) {
 }
 
 function formatUnlockedAt(dateStr: string) {
-  const d = new Date(dateStr);
-  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  return formatInstant(dateStr);
 }
 
 function goBack() {

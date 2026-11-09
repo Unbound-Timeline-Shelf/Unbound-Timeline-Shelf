@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { onMounted, ref } from "vue";
 import {
   capabilityLabels,
@@ -21,7 +22,7 @@ function active(grant: IntegrationGrant) {
   );
 }
 function date(value: number) {
-  return new Date(value * 1000).toLocaleString();
+  return formatInstant(value);
 }
 async function load() {
   loading.value = true;

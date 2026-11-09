@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../../utils/dates";
 import { computed, ref } from "vue";
 import {
   adjustPlaytime,
@@ -42,7 +43,7 @@ function show(metric: string, value: unknown): string {
   if (metric === "playtime" && typeof value === "number")
     return hoursLabel(value);
   if (metric === "last_played" && typeof value === "number")
-    return new Date(value * 1000).toLocaleDateString();
+    return formatInstant(value, { time: false });
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
 }

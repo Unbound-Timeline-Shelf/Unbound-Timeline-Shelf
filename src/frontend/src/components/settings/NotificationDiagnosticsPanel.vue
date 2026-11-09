@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { computed, onMounted, ref } from "vue";
 import DiagnosticsTrace from "./DiagnosticsTrace.vue";
 import {
@@ -297,9 +298,9 @@ async function runTest() {
         <p class="meta">
           {{ digest.reason?.label ?? digest.label }}
           <template v-if="digest.window_start">
-            Window {{ new Date(digest.window_start * 1000).toLocaleString() }}
+            Window {{ formatInstant(digest.window_start) }}
             –
-            {{ new Date((digest.window_end ?? 0) * 1000).toLocaleString() }}.
+            {{ formatInstant(digest.window_end ?? 0) }}.
           </template>
         </p>
         <article v-for="c in digest.chunks" :key="c.part" class="card">
