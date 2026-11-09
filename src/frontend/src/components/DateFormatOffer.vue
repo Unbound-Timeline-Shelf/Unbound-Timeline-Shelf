@@ -3,10 +3,12 @@
 // Everyone sees dates as dd/mm/yyyy until they choose; a browser that looks
 // American (en-US, or a US time zone) is asked once which format to use.
 // Any answer, closing the dialog included, is saved with the account's
-// preferences, so it never comes back on any device.
+// preferences, so it never comes back on any device. Closing always closes:
+// the offer is hidden for the session at once, and if saving that fails it is
+// simply offered again on a later visit.
 import { ref } from "vue";
 import UiModal from "./UiModal.vue";
-import { preferences } from "../state/preferences";
+import { preferences, dateOfferHiddenFor } from "../state/preferences";
 import { currentUser } from "../state/auth";
 import { queuePreferences } from "../services/preferences";
 import type { Preferences } from "../services/preferences";
@@ -55,8 +57,13 @@ async function save(changes: Partial<Preferences>) {
 
 const choose = (style: DateStyle) =>
   save({ date_format: style, date_format_chosen: true });
-// closing keeps the default and never asks again
-const dismiss = () => save({});
+// closing keeps the default and never asks again; it hides the offer at once,
+// so a backend that cannot save never traps anyone in the dialog
+function dismiss() {
+  if (accountId && currentUser.value?.id === accountId)
+    dateOfferHiddenFor.value = accountId;
+  void save({});
+}
 </script>
 
 <template>
@@ -89,8 +96,9 @@ const dismiss = () => save({});
     <p class="offer-note">
       Typing a date with only numbers is easier to misread month first:
       03/04/2011 is 4 March in one order and 3 April in the other. The app asks
-      when a typed date could be either, and always shows a month on its own by
-      name, as "March 2011", never as 03/2011.
+      when a typed date could be either. Apart from ISO, which shows 2011-03, a
+      month on its own is always shown by name, as "March 2011", never as
+      03/2011.
     </p>
     <p v-if="error" class="offer-error" role="alert">{{ error }}</p>
   </UiModal>

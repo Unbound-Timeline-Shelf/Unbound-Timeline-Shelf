@@ -12,10 +12,11 @@ vi.mock("../services/preferences", async (original) => ({
   queuePreferences: api.queue,
 }));
 
+import appSource from "../App.vue?raw";
 import DateFormatOffer from "../components/DateFormatOffer.vue";
 import PartialDateInput from "../components/PartialDateInput.vue";
 import { DEFAULT_PREFERENCES } from "../services/preferences";
-import { preferences } from "../state/preferences";
+import { preferences, dateOfferHiddenFor } from "../state/preferences";
 import { currentUser } from "../state/auth";
 import {
   isUsTimeZone,
@@ -47,6 +48,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   preferences.value = { ...DEFAULT_PREFERENCES };
+  dateOfferHiddenFor.value = null;
   currentUser.value = null;
 });
 
@@ -73,10 +75,10 @@ describe("who is asked", () => {
   });
 
   it("asks once, never after a choice, and not over the welcome dialog", () => {
-    const us = () => true;
+    const us = { american: () => true };
     const base = { ...DEFAULT_PREFERENCES, ui_welcome_completed: true };
     expect(shouldOfferDateFormat(base, us)).toBe(true);
-    expect(shouldOfferDateFormat(base, () => false)).toBe(false);
+    expect(shouldOfferDateFormat(base, { american: () => false })).toBe(false);
     expect(
       shouldOfferDateFormat({ ...base, date_format_offered: true }, us),
     ).toBe(false);
@@ -86,6 +88,26 @@ describe("who is asked", () => {
     expect(
       shouldOfferDateFormat({ ...base, ui_welcome_completed: false }, us),
     ).toBe(false);
+  });
+
+  it("waits while the quick tour runs, and once closed this session", () => {
+    const base = { ...DEFAULT_PREFERENCES, ui_welcome_completed: true };
+    const american = () => true;
+    // "Save & take a tour" finishes the welcome dialog and starts the tour
+    // in the same moment; the offer must not open over the tour
+    expect(shouldOfferDateFormat(base, { american, tourActive: true })).toBe(
+      false,
+    );
+    expect(shouldOfferDateFormat(base, { american, tourActive: false })).toBe(
+      true,
+    );
+    expect(shouldOfferDateFormat(base, { american, hidden: true })).toBe(false);
+  });
+
+  it("is wired to the tour and the session hide in App.vue", () => {
+    const gate = appSource.slice(appSource.indexOf("<DateFormatOffer"));
+    expect(gate).toMatch(/tourActive:\s*quickTourActive/);
+    expect(gate).toMatch(/hidden:\s*dateOfferHiddenFor === currentUser\.id/);
   });
 });
 
@@ -119,7 +141,9 @@ describe("the dialog", () => {
       date_format_offered: true,
     });
     expect(preferences.value.date_format).toBe("mdy");
-    expect(shouldOfferDateFormat(preferences.value, () => true)).toBe(false);
+    expect(
+      shouldOfferDateFormat(preferences.value, { american: () => true }),
+    ).toBe(false);
   });
 
   it("closing keeps day/month/year and never asks again", async () => {
@@ -128,10 +152,28 @@ describe("the dialog", () => {
     await flushPromises();
     expect(api.queue).toHaveBeenCalledWith({ date_format_offered: true });
     expect(preferences.value.date_format).toBe("dmy");
-    expect(shouldOfferDateFormat(preferences.value, () => true)).toBe(false);
+    expect(
+      shouldOfferDateFormat(preferences.value, { american: () => true }),
+    ).toBe(false);
   });
 
-  it("shows the error and stays open when saving fails", async () => {
+  it("closing hides it at once, even when saving fails", async () => {
+    api.queue.mockRejectedValueOnce(new Error("Failed to fetch"));
+    const wrapper = open();
+    await wrapper.find(".close").trigger("click");
+    expect(dateOfferHiddenFor.value).toBe("member");
+    await flushPromises();
+    // not saved, so a later visit offers it again; this session it is gone
+    expect(preferences.value.date_format_offered).toBe(false);
+    expect(
+      shouldOfferDateFormat(preferences.value, {
+        american: () => true,
+        hidden: dateOfferHiddenFor.value === "member",
+      }),
+    ).toBe(false);
+  });
+
+  it("shows the error and stays open when saving a choice fails", async () => {
     api.queue.mockRejectedValueOnce(
       new Error("Failed to save preferences: 500"),
     );
