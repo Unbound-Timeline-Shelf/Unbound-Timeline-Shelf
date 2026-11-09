@@ -84,9 +84,8 @@ describe("date-only values", () => {
     expect([date.getFullYear(), date.getMonth(), date.getDate()]).toEqual([
       2026, 8, 12,
     ]);
-    expect(formatDisplayDate("2026-09-12")).toBe(
-      new Date(2026, 8, 12).toLocaleDateString(),
-    );
+    // the account's date format (dd/mm/yyyy by default), never the browser locale
+    expect(formatDisplayDate("2026-09-12")).toBe("12/09/2026");
   });
 
   it("round-trips a picked day through unix seconds", () => {
