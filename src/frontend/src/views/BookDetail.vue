@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// One book (#265 phase 1): the work, its editions and its read-throughs.
-// Every date on the page goes through the shared formatter, at the
-// precision that is known.
+// One book (#265): the work, its editions and its read-throughs. A book
+// found through a provider can list that provider's editions, and "Add this
+// edition" copies one into the work's own editions (C15 6.2). Every date on
+// the page goes through the shared formatter, at the precision that is known.
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { latestRequest } from "../utils/latestRequest";
@@ -15,6 +16,7 @@ import BookFormModal from "../components/BookFormModal.vue";
 import BookEditionDialog from "../components/BookEditionDialog.vue";
 import BookReadingDialog from "../components/BookReadingDialog.vue";
 import {
+  addEdition,
   getBook,
   peekBook,
   updateBook,
@@ -22,6 +24,14 @@ import {
   removeEdition,
   removeReading,
 } from "../services/books";
+import type { MetadataBookEdition } from "../services/metadata";
+import { useMetadataSearch } from "../composables/useMetadataSearch";
+import {
+  bookDate,
+  editionInLibrary,
+  editionInput,
+  providerEditionTitle,
+} from "../utils/bookMetadata";
 import type { Book, BookEdition, BookReading, BookStatus } from "../types/book";
 import { formatDay, formatPartialDate } from "../utils/dates";
 import {
@@ -76,6 +86,62 @@ async function load() {
   }
 }
 watch(bookId, load, { immediate: true });
+
+// The provider editions of this work, looked up on request from the identities
+// it was added with. Nothing is saved until the person adds one.
+const lookup = useMetadataSearch(ref(""), "book");
+const lookupStarted = ref(false);
+const lookupError = ref<string | null>(null);
+const hasProviderIds = computed(
+  () => !!book.value && Object.keys(book.value.providerIds).length > 0,
+);
+const providerEditions = computed(
+  () => lookup.selected.value?.metadata.book?.editions ?? [],
+);
+const lookupBusy = computed(
+  () => lookupStarted.value && lookup.enrichingMedia.value,
+);
+const lookupProvider = computed(
+  () => lookup.selected.value?.provider_name ?? "",
+);
+async function findEditions() {
+  const b = book.value;
+  if (!b) return;
+  lookupStarted.value = true;
+  lookupError.value = null;
+  try {
+    await lookup.focus(b.title, b.providerIds);
+  } catch (e) {
+    lookupError.value =
+      e instanceof Error ? e.message : "Could not look up editions.";
+  }
+}
+watch(bookId, () => {
+  lookup.stop();
+  lookupStarted.value = false;
+  lookupError.value = null;
+});
+function providerEditionFacts(edition: MetadataBookEdition): string[] {
+  const [date, precision] = bookDate(edition.publish_date);
+  return [
+    edition.isbn_13
+      ? `ISBN ${edition.isbn_13}`
+      : edition.isbn_10
+        ? `ISBN ${edition.isbn_10}`
+        : "",
+    edition.page_count ? `${edition.page_count} pages` : "",
+    date ? formatPartialDate(date, precision) : "",
+    edition.language ?? "",
+  ].filter(Boolean);
+}
+async function addProviderEdition(edition: MetadataBookEdition) {
+  const b = book.value;
+  if (!b) return;
+  await apply(
+    () => addEdition(b.id, editionInput(edition)),
+    "Could not add the edition.",
+  );
+}
 
 function goBack() {
   if (window.history.length > 1) router.back();
@@ -455,6 +521,74 @@ function saved(next: Book) {
             </div>
           </li>
         </ul>
+        <div v-if="hasProviderIds" class="provider-editions">
+          <div class="section-heading">
+            <h3 id="provider-editions-heading">Editions from providers</h3>
+            <button
+              type="button"
+              class="ui-btn ui-btn-sm ui-btn-ghost"
+              :disabled="lookupBusy"
+              @click="findEditions"
+            >
+              {{
+                lookupBusy
+                  ? "Looking up…"
+                  : lookupStarted
+                    ? "Look up again"
+                    : "Find editions"
+              }}
+            </button>
+          </div>
+          <p v-if="lookupError" class="action-error" role="alert">
+            {{ lookupError }}
+          </p>
+          <p v-else-if="lookupBusy" class="dim" role="status">
+            Asking the book providers for this work's editions…
+          </p>
+          <p
+            v-else-if="lookupStarted && !providerEditions.length"
+            class="empty-state"
+          >
+            No provider listed editions for this book.
+          </p>
+          <ul
+            v-if="providerEditions.length"
+            class="book-rows"
+            aria-labelledby="provider-editions-heading"
+          >
+            <li
+              v-for="(edition, index) in providerEditions"
+              :key="edition.key ?? edition.isbn_13 ?? index"
+              class="book-row"
+            >
+              <div class="row-main">
+                <strong>{{ providerEditionTitle(edition) }}</strong>
+                <span
+                  v-for="fact in providerEditionFacts(edition)"
+                  :key="fact"
+                  class="dim"
+                  >{{ fact }}</span
+                >
+                <span v-if="lookupProvider" class="dim"
+                  >from {{ lookupProvider }}</span
+                >
+              </div>
+              <div class="row-actions">
+                <span v-if="editionInLibrary(book, edition)" class="ui-chip"
+                  >In your editions</span
+                >
+                <button
+                  v-else
+                  type="button"
+                  class="ui-btn ui-btn-sm ui-btn-secondary"
+                  @click="addProviderEdition(edition)"
+                >
+                  Add this edition
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <MyNote :note="book.note" @save="saveNote" />
@@ -613,6 +747,13 @@ function saved(next: Book) {
 .row-actions {
   display: flex;
   gap: 4px;
+}
+.provider-editions {
+  margin-top: 16px;
+}
+.provider-editions h3 {
+  margin: 0;
+  font-size: var(--ui-font-body, 1rem);
 }
 .dim {
   color: var(--ui-dim);

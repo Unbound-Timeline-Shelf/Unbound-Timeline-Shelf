@@ -23,6 +23,7 @@ export const MEDIA_NAMES: Record<MetadataMediaType, string> = {
   movie: "movies",
   tv_show: "TV shows",
   anime: "anime",
+  book: "books",
 };
 
 export const SOURCES_LINK: SetupLink = {

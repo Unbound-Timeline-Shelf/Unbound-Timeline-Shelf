@@ -2,7 +2,7 @@ import type { GameLink } from "../types/game";
 import { failedRequest } from "./apiError";
 import { announceProviderChange } from "./providerEvents";
 
-export type MetadataMediaType = "game" | "movie" | "tv_show" | "anime";
+export type MetadataMediaType = "game" | "movie" | "tv_show" | "anime" | "book";
 
 export interface MetadataProviderStatus {
   provider_id: string;
@@ -99,6 +99,38 @@ export interface MetadataAsset {
   height: number | null;
 }
 
+// A book date at its known precision (Plugin API 1.1.20 MetadataBookDate).
+export interface MetadataBookDate {
+  date: string;
+  precision: "year" | "month" | "day";
+}
+
+export interface MetadataBookEdition {
+  key?: string | null;
+  name?: string | null;
+  isbn_13?: string | null;
+  isbn_10?: string | null;
+  format?: "paperback" | "hardcover" | "ebook" | "audiobook" | "other" | null;
+  publisher?: string | null;
+  publish_date?: MetadataBookDate | null;
+  page_count?: number | null;
+  language?: string | null;
+}
+
+// What a book provider knows about a work (Plugin API 1.1.20 MetadataBook).
+export interface MetadataBook {
+  authors?: { name: string; role: string }[];
+  subtitle?: string | null;
+  isbn_13?: string | null;
+  isbn_10?: string | null;
+  page_count?: number | null;
+  series_name?: string | null;
+  series_position?: string | null;
+  original_language?: string | null;
+  first_published?: MetadataBookDate | null;
+  editions?: MetadataBookEdition[];
+}
+
 export interface CanonicalMetadata {
   title?: string | null;
   year?: number | null;
@@ -136,6 +168,7 @@ export interface CanonicalMetadata {
     episode_count: number | null;
     air_date: string | null;
   }[];
+  book?: MetadataBook | null;
 }
 
 export interface MetadataCandidate {
@@ -150,6 +183,9 @@ export interface MetadataCandidate {
   provider_ids: Record<string, string>;
   media_type: MetadataMediaType;
   alternate_titles: string[];
+  // books (Plugin API 1.1.20): creator names to show and the ISBN-13 a lookup matched
+  authors?: string[];
+  isbn_13?: string | null;
   metadata: CanonicalMetadata;
   assets: MetadataAsset[];
 }
