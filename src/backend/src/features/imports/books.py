@@ -14,6 +14,7 @@ the database or a provider. The files are bounded (size and rows) like the other
 
 from __future__ import annotations
 
+import codecs
 import csv
 import datetime as dt
 import io
@@ -396,8 +397,21 @@ def parse_isbn_list(raw: bytes) -> IsbnListResult:
 
 
 def detect_format(raw: bytes) -> ImportFormat:
-    """Which of the three formats a file is, from its first line."""
-    first = _text(raw[:65_536]).splitlines()[0] if raw.strip() else ""
+    """Which of the three formats a file is, from its first line.
+
+    Only the first line is decoded, and with an incremental decoder: a cut at 64 KB that falls
+    inside a multi-byte character is held back instead of failing a valid UTF-8 file. Bytes that
+    are not UTF-8 still fail, here or when the whole file is parsed.
+    """
+    if len(raw) > MAX_BYTES:
+        raise BookImportError(f"The file is too large (at most {MAX_BYTES // (1024 * 1024)} MB).")
+    head = raw[:65_536].split(b"\n", 1)[0]
+    try:
+        first_line = codecs.getincrementaldecoder("utf-8-sig")().decode(head, final=False)
+    except UnicodeDecodeError as exc:
+        raise BookImportError("The file must be UTF-8 text.") from exc
+    lines = first_line.splitlines()
+    first = lines[0] if lines else ""
     columns = {column.strip() for column in next(csv.reader([first]), [])}
     if _GOODREADS_COLUMNS <= columns:
         return "goodreads"
