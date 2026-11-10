@@ -152,7 +152,7 @@ def _key(index: int) -> str:
     return f"r{index}"
 
 
-class _Matcher:  # pylint: disable=too-few-public-methods
+class _Matcher:  # pylint: disable=too-few-public-methods,too-many-instance-attributes
     """One import's matching state: the rows still pending and what was found so far."""
 
     def __init__(self, rows: Sequence[ImportedBook], user_id: UUID) -> None:
@@ -164,6 +164,8 @@ class _Matcher:  # pylint: disable=too-few-public-methods
         self.deadline = time.monotonic() + MATCH_SECONDS
         # a per-import bound was reached, so some rows may not have been asked about
         self.bounded = False
+        # the last call's allowance was cut short by the deadline
+        self.clipped = False
 
     def _remaining(self) -> float:
         return self.deadline - time.monotonic()
@@ -180,7 +182,18 @@ class _Matcher:  # pylint: disable=too-few-public-methods
         return not self._out_of_time()
 
     def _seconds(self, per_call: float) -> float:
-        return max(0.0, min(per_call, self._remaining()))
+        remaining = self._remaining()
+        self.clipped = remaining < per_call
+        return max(0.0, min(per_call, remaining))
+
+    def _timed_out(self) -> None:
+        """A call timed out; when the deadline cut it, the import's time is over.
+
+        Timers may fire a few milliseconds before the monotonic clock reaches the
+        deadline (Windows), so this does not wait for the clock to agree.
+        """
+        if self.clipped:
+            self.deadline = min(self.deadline, time.monotonic())
 
     def _take(self, index: int, candidate: MetadataCandidate, by: MatchedBy, provider: Any) -> None:
         self.report.matches[index] = BookMatch(candidate, by, provider.name, namespaces(provider))
@@ -197,7 +210,10 @@ class _Matcher:  # pylint: disable=too-few-public-methods
                 request_id=uuid4(), user_id=self.user_id, media_type=MediaType.BOOK, items=items
             )
             response = await bounded(provider.resolve(request), self._seconds(RESOLVE_SECONDS))
-        except (TimeoutError, ValidationError):
+        except TimeoutError:
+            self._timed_out()
+            return None
+        except ValidationError:
             return None
         return None if response.failure is not None else response
 
@@ -260,7 +276,10 @@ class _Matcher:  # pylint: disable=too-few-public-methods
             response = await bounded(
                 provider.invoke("search", request), self._seconds(SEARCH_SECONDS)
             )
-        except (TimeoutError, ValidationError):
+        except TimeoutError:
+            self._timed_out()
+            return None
+        except ValidationError:
             return None
         return None if response.failure is not None else response
 

@@ -586,3 +586,28 @@ async def test_matching_stops_at_the_import_deadline(monkeypatch):
     assert report.not_looked_up == 400
     # running out of the import's time is not the provider's failure
     assert report.failed_providers == []
+
+
+async def test_a_call_cut_at_the_deadline_ends_matching_even_if_the_clock_lags(monkeypatch):
+    # Windows timers can fire a few milliseconds before time.monotonic() reaches the deadline;
+    # the call cut by the import's time bound must still end matching, without blaming anyone.
+    monkeypatch.setattr(book_matching, "MATCH_SECONDS", 100)
+    monkeypatch.setattr(book_matching, "RESOLVE_SECONDS", 1000)  # every call is clipped
+    real_bounded = book_matching.bounded
+    calls = 0
+
+    async def early_timer(awaitable, seconds):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return await real_bounded(awaitable, seconds)
+        awaitable.close()
+        raise TimeoutError
+
+    monkeypatch.setattr(book_matching, "bounded", early_timer)
+    later = SearchOnlyProvider()
+    report = await match_books(_isbn_rows(600), [ResolvingProvider(), later], uuid4())
+    assert report.resolve_calls == 2
+    assert later.searches == []
+    assert report.not_looked_up == 400
+    assert report.failed_providers == []
