@@ -229,6 +229,30 @@ test.describe("settings are paths, with an Import & sync hub (A19, A20)", () => 
   });
 });
 
+test.describe("one entry per destination (A19)", () => {
+  test.skip(
+    ({ viewport }) => (viewport?.width ?? 1440) <= 1100,
+    "the pinned desktop sidebar only",
+  );
+
+  test("the top bar leaves out Games / Collections while the sidebar lists them", async ({
+    page,
+  }) => {
+    await page.goto("/games");
+    await settle(page, 800);
+    const sidebar = page.getByRole("navigation", { name: "Library and tools" });
+    await expect(
+      sidebar.getByRole("link", { name: "Collections", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("group", { name: "Games area" })).toHaveCount(
+      0,
+    );
+    // closing the folder brings the switcher back
+    await sidebar.getByRole("button", { name: "Games pages" }).click();
+    await expect(page.getByRole("group", { name: "Games area" })).toBeVisible();
+  });
+});
+
 test.describe("phone layout (A12, A13) @phone", () => {
   test.skip(
     ({ viewport }) => (viewport?.width ?? 1440) > 760,
