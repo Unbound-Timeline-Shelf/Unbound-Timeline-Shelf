@@ -37,7 +37,7 @@ STILL_WIDTH = 640
 
 
 async def _cached_image(
-    url: str, user_id: UUID, kind: str, item_id: UUID, name: str, width: int
+    url: str, *, user_id: UUID, kind: str, item_id: UUID, name: str, width: int
 ) -> Response:
     """Serve ``url`` from this server's disk, downloading and shrinking it the first time; if
     the download fails the browser is sent to the original address instead."""
@@ -71,7 +71,14 @@ async def get_book_cover(
     )
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such image.")
-    return await _cached_image(url, current_user.id, "book", book_id, "cover", WIDTHS["poster"])
+    return await _cached_image(
+        url,
+        user_id=current_user.id,
+        kind="book",
+        item_id=book_id,
+        name="cover",
+        width=WIDTHS["poster"],
+    )
 
 
 @router.get("/{media_type}/{item_id}/{which}")
@@ -103,7 +110,14 @@ async def get_media_image(
 
     # the hero of a title with a backdrop is that same picture: one file, not two
     name = "backdrop" if which == "hero" and row and row.backdrop_url else which
-    return await _cached_image(url, current_user.id, media_type, item_id, name, WIDTHS[which])
+    return await _cached_image(
+        url,
+        user_id=current_user.id,
+        kind=media_type,
+        item_id=item_id,
+        name=name,
+        width=WIDTHS[which],
+    )
 
 
 @router.get("/{media_type}/episodes/{episode_id}/still")
@@ -128,5 +142,10 @@ async def get_episode_still(
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such image.")
     return await _cached_image(
-        url, current_user.id, f"{media_type}-episode", episode_id, "still", STILL_WIDTH
+        url,
+        user_id=current_user.id,
+        kind=f"{media_type}-episode",
+        item_id=episode_id,
+        name="still",
+        width=STILL_WIDTH,
     )
