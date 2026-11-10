@@ -525,6 +525,7 @@ are redacted. Validation errors never echo submitted values.
 | DELETE | `/api/lists/{list_id}/items/{item_id}` | user | List owned by caller; added media must also be the caller's. |
 | PUT | `/api/lists/{list_id}/order` | user | List owned by caller; added media must also be the caller's. |
 | GET | `/api/media` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/media-image/book/{book_id}/cover` | user | Book queried with `user_id == caller`; fetched through the public-address image cache. |
 | GET | `/api/media-image/{media_type}/episodes/{episode_id}/still` | user | Episode joined to a show owned by the caller; fetched through the public-address image cache. |
 | GET | `/api/media-image/{media_type}/{item_id}/{which}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-stats` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
