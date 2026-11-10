@@ -37,6 +37,7 @@ const PREVIEW: BookImportPreview = {
       status: "READ",
       last_read: "2021-03-14",
       already_here: false,
+      repeated: false,
     },
     {
       line: 3,
@@ -47,6 +48,7 @@ const PREVIEW: BookImportPreview = {
       status: "IN_PROGRESS",
       last_read: null,
       already_here: false,
+      repeated: false,
     },
     {
       line: 4,
@@ -57,6 +59,7 @@ const PREVIEW: BookImportPreview = {
       status: "WISHLIST",
       last_read: null,
       already_here: true,
+      repeated: false,
     },
   ],
 };
@@ -125,6 +128,22 @@ describe("book list import", () => {
     expect(text).toContain("Reading");
     expect(text).toContain("In library");
     expect(text).toContain("up to 200 in one request");
+  });
+
+  it("marks a row that repeats an earlier one", async () => {
+    vi.mocked(previewBookImport).mockResolvedValue({
+      ...PREVIEW,
+      new: 1,
+      repeated: 1,
+      rows: [PREVIEW.rows[0], { ...PREVIEW.rows[0], line: 3, repeated: true }],
+    });
+    const wrapper = mount(BookImportSection);
+    await choose(wrapper);
+    const rows = wrapper.findAll(".book-rows > li");
+    expect(rows[0].text()).not.toContain("Repeated");
+    expect(rows[1].text()).toContain("Repeated");
+    expect(rows[1].classes()).toContain("here");
+    expect(wrapper.text()).toContain("1 repeated");
   });
 
   it("follows the viewer's date style", async () => {

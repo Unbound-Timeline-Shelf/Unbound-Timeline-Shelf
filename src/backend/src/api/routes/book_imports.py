@@ -5,6 +5,8 @@
 
 Like the other imports, nothing already in the library is changed: a row whose ISBN is on one of
 the reader's editions, or whose title and author match a book already there, is kept as it is.
+Titles with different subtitles are different books, and a row whose ISBN differs from every ISBN
+of a same-titled book is another book (a reader keeps one book per work, with its editions).
 With ``match`` on, the new rows are identified through the account's book providers (ISBN first,
 in batches of at most 200 per ``resolve`` call, then title and author; see
 ``features.imports.book_matching``). A matched row keeps the file's own data and gains the
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
@@ -39,9 +42,9 @@ from src.database.session import get_db
 from src.features.imports.book_matching import (
     BookMatch,
     MatchReport,
+    authors_agree,
     match_books,
-    surnames,
-    title_forms,
+    title_parts,
 )
 from src.features.imports.books import (
     FORMATS,
@@ -54,7 +57,7 @@ from src.features.imports.books import (
     parse_book_import,
 )
 from src.features.metadata.providers import discover_providers
-from src.plugin_api.metadata_contracts import MediaType, MetadataCandidate, ProviderHealth
+from src.plugin_api.metadata_contracts import MediaType, ProviderHealth
 
 router = APIRouter(
     prefix="/api/import/books", tags=["import"], dependencies=[Depends(get_current_user)]
@@ -77,6 +80,8 @@ class BookImportPreviewRow(BaseModel):
     status: str
     last_read: dt.date | None
     already_here: bool
+    # the same book as an earlier row of the file, so it is imported once
+    repeated: bool = False
 
 
 class BookImportProvider(BaseModel):
@@ -126,46 +131,61 @@ async def _parse(file: UploadFile, source: SourceField) -> tuple[ImportFormat, I
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+@dataclass(frozen=True)
+class _Known:
+    """A book the reader has (or a row already taken from the file)."""
+
+    subtitle: str | None
+    authors: tuple[str, ...]
+    isbns: frozenset[str]
+
+
 class _Library:
     """The reader's books, to tell which rows are already here (and which repeat in the file).
 
-    Indexed by the title forms ``title_agrees`` compares, so a large file against a large library
-    stays linear."""
+    Indexed by the main title ``title_parts`` folds, so a large file against a large library stays
+    linear. A row is already here when one of its ISBNs is on the reader's editions, or when a
+    book has the same title (subtitles agreeing, see ``titles_agree``) and a shared author
+    surname, unless both have ISBNs and none is shared: that is another book."""
 
     def __init__(self, books: Sequence[Book] = ()) -> None:
         self.isbns: set[str] = set()
-        self.titles: dict[str, list[set[str]]] = {}
+        self.titles: dict[str, list[_Known]] = {}
         for book in books:
-            self.isbns.update(edition.isbn_13 for edition in book.editions if edition.isbn_13)
-            self._index(book.title, list(book.authors))
+            isbns = frozenset(edition.isbn_13 for edition in book.editions if edition.isbn_13)
+            self.isbns.update(isbns)
+            self._index(book.title, list(book.authors), isbns)
 
-    def _index(self, title: str, authors: list[str]) -> None:
-        for form in title_forms(title):
-            self.titles.setdefault(form, []).append(surnames(authors))
+    def _index(self, title: str, authors: list[str], isbns: frozenset[str]) -> None:
+        main, subtitle = title_parts(title)
+        if main:
+            self.titles.setdefault(main, []).append(_Known(subtitle, tuple(authors), isbns))
 
     def has(self, row: ImportedBook) -> bool:
         if row.isbn_13 and row.isbn_13 in self.isbns:
             return True
         if not row.title:
             return False
-        names = surnames(row.authors)
+        main, subtitle = title_parts(row.title)
         return any(
-            not names or not known or bool(names & known)
-            for form in title_forms(row.title)
-            for known in self.titles.get(form, ())
+            (subtitle is None or known.subtitle is None or subtitle == known.subtitle)
+            and authors_agree(row.authors, known.authors)
+            and not (row.isbn_13 and known.isbns)
+            for known in self.titles.get(main, ())
         )
 
     def add(self, row: ImportedBook) -> None:
-        if row.isbn_13:
-            self.isbns.add(row.isbn_13)
+        isbns = frozenset({row.isbn_13} if row.isbn_13 else ())
+        self.isbns.update(isbns)
         if row.title:
-            self._index(row.title, row.authors)
+            self._index(row.title, row.authors, isbns)
 
 
 async def _split(
     db: AsyncSession, user_id: UUID, rows: list[ImportedBook]
-) -> tuple[list[ImportedBook], list[bool], int]:
-    """The rows to create, whether each row is already here, and how many repeat in the file."""
+) -> tuple[list[ImportedBook], list[bool], list[bool]]:
+    """The rows to create, whether each row is already here, and whether each repeats an
+    earlier row of the file."""
     books = (
         await db.scalars(select(Book).where(Book.user_id == user_id, Book.deleted_at.is_(None)))
     ).all()
@@ -173,18 +193,16 @@ async def _split(
     seen = _Library()
     new: list[ImportedBook] = []
     here: list[bool] = []
-    repeated = 0
+    repeats: list[bool] = []
     for row in rows:
-        if library.has(row):
-            here.append(True)
-            continue
-        here.append(False)
-        if seen.has(row):
-            repeated += 1
-            continue
-        seen.add(row)
-        new.append(row)
-    return new, here, repeated
+        is_here = library.has(row)
+        is_repeat = not is_here and seen.has(row)
+        here.append(is_here)
+        repeats.append(is_repeat)
+        if not (is_here or is_repeat):
+            seen.add(row)
+            new.append(row)
+    return new, here, repeats
 
 
 async def _providers(db: AsyncSession, user_id: UUID) -> list[Any]:
@@ -205,14 +223,14 @@ async def preview_book_import(
     current_user: User = Depends(get_current_user),
 ) -> BookImportPreview:
     chosen, parsed = await _parse(file, source)
-    new, here, repeated = await _split(db, current_user.id, parsed.rows)
+    new, here, repeats = await _split(db, current_user.id, parsed.rows)
     providers = await _providers(db, current_user.id)
     return BookImportPreview(
         source=chosen,
         total=len(parsed.rows),
         new=len(new),
         already_here=sum(here),
-        repeated=repeated + parsed.repeated,
+        repeated=sum(repeats) + parsed.repeated,
         with_isbn=sum(1 for row in parsed.rows if row.isbn_13),
         invalid_isbn=sum(1 for row in parsed.rows if row.invalid_isbn),
         invalid_entries=parsed.invalid,
@@ -234,8 +252,11 @@ async def preview_book_import(
                     (read.finished_on for read in reversed(row.reads) if read.finished_on), None
                 ),
                 already_here=is_here,
+                repeated=is_repeat,
             )
-            for row, is_here in list(zip(parsed.rows, here, strict=True))[:PREVIEW_ROWS]
+            for row, is_here, is_repeat in list(zip(parsed.rows, here, repeats, strict=True))[
+                :PREVIEW_ROWS
+            ]
         ],
     )
 
@@ -245,8 +266,15 @@ def _year(year: int | None) -> dt.date | None:
     return dt.date(year, 1, 1) if year is not None and low <= year <= high else None
 
 
-def _provider_ids(candidate: MetadataCandidate) -> dict[str, str]:
-    ids = dict(candidate.provider_ids) or {candidate.provider: candidate.external_id}
+def _provider_ids(match: BookMatch) -> dict[str, str]:
+    """The provider's ids for the book, only in the namespaces that provider owns.
+
+    ``candidate.provider`` is the plugin's own free text, so the ``provider: external_id``
+    fallback is only taken when it names one of those namespaces."""
+    candidate, owned = match.candidate, match.namespaces
+    ids = {key: value for key, value in candidate.provider_ids.items() if key in owned}
+    if not ids and candidate.provider in owned:
+        ids = {candidate.provider: candidate.external_id}
     return {
         key: value
         for key, value in ids.items()
@@ -278,7 +306,7 @@ def _book(row: ImportedBook, match: BookMatch | None, user_id: UUID) -> Book:
         status=row.status,
         rating_overall=row.rating,
         note=row.note,
-        provider_ids=_provider_ids(candidate) if candidate else {},
+        provider_ids=_provider_ids(match) if match else {},
     )
 
 
@@ -360,7 +388,7 @@ async def import_books(
     current_user: User = Depends(get_current_user),
 ) -> BookImportResult:
     chosen, parsed = await _parse(file, source)
-    new, here, repeated = await _split(db, current_user.id, parsed.rows)
+    new, here, repeats = await _split(db, current_user.id, parsed.rows)
     report = MatchReport()
     if match and new:
         report = await match_books(new, await _providers(db, current_user.id), current_user.id)
@@ -372,7 +400,7 @@ async def import_books(
         total=len(parsed.rows),
         created=created,
         kept=sum(here),
-        repeated=repeated + parsed.repeated,
+        repeated=sum(repeats) + parsed.repeated,
         matched_by_isbn=by.count("identifier"),
         matched_by_title=by.count("title"),
         manual=len(new) - len(report.matches),

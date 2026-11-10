@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from src.api.routes import book_imports
 from src.core.auth import create_api_key
@@ -21,6 +21,8 @@ from src.database.models.auth import UserApiKey
 from src.database.models.book import Book, BookStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.features.imports.book_matching import BookMatch
+from src.features.imports.books import ImportedBook
 from src.main import app
 from src.plugin_api.metadata_contracts import (
     MediaType,
@@ -98,7 +100,11 @@ class _Catalogue:
 
     @property
     def declaration(self) -> Any:
-        return SimpleNamespace(operations=SimpleNamespace(resolve="resolve", search="search"))
+        return SimpleNamespace(
+            operations=SimpleNamespace(resolve="resolve", search="search"),
+            provider_id="stand-in.books",
+            identifier_namespace="stand-in",
+        )
 
     async def resolve(self, request: MetadataResolveRequest) -> ProviderResponse:
         self.calls.append(request)
@@ -252,3 +258,98 @@ async def test_a_file_in_another_shape_is_refused(http, people, monkeypatch, bod
     _use(monkeypatch)
     response = await _post(http, reader, "/api/import/books/preview", body, source=source)
     assert response.status_code == 400
+
+
+# ------------------------------------------------------- already here, and provider ids (pure)
+
+
+def _library_book(title: str, authors: list[str], isbns: tuple[str, ...] = ()) -> Any:
+    return SimpleNamespace(
+        title=title,
+        authors=authors,
+        editions=[SimpleNamespace(isbn_13=isbn) for isbn in isbns],
+    )
+
+
+def _row(title: str | None, authors=("Ann Sand",), isbn: str | None = None) -> ImportedBook:
+    return ImportedBook(line=1, title=title, authors=list(authors), isbn_13=isbn)
+
+
+def test_another_volume_of_a_series_is_not_already_here():
+    library = book_imports._Library(
+        [_library_book("Ember Cycle: The First Spark", ["Ann Sand"], (GLASS_13,))]
+    )
+    assert not library.has(_row("Ember Cycle: The Second Flame", isbn=LANTERN_13))
+    assert not library.has(_row("Ember Cycle: The Second Flame"))
+    # the same book still is, by ISBN or by title (a subtitle missing on one side)
+    assert library.has(_row("Something Else", isbn=GLASS_13))
+    assert library.has(_row("Ember Cycle: The First Spark"))
+    assert library.has(_row("Ember Cycle"))
+
+
+def test_a_row_whose_isbn_differs_from_a_same_titled_book_is_another_book():
+    library = book_imports._Library([_library_book("Ninth Lantern", ["Eli Ford"], (GLASS_13,))])
+    assert not library.has(_row("Ninth Lantern", ["Eli Ford"], isbn=LANTERN_13))
+    # a book entered by hand, with no ISBN, is still found by title and author
+    by_hand = book_imports._Library([_library_book("Ninth Lantern", ["Eli Ford"])])
+    assert by_hand.has(_row("Ninth Lantern", ["Eli Ford"], isbn=LANTERN_13))
+
+
+def test_volumes_of_a_series_in_one_file_are_not_repeats():
+    seen = book_imports._Library()
+    seen.add(_row("Ember Cycle: The First Spark", isbn=GLASS_13))
+    assert not seen.has(_row("Ember Cycle: The Second Flame", isbn=LANTERN_13))
+    assert not seen.has(_row("Ember Cycle: The Second Flame"))
+    assert seen.has(_row("Ember Cycle: The First Spark"))
+
+
+def _match(candidate: MetadataCandidate, owned: frozenset[str]) -> BookMatch:
+    return BookMatch(candidate, "identifier", "Stand-in books", owned)
+
+
+def test_provider_ids_stay_in_the_providers_own_namespaces():
+    owned = frozenset({"stand-in.books", "stand-in"})
+    spoofed = MetadataCandidate(
+        external_id="1942", title="T", provider="igdb", media_type=MediaType.BOOK, provider_ids={}
+    )
+    # a plugin naming another provider gets no ids, even through the provider/external_id fallback
+    assert book_imports._provider_ids(_match(spoofed, owned)) == {}
+    mixed = spoofed.model_copy(update={"provider_ids": {"igdb": "1942", "stand-in": "W9"}})
+    assert book_imports._provider_ids(_match(mixed, owned)) == {"stand-in": "W9"}
+    own = spoofed.model_copy(update={"provider": "stand-in.books", "external_id": "W1"})
+    assert book_imports._provider_ids(_match(own, owned)) == {"stand-in.books": "W1"}
+
+
+SERIES = (
+    "Book Id,Title,Author,Author l-f,Additional Authors,ISBN,ISBN13,My Rating,Average Rating,"
+    "Publisher,Binding,Number of Pages,Year Published,Original Publication Year,Date Read,"
+    "Date Added,Bookshelves,Bookshelves with positions,Exclusive Shelf,My Review,Spoiler,"
+    "Private Notes,Read Count,Owned Copies\n"
+    f'201,"Lantern Archive: The Glass Orchard",Ada Quill,"Quill, Ada",,"=""""",'
+    f'"=""{GLASS_13}""",0,4,,Paperback,,,,,2022/01/05,to-read,,to-read,,,,0,0\n'
+    f'202,"Lantern Archive: Salt and Ember",Ada Quill,"Quill, Ada",,"=""""",'
+    f'"=""{LANTERN_13}""",0,4,,Paperback,,,,,2022/01/05,to-read,,to-read,,,,0,0\n'
+    '203,"Lantern Archive: Salt and Ember",Ada Quill,"Quill, Ada",,"=""""",'
+    '"=""""",0,4,,Paperback,,,,,2022/01/05,to-read,,to-read,,,,0,0\n'
+)
+
+
+async def test_volumes_of_a_series_all_import_and_a_true_repeat_is_shown(http, people, monkeypatch):
+    reader, _ = people
+    _use(monkeypatch)
+    preview = (await _post(http, reader, "/api/import/books/preview", SERIES)).json()
+    assert [row["repeated"] for row in preview["rows"]] == [False, False, True]
+    assert preview["new"] == 2 and preview["repeated"] == 1
+    result = (await _post(http, reader, "/api/import/books", SERIES)).json()
+    assert result["created"] == 2 and result["repeated"] == 1
+    assert [book.title for book in await _books(reader.id)] == [
+        "Lantern Archive: Salt and Ember",
+        "Lantern Archive: The Glass Orchard",
+    ]
+    # with the first volume already here (the second removed), the second still imports
+    second = next(b for b in await _books(reader.id) if "Salt" in b.title)
+    async with SessionLocal() as db:
+        await db.execute(update(Book).where(Book.id == second.id).values(deleted_at=1))
+        await db.commit()
+    again = (await _post(http, reader, "/api/import/books", SERIES)).json()
+    assert again["created"] == 1 and again["kept"] == 1
