@@ -1,4 +1,4 @@
-# Navigation-state acceptance checks (Playwright)
+# Navigation and shell acceptance checks (Playwright)
 
 Browser checks for how the app keeps your place: a reload keeps the scroll
 position, Back walks back through the sections and tabs you opened, and a
@@ -6,6 +6,14 @@ dialog with unsaved edits asks before Escape, Back or a reload discard them.
 They need a running host (frontend and `/api` backend), so they are not part
 of `npm run test`; the unit tests for the same behaviour are under `src/tests/`
 (`scrollMemory`, `routerScroll`, `unsavedGuard`, `navigationHistory`).
+
+`shell-and-phone.e2e.ts` covers the shell (UX-AUDIT-APP steps 4–7): the first
+library card within 15 Tab stops of the skip link or of a navigation, cards as
+links, one Tab stop per tab group, settings paths and the Import & sync hub,
+the phone game page's tab bar above the bottom navigation, the library's
+wording when the server is unreachable, Home's suggested widgets and the
+welcome's Later. Its unit counterparts are `keyboardFocus`, `settingsRoutes`
+and `firstVisitPolish`.
 
 ```bash
 cd src/frontend/e2e
