@@ -196,13 +196,7 @@ async def _checked_reading(db: AsyncSession, book: Book, reading: BookReading) -
         if edition is None:
             raise _invalid("The edition of a read must be one of this book's editions.")
         page_count = edition.page_count
-    problem = reading_problem(
-        reading.progress_unit,
-        reading.progress_value,
-        reading.started_on,
-        reading.finished_on,
-        page_count,
-    )
+    problem = reading_problem(reading, page_count)
     if problem is not None:
         raise _invalid(problem)
 

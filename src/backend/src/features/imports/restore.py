@@ -239,11 +239,7 @@ async def _add_book_children(
             **fields,
         )
         problem = reading_problem(
-            reading.progress_unit,
-            reading.progress_value,
-            reading.started_on,
-            reading.finished_on,
-            read_edition.page_count if read_edition is not None else None,
+            reading, read_edition.page_count if read_edition is not None else None
         )
         if problem is not None:
             # one bad read is dropped; the work and its other editions and reads stay
