@@ -22,7 +22,9 @@ unknown. Every field is listed in
 v1.1.20 also adds books, in the same release (no separate minor): `MediaType.book` (a provider
 registration may now list all five media types), `MetadataPatch.book` (`MetadataBook`: authors with
 roles, partial first-published date, series, original language and `editions`), the candidate's
-`authors` and `isbn_13`, and the `isbn` request option sent on an ISBN book search. The shared
+`authors` and `isbn_13`, the `isbn` request option sent on an ISBN book search, and the batched
+identifier lookup a book import uses (the optional `resolve` operation, `MetadataResolveRequest`
+with up to 200 rows and `ProviderResponse.resolved`). The shared
 vocabularies gain `book_format` and `book_creator_role`. See
 [metadata providers](metadata-providers.md#plugin-api-1120-books).
 A 1.1.20 manifest may also declare `api_contract_max`, the newest contract the plugin supports; the
