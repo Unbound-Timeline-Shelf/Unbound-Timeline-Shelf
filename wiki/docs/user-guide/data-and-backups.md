@@ -10,7 +10,7 @@ preview, progress and error messages when you switch between them, so a half-rev
 | Tab | What it is for |
 | --- | --- |
 | **Export** | download your library as one JSON file, or movies, TV shows and anime as a CSV spreadsheet |
-| **Import** | bring in a list from another site (MyAnimeList, Letterboxd, IMDb, Yamtrack) with a preview and per-title choices, and the AniList username import |
+| **Import** | bring in a list from another site (MyAnimeList, Letterboxd, IMDb, Yamtrack) with a preview and per-title choices, a book list (Goodreads, StoryGraph or a list of ISBNs, see below), and the AniList username import |
 | **Restore** | add movies, TV shows and anime back from a library export or backup file, and import games from an exported file; existing items are skipped, never overwritten |
 | **Backups** | the status of the automatic backups, and an explanation of how they differ from a full backup |
 
@@ -36,6 +36,18 @@ These are a rolling safety net, not a complete deployment backup.
 Server operators can use [Full Deployment Backups](../deployment/backups.md) to schedule encrypted
 PostgreSQL, application-file and plugin-state backups with a maintenance window and an isolated
 restore drill. This operator workflow does not change the Settings import/export tabs.
+
+## Book lists
+
+**Import → Import books** reads a Goodreads export (*Export Library* CSV), a StoryGraph export (CSV) or
+a list of ISBNs (pasted or as a text file, one or more per line). You see how many books the file holds,
+which are already in your library and the first rows before anything is added. Books already in your
+library (same ISBN, or same title and author) are kept exactly as they are, so importing the same file
+twice adds nothing.
+
+If a book metadata provider is set up (for example the Atlas plugin), the new books are identified
+through it, by ISBN first and then by title and author; a book it does not know is still added from the
+file's own data. Untick *Identify the new books* to add everything from the file alone.
 
 ## Library export
 
