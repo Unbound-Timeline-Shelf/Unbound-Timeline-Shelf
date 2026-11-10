@@ -25,6 +25,7 @@ from src.api.routes import (
     api_keys,
     app_integrations,
     auth,
+    book_imports,
     books,
     branding,
     calendar_events,
@@ -264,6 +265,7 @@ app.include_router(connections.router)
 app.include_router(jobs.router)
 app.include_router(jobs.user_router)
 app.include_router(media_io.router)
+app.include_router(book_imports.router)
 app.include_router(media_extras.router)
 app.include_router(media_provider.router)
 app.include_router(media_images.router)
