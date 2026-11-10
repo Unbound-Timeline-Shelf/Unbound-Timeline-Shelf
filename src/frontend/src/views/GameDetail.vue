@@ -41,6 +41,7 @@ import {
   computed,
   provide,
   defineAsyncComponent,
+  nextTick,
   onBeforeUnmount,
   ref,
   watch,
@@ -147,6 +148,7 @@ const {
   moreTabs,
   showMoreTabs,
   openMoreTab,
+  selectTab,
   achievementsOn,
   tieAchievements,
   mediaItems,
@@ -230,6 +232,20 @@ const {
 
 // regional and edition releases, oldest first, in the date style the person chose
 const releases = computed(() => releaseRows(game.value?.releases));
+
+// Switching tabs never drops the page to the top (UX-AUDIT-APP A7). The
+// open panel always leaves room for a full screen below the tab bar (see
+// game-detail-layout.css), so a shorter panel cannot clamp the scroll
+// position, during a switch or when a reload restores it; if the tab bar had
+// scrolled out of view it comes back to the top of the screen.
+const tabbarWrap = ref<HTMLElement | null>(null);
+watch(activeTab, () => {
+  const barTop = tabbarWrap.value?.getBoundingClientRect().top ?? 0;
+  if (barTop < 0)
+    void nextTick(() =>
+      window.scrollTo({ top: window.scrollY + barTop, behavior: "instant" }),
+    );
+});
 
 const editingAchievement = ref<Achievement | null>(null);
 function openAchievementEditor(achievement: Achievement) {
@@ -358,6 +374,7 @@ async function onFieldSourceChanged() {
     <GameFormModal
       v-if="showEditModal"
       :game="game"
+      history-key="edit"
       @close="showEditModal = false"
       @saved="onGameSaved"
       @delete="onDeleteFromModal"
@@ -505,7 +522,7 @@ async function onFieldSourceChanged() {
               type="button"
               class="badge achievement-progress-badge"
               title="Jump to Achievements"
-              @click="activeTab = 'Achievements'"
+              @click="selectTab('Achievements')"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -578,7 +595,7 @@ async function onFieldSourceChanged() {
       </div>
     </section>
 
-    <div class="tabbar-wrap">
+    <div ref="tabbarWrap" class="tabbar-wrap">
       <nav class="tabbar">
         <button
           v-for="tab in visibleTabs"
@@ -586,7 +603,7 @@ async function onFieldSourceChanged() {
           type="button"
           class="tab-btn"
           :class="{ active: activeTab === tab }"
-          @click="activeTab = tab"
+          @click="selectTab(tab)"
         >
           {{ tab }}
         </button>
@@ -683,7 +700,7 @@ async function onFieldSourceChanged() {
               class="meta-value meta-link"
               :class="{ accent: fact.accent, muted: fact.muted }"
               :title="`Open ${fact.tab}`"
-              @click="activeTab = fact.tab"
+              @click="selectTab(fact.tab)"
             >
               {{ fact.value }}
             </button>

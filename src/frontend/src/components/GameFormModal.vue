@@ -58,6 +58,7 @@ import {
   attachArtwork,
   stagedArtworkList,
 } from "../composables/useGameArtworkTransfer";
+import { useUnsavedGuard } from "../composables/useUnsavedGuard";
 
 const props = defineProps<{
   game?: Game | null;
@@ -65,6 +66,9 @@ const props = defineProps<{
   // Unsaved values handed over by the quick editor's "Edit more"; they take
   // the place of the saved ones until this editor saves or is cancelled.
   draft?: GameEditDraft | null;
+  // The address parameter whose history step opened this editor; Back
+  // removing it closes the editor, after asking about unsaved edits.
+  historyKey?: string;
 }>();
 
 const compact = ref(!!props.quickAdd && !props.game);
@@ -762,6 +766,8 @@ async function submit() {
     if (import.meta.env.VITE_USE_MOCK_DATA !== "true" && pendingArtwork.length)
       await attachArtwork(savedGame.id, savedGame.title, pendingArtwork);
 
+    // the saved values are no longer "unsaved", so closing must not ask
+    unsaved.release();
     emit("saved", savedGame.id);
   } catch (err) {
     error.value =
@@ -769,6 +775,60 @@ async function submit() {
   } finally {
     saving.value = false;
   }
+}
+
+// Unsaved edits (UX-AUDIT-APP A1, A2): the form compares what Save would
+// send with what it opened with, once the person has touched it, so values
+// that arrive asynchronously never count as edits. Values handed over by the
+// quick editor are unsaved from the start.
+const touched = ref(false);
+let openedWith: string | null = null;
+function editorSnapshot(): string {
+  try {
+    return JSON.stringify([
+      buildInput(),
+      !!cover.staged.value,
+      !!banner.staged.value,
+    ]);
+  } catch {
+    // a value Save would reject (e.g. a malformed number) is still an edit
+    return "invalid";
+  }
+}
+onMounted(() =>
+  nextTick(() => {
+    openedWith = editorSnapshot();
+  }),
+);
+function markTouched() {
+  touched.value = true;
+}
+const dirty = computed(
+  () =>
+    !saving.value &&
+    (!!props.draft ||
+      (touched.value &&
+        openedWith !== null &&
+        editorSnapshot() !== openedWith)),
+);
+const unsaved = useUnsavedGuard(() => dirty.value, {
+  closesOn: (to, from) =>
+    !!props.historyKey &&
+    from.query[props.historyKey] !== undefined &&
+    to.query[props.historyKey] === undefined,
+});
+// Escape, the backdrop and × already asked (UiModal `dirty`).
+function onShellClose() {
+  unsaved.release();
+  emit("close");
+}
+// Opened from its own history step, the editor closes with its page (and the
+// leave guard asks first); elsewhere it closes before the link navigates.
+function closeForLink() {
+  if (!props.historyKey) emit("close");
+}
+async function cancel() {
+  if (await unsaved.confirmDiscard()) emit("close");
 }
 </script>
 
@@ -785,9 +845,13 @@ async function submit() {
     tabs-label="Game details"
     :size="compact ? 'standard' : 'editor'"
     :dismissible="!saving"
+    :dirty="dirty"
     class="game-editor"
     :class="{ 'quick-add': compact }"
-    @close="emit('close')"
+    @close="onShellClose"
+    @input="markTouched"
+    @change="markTouched"
+    @click="markTouched"
     @submit="submit"
     @cover="activeTab = 'Artwork'"
   >
@@ -823,7 +887,7 @@ async function submit() {
           class="steamgriddb-hint"
         >
           Configure the built-in artwork providers in
-          <router-link to="/settings?section=sources" @click="emit('close')"
+          <router-link to="/settings?section=sources" @click="closeForLink"
             >Settings &rsaquo; Metadata/API</router-link
           >
           to receive cover and hero artwork after choosing a game.
@@ -1460,7 +1524,7 @@ async function submit() {
         type="button"
         class="secondary-button"
         :disabled="saving"
-        @click="emit('close')"
+        @click="cancel"
       >
         Cancel
       </button>
