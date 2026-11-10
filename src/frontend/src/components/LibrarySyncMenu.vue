@@ -110,8 +110,11 @@ function onToggle() {
         {{ pluginActionLabel(connection) }}
         {{ connection.label }}
       </button>
-      <RouterLink to="/settings?section=background-tasks"
+      <RouterLink to="/settings/account/background-tasks"
         >Autosync settings</RouterLink
+      >
+      <RouterLink to="/settings/preferences/import-sync"
+        >All import & sync options</RouterLink
       >
     </div>
   </details>

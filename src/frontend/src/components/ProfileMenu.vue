@@ -66,7 +66,7 @@ function onKeydown(e: KeyboardEvent) {
 
 function goProfile() {
   open.value = false;
-  router.push("/settings?section=profile");
+  router.push("/settings/account/profile");
 }
 function goSettings() {
   open.value = false;

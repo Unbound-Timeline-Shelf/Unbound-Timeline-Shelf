@@ -15,6 +15,8 @@ import {
   scrollKey,
   takeUnloadedScroll,
 } from "../state/scrollMemory";
+import { legacySettingsRedirect } from "../state/settingsRegistry";
+import { installRouteFocus } from "../state/routeFocus";
 import { appearanceLoaded, loadAppearanceSettings } from "../state/appearance";
 import { fetchSetupStatus } from "../services/setup";
 import {
@@ -266,8 +268,11 @@ const router = createRouter({
       component: () => import("../views/Setup.vue"),
     },
     { path: "/profile", redirect: "/settings" },
-    { path: "/sessions", redirect: "/settings?section=sessions" },
-    { path: "/admin/sessions", redirect: "/settings?section=admin-sessions" },
+    { path: "/sessions", redirect: "/settings/account/sessions" },
+    {
+      path: "/admin/sessions",
+      redirect: "/settings/administration/admin-sessions",
+    },
     {
       path: "/plugins/:pluginId",
       name: "plugin-host",
@@ -279,7 +284,9 @@ const router = createRouter({
       component: () => import("../views/PluginHost.vue"),
     },
     {
-      path: "/settings",
+      // /settings, /settings/<area>, /settings/<area>/<section> (§3.4); old
+      // ?section= addresses are moved here by legacySettingsRedirect below
+      path: "/settings/:area(preferences|account|administration)?/:section?",
       name: "settings",
       meta: { title: "Settings", destinationQuery: ["area", "section"] },
       component: () => import("../views/Settings.vue"),
@@ -303,6 +310,8 @@ const router = createRouter({
 installScrollPersistence(() =>
   scrollKey(router.currentRoute.value.path, router.currentRoute.value.query),
 );
+
+installRouteFocus(router);
 
 let setupState: "unknown" | "required" | "complete" = "unknown";
 
@@ -339,6 +348,11 @@ router.beforeEach(async (to, from) => {
   cancelScrollRestore();
   if (typeof window !== "undefined")
     rememberScroll(from, { left: window.scrollX, top: window.scrollY });
+
+  // Settings sections moved from ?section= to paths: links, bookmarks and
+  // notifications that still use the old form land on the same section.
+  const movedSettings = legacySettingsRedirect(to);
+  if (movedSettings) return { ...movedSettings, hash: to.hash };
 
   // Start fetching this route's code while the startup checks are in flight.
   // Vue Router normally resolves lazy components only after beforeEach guards
