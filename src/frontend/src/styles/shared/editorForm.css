@@ -116,3 +116,11 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.danger-zone {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ui-border-soft);
+}
