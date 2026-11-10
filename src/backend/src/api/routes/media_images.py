@@ -1,4 +1,4 @@
-"""Local copies of the posters and backdrops of movies, TV shows and anime."""
+"""Local copies of the posters and backdrops of movies, TV shows and anime, and of book covers."""
 
 import asyncio
 from typing import Any, Literal
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.image_responses import original_image_response
 from src.core.auth import get_current_user
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
+from src.database.models.book import Book
 from src.database.models.movies import Movie
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow
 from src.database.models.user import User
@@ -33,6 +34,44 @@ _EPISODES: dict[str, tuple[Any, Any, Any]] = {
     "anime": (AnimeEpisode, AnimeSeason, Anime),
 }
 STILL_WIDTH = 640
+
+
+async def _cached_image(
+    url: str, user_id: UUID, kind: str, item_id: UUID, name: str, width: int
+) -> Response:
+    """Serve ``url`` from this server's disk, downloading and shrinking it the first time; if
+    the download fails the browser is sent to the original address instead."""
+    target = cache_path(_DATA_ROOT / str(user_id) / ".cache", kind, str(item_id), name, url)
+    if not target.is_file():
+        try:
+            await asyncio.to_thread(fetch_and_store, url, target, width)
+        except RemoteImageError:
+            return original_image_response(url)
+    return FileResponse(
+        target,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=3600, must-revalidate"},
+    )
+
+
+# Declared before the generic route below so "/book/..." is not read as an unknown media type.
+@router.get("/book/{book_id}/cover")
+async def get_book_cover(
+    book_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """A book's cover from this server's own disk (C15 M10 review).
+
+    A cover chosen from a metadata provider is stored as the provider's address; loading it from
+    there on every view of the library would send each viewer's browser to the provider's image
+    host, so it goes through the same cache and private-address refusal as posters."""
+    url = await db.scalar(
+        select(Book.cover_url).where(Book.id == book_id, Book.user_id == current_user.id)
+    )
+    if not url:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such image.")
+    return await _cached_image(url, current_user.id, "book", book_id, "cover", WIDTHS["poster"])
 
 
 @router.get("/{media_type}/{item_id}/{which}")
@@ -64,19 +103,7 @@ async def get_media_image(
 
     # the hero of a title with a backdrop is that same picture: one file, not two
     name = "backdrop" if which == "hero" and row and row.backdrop_url else which
-    target = cache_path(
-        _DATA_ROOT / str(current_user.id) / ".cache", media_type, str(item_id), name, url
-    )
-    if not target.is_file():
-        try:
-            await asyncio.to_thread(fetch_and_store, url, target, WIDTHS[which])
-        except RemoteImageError:
-            return original_image_response(url)
-    return FileResponse(
-        target,
-        media_type="image/jpeg",
-        headers={"Cache-Control": "private, max-age=3600, must-revalidate"},
-    )
+    return await _cached_image(url, current_user.id, media_type, item_id, name, WIDTHS[which])
 
 
 @router.get("/{media_type}/episodes/{episode_id}/still")
@@ -100,20 +127,6 @@ async def get_episode_still(
     )
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such image.")
-    target = cache_path(
-        _DATA_ROOT / str(current_user.id) / ".cache",
-        f"{media_type}-episode",
-        str(episode_id),
-        "still",
-        url,
-    )
-    if not target.is_file():
-        try:
-            await asyncio.to_thread(fetch_and_store, url, target, STILL_WIDTH)
-        except RemoteImageError:
-            return original_image_response(url)
-    return FileResponse(
-        target,
-        media_type="image/jpeg",
-        headers={"Cache-Control": "private, max-age=3600, must-revalidate"},
+    return await _cached_image(
+        url, current_user.id, f"{media_type}-episode", episode_id, "still", STILL_WIDTH
     )

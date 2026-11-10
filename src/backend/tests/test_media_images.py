@@ -124,3 +124,30 @@ def test_only_public_hosts_are_fetched(host: str, public: bool) -> None:
 def test_unsafe_addresses_are_refused(url: str) -> None:
     with pytest.raises(remote_images.RemoteImageError):
         remote_images.download_image(url)
+
+
+async def test_book_cover_is_kept_on_this_server(flow, downloads) -> None:
+    """A provider cover is stored as the provider's address; the library and book page load
+    this server's copy, so viewers' browsers never go to the provider's image host."""
+    created = await flow.client.post(
+        "/api/book/create",
+        json={"title": "A Synthetic Novel", "cover_url": "https://covers.example.test/c.jpg"},
+    )
+    assert created.status_code == 201, created.text
+    book = created.json()["id"]
+
+    first = await flow.client.get(f"/api/media-image/book/{book}/cover")
+    assert first.status_code == 200
+    assert first.headers["content-type"] == "image/jpeg"
+    assert Image.open(io.BytesIO(first.content)).width == 400
+    await flow.client.get(f"/api/media-image/book/{book}/cover")
+    assert downloads == ["https://covers.example.test/c.jpg"]
+
+
+async def test_book_without_a_cover_or_not_owned_is_404(flow, downloads) -> None:
+    created = await flow.client.post("/api/book/create", json={"title": "No Cover"})
+    book = created.json()["id"]
+    assert (await flow.client.get(f"/api/media-image/book/{book}/cover")).status_code == 404
+    other = "00000000-0000-0000-0000-000000000001"
+    assert (await flow.client.get(f"/api/media-image/book/{other}/cover")).status_code == 404
+    assert downloads == []

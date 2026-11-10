@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The Books library (#265 phase 1): the same List / Shelf / Board view as
 // Movies, TV and Anime, with reading statuses. A book is added by hand with
-// its own form; there is no book metadata provider in this phase.
+// its own form, or found through a metadata provider plugin (#265 phase 2).
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useKeptAlive } from "../utils/useKeptAlive";
@@ -14,6 +14,7 @@ import {
 } from "../services/books";
 import type { Book, BookStatus } from "../types/book";
 import { resolveStatus } from "../utils/mediaStatus";
+import { localBookCover } from "../utils/mediaImages";
 import { bookProgress, bookProgressLabel } from "../utils/bookProgress";
 import MediaLibraryView from "../components/library/MediaLibraryView.vue";
 import type {
@@ -44,7 +45,7 @@ function toVM(b: Book): LibraryCardVM {
   return {
     id: b.id,
     title: b.title,
-    poster: b.coverUrl,
+    poster: localBookCover(b.id, b.coverUrl),
     status: b.status,
     favorite: b.favorite,
     score: b.ratingOverall,
