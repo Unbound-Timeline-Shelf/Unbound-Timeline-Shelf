@@ -17,6 +17,10 @@ Switching between Games and Media keeps the loaded library visible while refresh
 The sidebar highlights the most specific library entry. Game collections and
 their detail pages highlight **Collections**; game detail pages highlight
 **All games**. The Games group stays highlighted for both areas.
+While the desktop navigation pane shows a folder's pages, the bar at the top
+of the page leaves out its Games / Collections or Movies / TV Shows / Anime
+switcher, so each page has one entry. Closing the folder with its arrow, or
+using the icon rail, the overlay menu or a phone, brings the switcher back.
 The [phone and desktop browser checks](../assets/sidebar-navigation/conformance.json)
 verify this selection in the actual navigation layouts.
 

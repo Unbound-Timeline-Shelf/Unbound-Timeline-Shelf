@@ -32,6 +32,7 @@ import { branding } from "../state/branding";
 import { containModalTab } from "../services/focus";
 import { useConfirm } from "../state/dialog";
 import { skipToContent } from "../state/routeFocus";
+import { expandedNavigationFolders } from "../state/navigationFolders";
 import { shortcutAriaKeys, shortcutHint } from "../state/shortcuts";
 import {
   navigationShortcutForPath,
@@ -94,12 +95,11 @@ function entryActive(group: (typeof groups)[number], path: string) {
     )
   );
 }
-const expandedGroups = ref(
-  new Set(
-    groups
-      .filter((group) => group.paths.some(isActive))
-      .map((group) => group.id),
-  ),
+// shared with the top bars, which leave out the switcher for a folder
+// listed here (UX-AUDIT-APP A19)
+const expandedGroups = expandedNavigationFolders;
+expandedGroups.value = new Set(
+  groups.filter((group) => group.paths.some(isActive)).map((group) => group.id),
 );
 function toggleGroup(id: string) {
   if (collapsed.value) railExpanded.value = true;
