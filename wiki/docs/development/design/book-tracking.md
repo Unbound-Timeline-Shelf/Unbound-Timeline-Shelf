@@ -174,6 +174,9 @@ the new tables and enums. The generated migration is reviewed manually per AGENT
   `Unbound-Timeline-Shelf/Plugins`, using the existing
   `metadata_providers.register` boundary and its permission, credential and account
   opt-out handling.
+- *Done in phase 3 (Plugin API 1.1.20):* `book` is a media type, a registration may list all
+  five, and the contract carries `MetadataBook`, candidate `authors`/`isbn_13` and the `isbn`
+  request option. The planning note follows.
 - Contract effect: `MediaType` is a public closed enum and registrations accept at most
   four media types (`media_types` has `max_length=4`). Book providers need an additive
   contract bump adding `book`, widening that bound, and regenerating the JSON schema
@@ -213,9 +216,12 @@ duplication evidence.
 1. Model, migration, CRUD routes, owner-scoped tests, manual-entry UI, export/import
    round trip. This is the first deliverable.
 2. Library filters, statistics and Home decisions.
-3. Additive plugin contract bump (`book` media type); choose its version at implementation against the current
-   contract. Any book provider belongs in the plugins repository. Provider selection, including any future Atlas
-   mapping, is deferred until the underlying book feature is ready; no specific provider is promised here.
+3. Additive plugin contract bump (`book` media type), done in Plugin API **1.1.20** (the same contract as
+   releases, see [metadata providers](../metadata-providers.md#plugin-api-1120-books)). Any book provider belongs
+   in the plugins repository; the host still has no hardcoded book provider. *Amended 2026-11-10:* the
+   programme's Phase 9, approved on 2026-11-08, names the providers that this item had deferred: books from
+   Atlas through the `metadata-atlas` plugin, and an optional `metadata-openlibrary` plugin for hosts without
+   Atlas. Both are plugins, built in their own repositories against this contract.
 4. CSV importers.
 5. Revisit shared abstractions only if duplication across five kinds proves costly.
 
@@ -278,6 +284,25 @@ regression coverage and migration/contract review.
   with `referrerpolicy=no-referrer`, on the book page and on the List/Shelf/Board library tiles), the
   plugin contract, the CSV export, the command palette, and any metadata provider. The book page has
   its own hero rather than `MediaDetailHero`.
+
+### Deviations in phase 3 (M10, `programme/m10-plugin-api-books`)
+
+- **Contract number:** books join Plugin API 1.1.20 instead of a separate bump. One constant,
+  `UNIFIED_CONTRACT` in `plugin_api/base_contracts.py`, gates the release fields and the book fields
+  (`RELEASES_CONTRACT` is now an alias).
+- **Older books:** `MetadataBook.first_published` and an edition's `publish_date` are their own partial
+  dates with years 1000–2100, not a `MetadataRelease` (whose years start in 1950).
+- **Edition field names** follow the host's edition columns (`publish_date`, `page_count`), and two editions
+  in one result may not share an ISBN-13.
+- **The ISBN is not a provider id.** `provider_ids` stay confined to the provider's own namespaces; the
+  ISBN a provider matched travels in the candidate's `isbn_13`, and an ISBN search sends the `isbn`
+  request option.
+- **No refresh for books yet.** A provider's book is applied when the person adds the book or adds an
+  edition; there is no "Refresh metadata" for a book, and an edition's provider key is not stored
+  (editions are matched by ISBN).
+- **Search and add** is in the *Add book* form rather than the shared media-add dialog.
+- **Contract range:** a 1.1.20 manifest may declare `api_contract_max` (C16 §22.6); the host runs the plugin
+  at the highest contract both support.
 
 ## 10. Acceptance mapping
 
