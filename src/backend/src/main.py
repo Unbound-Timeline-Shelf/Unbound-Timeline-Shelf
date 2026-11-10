@@ -25,6 +25,7 @@ from src.api.routes import (
     api_keys,
     app_integrations,
     auth,
+    books,
     branding,
     calendar_events,
     calendar_feed,
@@ -231,6 +232,7 @@ app.include_router(metadata.router)
 app.include_router(movies.router)
 app.include_router(tv_shows.router)
 app.include_router(anime.router)
+app.include_router(books.router)
 app.include_router(game_archives.router)
 app.include_router(game_notes.router)
 app.include_router(game_page.router)

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// The Media-area bar: AppTopBar with the Movies / TV Shows / Anime / Collections
+// The Media-area bar: AppTopBar with the Movies / TV Shows / Anime / Books / Collections
 // switcher on the left, and on the right whatever the page adds (its
 // `actions` slot).
 import AppTopBar from "./AppTopBar.vue";
 import MediaKindSwitch from "./MediaKindSwitch.vue";
 
 defineProps<{
-  active: "movie" | "tv" | "anime" | "lists" | "search";
+  active: "movie" | "tv" | "anime" | "book" | "lists" | "search";
 }>();
 </script>
 

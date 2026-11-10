@@ -1,7 +1,7 @@
-"""Permanent removal of trashed movies, TV shows and anime.
+"""Permanent removal of trashed movies, TV shows, anime and books.
 
 A trashed title is only a database row (a show or anime also has its seasons
-and episodes), unlike the game files that sweep.py moves aside on disk. Both
+and episodes, a book its editions and reads), unlike the game files that sweep.py moves aside on disk. Both
 ways of removing titles for good go through `purge_trashed_titles`, so they
 share the same ownership, deletion-time cutoff, locking and per-title
 transactions:
@@ -27,6 +27,7 @@ from sqlalchemy.sql.functions import count as sql_count
 
 from src.core.preferences import MEDIA_TRASH_RETENTION_DAYS
 from src.database.models.anime import Anime
+from src.database.models.book import Book
 from src.database.models.movies import Movie
 from src.database.models.tv_show import TVShow
 from src.database.models.user_preferences import UserPreferences
@@ -35,7 +36,7 @@ from src.database.session import SessionLocal
 logger = logging.getLogger(__name__)
 
 RETENTION_KEY = "media_trash_retention_days"
-TITLE_MODELS: tuple[Any, ...] = (Movie, TVShow, Anime)
+TITLE_MODELS: tuple[Any, ...] = (Movie, TVShow, Anime, Book)
 # One Empty trash request removes at most this many titles; the caller repeats
 # it for the rest, so a very large trash never becomes one long transaction.
 EMPTY_BATCH_SIZE = 200
