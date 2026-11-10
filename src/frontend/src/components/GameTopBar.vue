@@ -7,6 +7,7 @@ import AppTopBar from "./AppTopBar.vue";
 import SegmentedTabs from "./SegmentedTabs.vue";
 import type { SegmentOption } from "./SegmentedTabs.vue";
 import { navigationViewport } from "../state/sidebarMode";
+import { sidebarListsFolder } from "../state/navigationFolders";
 
 defineProps<{ active: "games" | "collections" }>();
 
@@ -28,9 +29,11 @@ const KINDS: SegmentOption[] = [
 
 <template>
   <!-- on a phone the Games / Collections switch shrinks to its icons and
-       shares one row with the page's own controls (UX-AUDIT-APP A12) -->
+       shares one row with the page's own controls (UX-AUDIT-APP A12); on a
+       desktop it is left out while the sidebar lists the same pages (A19) -->
   <AppTopBar one-row>
     <SegmentedTabs
+      v-if="!sidebarListsFolder('games')"
       :options="KINDS"
       :model-value="active"
       aria-label="Games area"
