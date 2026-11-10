@@ -26,3 +26,15 @@ export function localMediaImage(
   if (!/^https?:\/\//i.test(remote)) return remote;
   return `/api/media-image/${kind}/${id}/${which}?v=${stamp(remote)}`;
 }
+
+// A book's cover, chosen from a metadata provider, is stored as that provider's
+// address; the server keeps its own copy so viewing the library never sends the
+// browser to the provider's image host.
+export function localBookCover(
+  id: string,
+  remote: string | null | undefined,
+): string | null {
+  if (!remote) return null;
+  if (!/^https?:\/\//i.test(remote)) return remote;
+  return `/api/media-image/book/${id}/cover?v=${stamp(remote)}`;
+}

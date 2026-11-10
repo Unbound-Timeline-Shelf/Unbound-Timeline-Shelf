@@ -13,6 +13,7 @@ import MediaTopBar from "../components/MediaTopBar.vue";
 import BackButton from "../components/BackButton.vue";
 import MyNote from "../components/MyNote.vue";
 import BookFormModal from "../components/BookFormModal.vue";
+import { localBookCover } from "../utils/mediaImages";
 import BookEditionDialog from "../components/BookEditionDialog.vue";
 import BookReadingDialog from "../components/BookReadingDialog.vue";
 import {
@@ -321,7 +322,7 @@ function saved(next: Book) {
       <div class="book-cover" :class="{ empty: !book.coverUrl }">
         <img
           v-if="book.coverUrl"
-          :src="book.coverUrl"
+          :src="localBookCover(book.id, book.coverUrl) ?? undefined"
           :alt="`Cover of ${book.title}`"
           referrerpolicy="no-referrer"
         />
