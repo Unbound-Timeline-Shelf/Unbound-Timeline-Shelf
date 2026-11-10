@@ -56,6 +56,10 @@ export interface Preferences {
     import("../state/shortcuts").ShortcutOverride
   >;
   home_widgets: string[];
+  // the person chose their Home widgets, even none (A22)
+  home_widgets_customized: boolean;
+  // one-time tips dismissed on this account, on every device (A24)
+  dismissed_tips: string[];
   home_widget_config: Record<string, import("./pluginUi").UiValues>;
   calendar_game_releases: boolean;
   calendar_game_history: boolean;
@@ -135,6 +139,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   keyboard_shortcuts_enabled: true,
   keyboard_shortcut_overrides: {},
   home_widgets: [],
+  home_widgets_customized: false,
+  dismissed_tips: [],
   home_widget_config: {},
   calendar_game_releases: true,
   calendar_game_history: true,

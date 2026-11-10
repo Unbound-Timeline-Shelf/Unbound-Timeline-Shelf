@@ -16,6 +16,9 @@ export const preferencesError = ref<string | null>(null);
 // Closing it hides it at once, even when saving that answer fails; an unsaved
 // answer means the offer comes back on the next visit, never in a loop now.
 export const dateOfferHiddenFor = ref<string | null>(null);
+// The account that chose "Later" on the first-visit welcome this session
+// (UX-AUDIT-APP A24): it is closable now, and comes back next visit.
+export const welcomeHiddenFor = ref<string | null>(null);
 let generation = 0;
 
 export function resetSharedPreferences(): void {
@@ -25,6 +28,7 @@ export function resetSharedPreferences(): void {
   preferencesLoaded.value = false;
   preferencesError.value = null;
   dateOfferHiddenFor.value = null;
+  welcomeHiddenFor.value = null;
 }
 
 export async function loadSharedPreferences(): Promise<void> {
