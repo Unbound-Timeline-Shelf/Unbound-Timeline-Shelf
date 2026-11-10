@@ -10,8 +10,9 @@ those single lookups are bounded per import, because they cost one provider requ
 The host never takes a provider's word for a title match: the titles must agree once case,
 accents, punctuation and a leading article are set aside, and so must one author's surname when
 both sides name authors. A subtitle (after ``:``) is set aside only when one side has none:
-"Ember Cycle: The First Spark" agrees with "Ember Cycle" but never with "Ember Cycle: The Last Coal". An identifier answer that names a different ISBN is ignored. A provider that
-fails is skipped for the rest of the import; a failure never blocks it, and every row a provider
+"Ember Cycle: The First Spark" agrees with "Ember Cycle" but never with "Ember Cycle: The Last
+Coal". An identifier answer that names a different ISBN is ignored. A provider that fails is
+skipped for the rest of the import; a failure never blocks it, and every row a provider
 cannot identify is still imported, by hand (nothing is dropped).
 
 Matching is bounded per import: at most ``MAX_RESOLVE_CALLS`` batched calls, ``MAX_ROW_LOOKUPS``
@@ -101,8 +102,8 @@ def title_parts(title: str) -> tuple[str, str | None]:
 
 def titles_agree(first: str, second: str) -> bool:
     """The same title, setting a subtitle aside only when one side has none: different
-    subtitles are different books ("Ember Cycle: The First Spark" is not "Ember Cycle: The Well of
-    Ascension")."""
+    subtitles are different books ("Ember Cycle: The First Spark" is not "Ember Cycle: The
+    Second Flame")."""
     first_main, first_subtitle = title_parts(first)
     second_main, second_subtitle = title_parts(second)
     if not first_main or first_main != second_main:
