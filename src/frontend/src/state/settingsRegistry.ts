@@ -59,12 +59,20 @@ export const CORE_SETTINGS_SECTION_IDS: ReadonlySet<string> = new Set([
   "tasks",
   "background-tasks",
   "logs",
+  "import-sync",
 ]);
 
 export const SETTINGS_AREA_NAMES: Record<SettingsArea, string> = {
   preferences: "Preferences",
   account: "Account",
   administration: "Administration",
+};
+
+// "Library" was both a group and a section in it (UX-AUDIT-APP A20). Plugins
+// still place sections in the "Library" group by that name.
+const LIBRARY_GROUP_LABEL = "Library & sources";
+const SETTINGS_GROUP_DISPLAY_NAMES: Record<string, string> = {
+  Library: LIBRARY_GROUP_LABEL,
 };
 
 export interface SettingsTab {
@@ -185,8 +193,8 @@ export function buildSettingsGroups(
       sections: [
         { id: "profile", label: "Profile" },
         { id: "connections", label: "Connections" },
-        { id: "background-tasks", label: "Background tasks" },
-        { id: "notifications", label: "Notifications" },
+        { id: "background-tasks", label: "My background tasks" },
+        { id: "notifications", label: "My notifications" },
         { id: "api-keys", label: "API Keys" },
         { id: "connected-apps", label: "Connected apps" },
         { id: "sessions", label: "Sessions" },
@@ -204,9 +212,10 @@ export function buildSettingsGroups(
       ],
     },
     {
-      label: "Library",
+      label: LIBRARY_GROUP_LABEL,
       area: "preferences",
       sections: [
+        { id: "import-sync", label: "Import & sync" },
         { id: "library", label: "Library" },
         { id: "metadata", label: "Metadata" },
         { id: "tag-catalogue", label: "Tag catalogue" },
@@ -241,10 +250,10 @@ export function buildSettingsGroups(
         label: "Operations",
         area: "administration",
         sections: [
-          { id: "admin-notifications", label: "Notifications" },
+          { id: "admin-notifications", label: "Notification delivery" },
           { id: "server-integrations", label: "Server integrations" },
           { id: "limits", label: "Upload limits" },
-          { id: "tasks", label: "Background tasks" },
+          { id: "tasks", label: "Server background tasks" },
           { id: "stats", label: "Storage & usage" },
           { id: "metrics", label: "Performance metrics" },
           { id: "dev-tools", label: "Developer tools" },
@@ -258,12 +267,12 @@ export function buildSettingsGroups(
       sections: [{ id: "stats", label: "Storage & usage" }],
     });
   for (const item of [...pluginSettings, ...pluginSettingsNavigation]) {
+    const label = SETTINGS_GROUP_DISPLAY_NAMES[item.group] ?? item.group;
     let group = result.find(
-      (candidate) =>
-        candidate.area === item.area && candidate.label === item.group,
+      (candidate) => candidate.area === item.area && candidate.label === label,
     );
     if (!group) {
-      group = { label: item.group, area: item.area, sections: [] };
+      group = { label, area: item.area, sections: [] };
       result.push(group);
     }
     group.sections.push({
@@ -301,6 +310,18 @@ export const settingsGroups = computed(() =>
 const SECTION_KEYWORDS: Record<string, string[]> = {
   profile: ["account", "name", "username", "email", "password", "avatar"],
   connections: ["linked accounts", "connected services", "sign in"],
+  "import-sync": [
+    "sync",
+    "import",
+    "steam",
+    "playstation",
+    "psn",
+    "gog",
+    "playnite",
+    "anilist",
+    "upload",
+    "backup",
+  ],
   "background-tasks": ["jobs", "queue", "progress"],
   notifications: ["alerts", "push", "reminders", "email"],
   "api-keys": ["tokens", "access keys", "developer"],
@@ -526,8 +547,82 @@ export function settingsSearchLocation(entry: SettingsSearchEntry): {
   path: string;
   query: Record<string, string>;
 } {
+  return settingsLocation(entry.section, { tab: entry.tab });
+}
+
+// Settings addresses are paths, one per section (UX-AUDIT-APP §3.4):
+// /settings, /settings/<area> and /settings/<area>/<section>?tab=…, so Back,
+// links and bookmarks work like any other page. Old ?section= addresses are
+// redirected (legacySettingsRedirect).
+export const SETTINGS_AREAS: readonly SettingsArea[] = [
+  "preferences",
+  "account",
+  "administration",
+];
+export function isSettingsArea(value: unknown): value is SettingsArea {
+  return SETTINGS_AREAS.includes(value as SettingsArea);
+}
+
+// Every built-in section's area, known before plugins or the account load.
+const BUILT_IN_SECTION_AREAS = new Map(
+  buildSettingsGroups(true, [], []).flatMap((group) =>
+    group.sections.map((section) => [section.id, group.area] as const),
+  ),
+);
+
+/** The area a section belongs to, or undefined while it is unknown. */
+export function settingsAreaOf(
+  section: string,
+  groups: readonly SettingsGroup[] = settingsGroups.value,
+): SettingsArea | undefined {
+  const found = groups.find((group) =>
+    group.sections.some((item) => item.id === section),
+  );
+  return found?.area ?? BUILT_IN_SECTION_AREAS.get(section);
+}
+
+export function settingsLocation(
+  section: string,
+  options: { tab?: string; query?: Record<string, string | undefined> } = {},
+): { path: string; query: Record<string, string> } {
+  const resolved = resolveSettingsSection(section, options.tab);
+  const tab = section === "admin" ? undefined : (options.tab ?? resolved.tab);
+  const area = settingsAreaOf(resolved.section) ?? "preferences";
+  const query: Record<string, string> = {};
+  for (const [key, value] of Object.entries(options.query ?? {}))
+    if (value !== undefined && key !== "tab") query[key] = value;
+  if (tab) query.tab = tab;
   return {
-    path: "/settings",
-    query: { section: entry.section, ...(entry.tab ? { tab: entry.tab } : {}) },
+    path: `/settings/${area}/${encodeURIComponent(resolved.section)}`,
+    query,
   };
+}
+
+export function settingsAreaLocation(area: SettingsArea): string {
+  return `/settings/${area}`;
+}
+
+/**
+ * Where an old `/settings?area=…&section=…&tab=…` address now lives, or null
+ * when the address is already a path (or has nothing to move).
+ */
+export function legacySettingsRedirect(to: {
+  path: string;
+  query: Record<string, unknown>;
+}): { path: string; query: Record<string, string> } | null {
+  if (to.path.replace(/\/+$/, "") !== "/settings") return null;
+  const { section, area, tab, ...rest } = to.query;
+  const others: Record<string, string> = {};
+  for (const [key, value] of Object.entries(rest))
+    if (typeof value === "string") others[key] = value;
+  if (typeof section === "string" && section) {
+    if (section === "upload") return { path: "/upload", query: {} };
+    return settingsLocation(section, {
+      tab: typeof tab === "string" && tab ? tab : undefined,
+      query: others,
+    });
+  }
+  if (isSettingsArea(area))
+    return { path: settingsAreaLocation(area), query: others };
+  return null;
 }
