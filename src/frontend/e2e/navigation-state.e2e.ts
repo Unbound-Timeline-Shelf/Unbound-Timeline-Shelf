@@ -168,6 +168,23 @@ test.describe("Back walks back through what you opened (A6, A9, A11, A16)", () =
     }
   });
 
+  test("the game page's back arrow skips its tabs (A23)", async ({ page }) => {
+    await page.goto("/games?sort=rating");
+    await settle(page);
+    const library = page.url();
+    await page.goto(`/games/${await firstGameId(page)}`);
+    await settle(page, 800);
+    for (const name of ["Notes", "Stats"]) {
+      await press(
+        page.locator(".tabbar .tab-btn", { hasText: new RegExp(`^${name}$`) }),
+      );
+      await settle(page, 200);
+    }
+    await press(page.locator(".back-spot").first());
+    await settle(page);
+    expect(page.url()).toBe(library);
+  });
+
   test("plugin manager views", async ({ page }) => {
     await page.goto("/settings?section=plugins");
     await settle(page, 800);

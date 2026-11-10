@@ -8,6 +8,8 @@ import MetadataComparison from "../components/MetadataComparison.vue";
 import { mockGames } from "../data/mockGames";
 import type { MetadataCandidate } from "../services/metadata";
 import { smartCollections } from "../state/smartCollections";
+import { activeDialog, closeDialog } from "../state/dialog";
+import { createMemoryHistory, createRouter } from "vue-router";
 import { tasks } from "../state/taskProgress";
 import type { Game } from "../types/game";
 
@@ -604,5 +606,54 @@ describe("shared full game editor", () => {
     await nextTick();
     await nextTick();
     expect(dirtyOf(shell)).toBe(true);
+  });
+
+  it("asks before the settings link drops edits made from the library", async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/games", component: { render: () => null } },
+        { path: "/settings", component: { render: () => null } },
+      ],
+    });
+    await router.push("/games");
+    // opened from the library or Home: no history step of its own
+    const wrapper = mount(GameFormModal, {
+      props: { game: savedGame() },
+      attachTo: document.body,
+      global: {
+        plugins: [router],
+        stubs: {
+          UiModal: { template: "<div><slot/><slot name='footer'/></div>" },
+          PageSettingsEditor: true,
+        },
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    await field(wrapper, "Title").setValue("Renamed");
+    await button(wrapper, "Look up metadata").trigger("click");
+    await flushPromises();
+    const link = wrapper
+      .findAll("a")
+      .find((item) => item.text().includes("Metadata/API"))!;
+    expect(link.attributes("href")).toBe("/settings?section=sources");
+
+    await link.trigger("click");
+    await flushPromises();
+    expect(activeDialog.value?.title).toBe("Discard changes?");
+    closeDialog(false); // Keep editing
+    await flushPromises();
+    expect(wrapper.emitted("close")).toBeUndefined();
+    expect(router.currentRoute.value.path).toBe("/games");
+
+    await link.trigger("click");
+    await flushPromises();
+    closeDialog(true); // Discard changes
+    await flushPromises();
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    expect(router.currentRoute.value.fullPath).toBe(
+      "/settings?section=sources",
+    );
   });
 });

@@ -17,7 +17,11 @@ const route = vi.hoisted(() => ({ params: { id: "" }, query: {} }));
 vi.mock("../services/games");
 vi.mock("vue-router", () => ({
   useRoute: () => currentRoute,
-  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({
+    push: vi.fn(),
+    back: vi.fn(),
+    options: { history: { state: {} } },
+  }),
   RouterLink: { props: ["to"], template: '<a :href="to"><slot /></a>' },
 }));
 const currentRoute = reactive(route);

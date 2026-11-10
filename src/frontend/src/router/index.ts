@@ -17,6 +17,7 @@ import {
 } from "../state/scrollMemory";
 import { appearanceLoaded, loadAppearanceSettings } from "../state/appearance";
 import { fetchSetupStatus } from "../services/setup";
+import { rememberLibraryRoute } from "../composables/useGameDetailHistory";
 import {
   classifySetupStatus,
   consumeReturnPath,
@@ -492,6 +493,11 @@ router.beforeEach(async (to, from) => {
   } else {
     setStartupState("auth-required");
   }
+});
+
+// the game page's back arrow falls back to the library as last shown (A23)
+router.afterEach((to, _from, failure) => {
+  if (!failure) rememberLibraryRoute(to);
 });
 
 export default router;

@@ -2,6 +2,7 @@
 import {
   ref,
   computed,
+  inject,
   nextTick,
   onMounted,
   watch,
@@ -59,6 +60,7 @@ import {
   stagedArtworkList,
 } from "../composables/useGameArtworkTransfer";
 import { useUnsavedGuard } from "../composables/useUnsavedGuard";
+import { routerKey } from "vue-router";
 
 const props = defineProps<{
   game?: Game | null;
@@ -837,10 +839,32 @@ function onShellClose() {
   unsaved.release();
   emit("close");
 }
-// Opened from its own history step, the editor closes with its page (and the
-// leave guard asks first); elsewhere it closes before the link navigates.
-function closeForLink() {
-  if (!props.historyKey) emit("close");
+// The in-editor link to the provider settings. Opened from its own history
+// step, the editor leaves with its page and the leave guard asks first.
+// Opened from the library or Home it has to close before the page changes,
+// which would unmount it before that guard runs, so it asks here instead.
+const router = inject(routerKey, null);
+const SOURCES_SETTINGS = "/settings?section=sources";
+const sourcesSettingsHref = computed(
+  () => router?.resolve(SOURCES_SETTINGS).href ?? SOURCES_SETTINGS,
+);
+async function openSourcesSettings(event: MouseEvent) {
+  // a new tab or window leaves this editor as it is
+  if (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  )
+    return;
+  event.preventDefault();
+  if (!router) return;
+  if (!props.historyKey) {
+    if (!(await unsaved.confirmDiscard())) return;
+    emit("close");
+  }
+  void router.push(SOURCES_SETTINGS);
 }
 async function cancel() {
   if (await unsaved.confirmDiscard()) emit("close");
@@ -903,8 +927,8 @@ async function cancel() {
           class="steamgriddb-hint"
         >
           Configure the built-in artwork providers in
-          <router-link to="/settings?section=sources" @click="closeForLink"
-            >Settings &rsaquo; Metadata/API</router-link
+          <a :href="sourcesSettingsHref" @click="openSourcesSettings"
+            >Settings &rsaquo; Metadata/API</a
           >
           to receive cover and hero artwork after choosing a game.
         </p>
