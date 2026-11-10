@@ -240,6 +240,7 @@ const RESTORE_LABEL: Record<string, string> = {
   movies: "movies",
   tv_shows: "TV shows",
   anime: "anime",
+  books: "books",
 };
 async function onRestoreSelected(e: Event) {
   const input = e.target as HTMLInputElement;
@@ -310,8 +311,8 @@ async function onFileSelected(e: Event) {
       <h3>Library export or full backup?</h3>
       <p class="tile-desc">
         <strong>A library export</strong> is a portable JSON snapshot of your
-        games, movies, TV shows and anime: titles, progress and metadata. It
-        does not include attached files (screenshots, saves, documents), user
+        games, movies, TV shows, anime and books: titles, progress and metadata.
+        It does not include attached files (screenshots, saves, documents), user
         accounts, settings or credentials, so it is for moving between servers
         and for a safety net, not for disaster recovery.
         <strong>A full backup</strong> is a copy of the database and the data
@@ -353,10 +354,10 @@ async function onFileSelected(e: Event) {
     <div v-if="tab === 'export'" class="tile">
       <h3>Export</h3>
       <p class="tile-desc">
-        Downloads your games, movies, TV shows, and anime as a single JSON file
-        (titles, progress and metadata, with game identity, manual achievements
-        and completion choices). Attached files are not included. Bring it back
-        under <strong>Restore</strong>.
+        Downloads your games, movies, TV shows, anime and books as a single JSON
+        file (titles, progress and metadata, with game identity, manual
+        achievements and completion choices). Attached files are not included.
+        Bring it back under <strong>Restore</strong>.
       </p>
       <div v-if="exportError" class="form-error">{{ exportError }}</div>
       <button
@@ -565,11 +566,12 @@ async function onFileSelected(e: Event) {
     <AniListImportSection v-if="tab === 'import'" />
 
     <div v-if="tab === 'restore'" class="tile">
-      <h3>Restore movies, TV shows and anime</h3>
+      <h3>Restore movies, TV shows, anime and books</h3>
       <p class="tile-desc">
-        Add your movies, TV shows and anime back from a library export or a
-        backup file, with their seasons and watched episodes. Anything already
-        in your library (same title and year) is skipped, never overwritten.
+        Add your movies, TV shows, anime and books back from a library export or
+        a backup file, with their seasons and watched episodes, and a book's
+        editions and reads. Anything already in your library (same title and
+        year) is skipped, never overwritten.
       </p>
       <div v-if="restoreError" class="form-error">{{ restoreError }}</div>
       <div v-if="restoreResult" class="form-success">

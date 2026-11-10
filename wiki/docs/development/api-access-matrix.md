@@ -464,6 +464,21 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/anime/{show_id}/seasons/{season_id}/episodes` | user | Show owned by caller; season/episode must belong to that show. |
 | PATCH | `/api/anime/{show_id}/seasons/{season_id}/episodes/bulk-watched` | user | Show owned by caller; season/episode must belong to that show. |
 | PATCH | `/api/anime/{show_id}/seasons/{season_id}/episodes/{episode_id}` | user | Show owned by caller; season/episode must belong to that show. |
+| POST | `/api/book/create` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| DELETE | `/api/book/delete/{book_id}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/book/get/{book_id}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/book/list` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/book/trash` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| POST | `/api/book/trash/empty` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| PATCH | `/api/book/update/{book_id}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| POST | `/api/book/{book_id}/editions` | user | Book owned by caller; edition/read must belong to that book. |
+| DELETE | `/api/book/{book_id}/editions/{edition_id}` | user | Book owned by caller; edition/read must belong to that book. |
+| PATCH | `/api/book/{book_id}/editions/{edition_id}` | user | Book owned by caller; edition/read must belong to that book. |
+| DELETE | `/api/book/{book_id}/purge` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| POST | `/api/book/{book_id}/reads` | user | Book owned by caller; edition/read must belong to that book. |
+| DELETE | `/api/book/{book_id}/reads/{read_id}` | user | Book owned by caller; edition/read must belong to that book. |
+| PATCH | `/api/book/{book_id}/reads/{read_id}` | user | Book owned by caller; edition/read must belong to that book. |
+| POST | `/api/book/{book_id}/restore` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/calendar` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/calendar/events` | user | Entry filtered by `user_id == caller`; referenced media must be the caller's. |
 | POST | `/api/calendar/events` | user | Entry filtered by `user_id == caller`; referenced media must be the caller's. |

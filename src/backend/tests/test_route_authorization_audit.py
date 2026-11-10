@@ -15,6 +15,7 @@ import httpx
 import pytest
 from sqlalchemy import delete, select
 
+from src.database.models.book import Book, BookEdition, BookReading
 from src.database.models.game import Game
 from src.database.models.inbox_item import InboxItem
 from src.database.models.media_extras import MediaList, RewatchLog
@@ -233,6 +234,10 @@ async def test_attacker_calls_leave_the_victims_data_untouched(client, tenants):
     async with SessionLocal() as db:
         game = await db.get(Game, victim.ids["game_id"])
         assert game is not None and game.deleted_at is None and game.title == "Owner game"
+        book = await db.get(Book, victim.ids["book_id"])
+        assert book is not None and book.deleted_at is None and book.title == "Owner book"
+        assert await db.get(BookEdition, victim.ids["edition_id"]) is not None
+        assert await db.get(BookReading, victim.ids["read_id"]) is not None
         assert await db.get(MediaList, victim.ids["list_id"]) is not None
         assert await db.get(RewatchLog, victim.ids["rewatch_id"]) is not None
         notice = await db.get(Notification, victim.ids["notification_id"])
