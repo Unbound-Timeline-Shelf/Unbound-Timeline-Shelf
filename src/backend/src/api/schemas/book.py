@@ -17,6 +17,7 @@ from src.api.schemas.title_protection import TitleProtectionUpdate
 from src.database.models.book import (
     BookFormat,
     BookOwnership,
+    BookReading,
     BookStatus,
     ProgressUnit,
     ReadOutcome,
@@ -265,18 +266,13 @@ def check_reading(
     _check_dates(started, finished)
 
 
-def reading_problem(
-    unit: ProgressUnit,
-    value: Decimal | None,
-    started: date | None,
-    finished: date | None,
-    page_count: int | None,
-) -> str | None:
+def reading_problem(reading: BookReading, page_count: int | None) -> str | None:
     """Why a read breaks the rules, or None. Page progress stops at the edition's page count.
 
     The read routes and the library restore share this, so a restored read stays editable."""
+    unit, value = reading.progress_unit, reading.progress_value
     try:
-        check_reading(unit, value, started, finished)
+        check_reading(unit, value, reading.started_on, reading.finished_on)
     except ValueError as exc:
         return str(exc)
     if value is not None and value < 0:
