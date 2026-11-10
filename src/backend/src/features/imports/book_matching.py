@@ -296,6 +296,8 @@ class _Matcher:  # pylint: disable=too-few-public-methods,too-many-instance-attr
                     self._take(index, candidate, "identifier", provider)
                     return True
         if row.title:
+            if not self._may_call(self.report.row_lookups, MAX_ROW_LOOKUPS):
+                return True  # the bound counts every lookup, not every row
             query = " ".join([row.title, *row.authors[:1]])
             response = await self._search(provider, query, None)
             if response is None:

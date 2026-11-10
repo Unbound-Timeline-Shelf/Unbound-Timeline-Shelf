@@ -239,6 +239,24 @@ def test_formats_are_detected_from_the_header():
         detect_format(b"name,score\nA,1\n")
 
 
+def test_a_large_file_cut_inside_a_character_is_still_detected():
+    """Detection reads the first 64 KB; a cut inside a multi-byte character is not a bad file."""
+    row = '1,"Café Ledger été",Ada Quill,"Quill, Ada",,,,0,0,,,,,,,,,,to-read,,,,0,0\n'
+    cut_mid_character = 0
+    for padding in range(4):
+        raw = (GOODREADS_HEADER + "x" * padding + "\n" + row * 2000).encode()
+        assert len(raw) > 65_536
+        cut_mid_character += raw[65_536] & 0xC0 == 0x80
+        assert detect_format(raw) == "goodreads"
+    assert cut_mid_character  # at least one padding puts the 64 KB cut inside "é"
+    for padding in range(2):  # a first line longer than 64 KB, cut mid-character once
+        raw = ("x" * padding + "é" * 40_000 + "\n").encode()
+        with pytest.raises(BookImportError, match="not a Goodreads"):
+            detect_format(raw)
+    with pytest.raises(BookImportError, match="UTF-8"):
+        detect_format(b"Title\xff,Author\n")
+
+
 def test_parse_book_import_bounds_size_and_rows(monkeypatch):
     from src.features.imports import books
 
@@ -464,6 +482,20 @@ async def test_row_by_row_lookups_are_bounded(monkeypatch):
     assert len(provider.searches) == 3
     assert report.not_looked_up == 7
     assert MAX_ROW_LOOKUPS >= 50  # the real bound is not tiny
+
+
+async def test_the_lookup_bound_counts_both_searches_of_a_row(monkeypatch):
+    """A row with an ISBN and a title can cost two searches; the bound is never passed by one."""
+    monkeypatch.setattr(book_matching, "MAX_ROW_LOOKUPS", 3)
+    rows = [
+        _isbn_row(GLASS_13, "The Glass Orchard", ["Ada Quill"]),
+        _isbn_row(LANTERN_13, "Lantern Hours", ["Bo Reed"]),
+        _isbn_row(HARBOUR_13, "Harbour Lights", ["Cy Lund"]),
+    ]
+    provider = SearchOnlyProvider()
+    report = await match_books(rows, [provider], uuid4())
+    assert len(provider.searches) == 3
+    assert report.row_lookups == 3
 
 
 async def test_no_provider_means_every_row_stays_manual():

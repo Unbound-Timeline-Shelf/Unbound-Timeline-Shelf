@@ -209,7 +209,8 @@ new rows through the account's book providers in their saved order: ISBN rows fi
 by title and authors. A provider that declares `resolve` gets them in batches of at most 200 rows
 per call (`metadata-atlas` maps one call to one Atlas `POST /resolve`, whose `max_resolve` is 200).
 A provider without `resolve` is searched row by row (the ISBN as the `isbn` option, then
-"title author"), at most 100 lookups per import; an import makes at most 20 `resolve` calls and
+"title author"), at most 100 lookups per import (each search counts, so a row searched by ISBN
+and then by title costs two); an import makes at most 20 `resolve` calls and
 spends at most 120 seconds matching in all. A call cut short by that limit ends matching and is
 not counted as the provider's failure. The host checks every answer again: an identifier
 answer must not name a different ISBN, and a title answer must have the same title (case, accents,
