@@ -1469,6 +1469,9 @@
     margin-bottom: 12px;
     flex-wrap: nowrap;
     overflow-x: auto;
+    /* more statuses lie off to the right: fade the edge (A12) */
+    scrollbar-width: none;
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
   }
   .status-tab {
     flex-shrink: 0;

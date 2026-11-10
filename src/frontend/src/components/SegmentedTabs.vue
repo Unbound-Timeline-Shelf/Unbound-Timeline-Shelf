@@ -14,23 +14,41 @@ export interface SegmentOption {
   title?: string;
 }
 
-defineProps<{
+import { computed } from "vue";
+import { onRovingKeydown, rovingTabIndex } from "../utils/rovingFocus";
+
+const props = defineProps<{
   options: SegmentOption[];
   modelValue?: string;
   ariaLabel?: string;
+  // show only the icons; the label stays as the accessible name
+  iconOnly?: boolean;
 }>();
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
+// Buttons are one Tab stop with arrow keys between them (UX-AUDIT-APP A15);
+// links stay ordinary links, each its own stop.
+const buttons = computed(() => props.options.every((option) => !option.to));
+const activeIndex = computed(() =>
+  props.options.findIndex((option) => option.value === props.modelValue),
+);
 </script>
 
 <template>
-  <div class="seg" role="group" :aria-label="ariaLabel">
-    <template v-for="o in options" :key="o.value">
+  <div
+    class="seg"
+    :class="{ 'icon-only': iconOnly }"
+    :role="buttons ? 'toolbar' : 'group'"
+    :aria-label="ariaLabel"
+    @keydown="buttons && onRovingKeydown($event)"
+  >
+    <template v-for="(o, index) in options" :key="o.value">
       <RouterLink
         v-if="o.to"
         :to="o.to"
         class="seg-tab"
         :class="{ active: modelValue === o.value }"
         :title="o.title"
+        :aria-label="iconOnly ? o.label : undefined"
       >
         <svg
           v-if="o.icon"
@@ -43,7 +61,7 @@ const emit = defineEmits<{ "update:modelValue": [value: string] }>();
           aria-hidden="true"
           v-html="o.icon"
         ></svg>
-        {{ o.label }}
+        <span class="seg-label">{{ o.label }}</span>
         <span v-if="o.count" class="seg-count">{{ o.count }}</span>
       </RouterLink>
       <button
@@ -53,6 +71,9 @@ const emit = defineEmits<{ "update:modelValue": [value: string] }>();
         :class="{ active: modelValue === o.value }"
         :title="o.title"
         :aria-pressed="modelValue === o.value"
+        :aria-label="iconOnly ? o.label : undefined"
+        :tabindex="buttons ? rovingTabIndex(index, activeIndex) : undefined"
+        data-roving
         @click="emit('update:modelValue', o.value)"
       >
         <svg
@@ -66,7 +87,7 @@ const emit = defineEmits<{ "update:modelValue": [value: string] }>();
           aria-hidden="true"
           v-html="o.icon"
         ></svg>
-        {{ o.label }}
+        <span class="seg-label">{{ o.label }}</span>
         <span v-if="o.count" class="seg-count">{{ o.count }}</span>
       </button>
     </template>
@@ -117,6 +138,12 @@ const emit = defineEmits<{ "update:modelValue": [value: string] }>();
   height: 15px;
   flex-shrink: 0;
   display: block;
+}
+.icon-only .seg-tab {
+  padding-inline: 10px;
+}
+.icon-only .seg-label {
+  display: none;
 }
 .seg-count {
   font-size: 0.68rem;
