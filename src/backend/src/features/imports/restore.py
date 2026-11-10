@@ -26,6 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import class_mapper
 
+from src.core.titles import derive_sort_title
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
 from src.database.models.book import Book, BookEdition, BookFormat, BookReading
 from src.database.models.movies import Movie
@@ -251,6 +252,9 @@ async def _restore_books(
             fields["first_published_precision"] = _partial_precision(
                 fields.get("first_published"), fields.get("first_published_precision")
             )
+            # a hand-written or trimmed export may leave the derived sort title out
+            if not fields.get("sort_title"):
+                fields["sort_title"] = derive_sort_title(title)
             identity = (title.lower(), _year(fields.get("first_published")))
             if identity in seen:
                 skipped += 1
