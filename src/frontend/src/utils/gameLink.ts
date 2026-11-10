@@ -7,6 +7,11 @@ export function isGameId(value: unknown): value is string {
   );
 }
 
+/** A game's own page, not the scoped collections index under /games. */
+export function isGameDetailPath(path: string): boolean {
+  return /^\/games\/[^/]+$/.test(path) && path !== "/games/collections";
+}
+
 export const gameLinkStates = {
   "not-found": {
     title: "Game not found",
