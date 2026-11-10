@@ -11,6 +11,7 @@ import {
 } from "../services/movies";
 import { emptyTVShowTrash, fetchTVShowTrash } from "../services/tvShows";
 import { emptyAnimeTrash, fetchAnimeTrash } from "../services/anime";
+import { fetchBookTrash } from "../services/books";
 import {
   DEFAULT_PREFERENCES,
   fetchPreferences,
@@ -44,6 +45,12 @@ vi.mock("../services/anime", () => ({
   purgeAnime: vi.fn(),
   emptyAnimeTrash: vi.fn(),
 }));
+vi.mock("../services/books", () => ({
+  fetchBookTrash: vi.fn(),
+  restoreBook: vi.fn(),
+  purgeBook: vi.fn(),
+  emptyBookTrash: vi.fn(),
+}));
 vi.mock("../services/preferences", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../services/preferences")>()),
   fetchPreferences: vi.fn(),
@@ -69,10 +76,12 @@ function serveTrash(
   movies: TrashedMedia[] = [],
   shows: TrashedMedia[] = [],
   anime: TrashedMedia[] = [],
+  books: TrashedMedia[] = [],
 ) {
   vi.mocked(fetchMovieTrash).mockResolvedValue(movies);
   vi.mocked(fetchTVShowTrash).mockResolvedValue(shows);
   vi.mocked(fetchAnimeTrash).mockResolvedValue(anime);
+  vi.mocked(fetchBookTrash).mockResolvedValue(books);
 }
 
 function serveRetention(days: 0 | 7 | 14 | 30 | 90) {
@@ -196,7 +205,7 @@ describe("opt-in media trash retention", () => {
     expect(confirm.mock.calls[0][0]).toMatchObject({
       title: "Delete trashed titles automatically?",
       message:
-        "Movies, TV shows and anime that have been in the trash for 30 days will be deleted permanently, with their seasons and episodes. 1 title already qualifies and will be deleted at the next clean-up. This can't be undone.",
+        "Movies, TV shows, anime and books that have been in the trash for 30 days will be deleted permanently, with their seasons, episodes, editions and reads. 1 title already qualifies and will be deleted at the next clean-up. This can't be undone.",
       confirmLabel: "Delete after 30 days",
       danger: true,
     });

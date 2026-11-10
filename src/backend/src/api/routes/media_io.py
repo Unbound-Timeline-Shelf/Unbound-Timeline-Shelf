@@ -3,7 +3,7 @@
 - POST /api/import/mal/preview  what a MyAnimeList export would add or change
 - POST /api/import/mal      a MyAnimeList export (XML or gzipped XML) -> anime
 - POST /api/import/list[/preview]  a Letterboxd or IMDb export -> movies and TV shows
-- POST /api/import/media    the app's own JSON export -> movies, TV shows and anime
+- POST /api/import/media    the app's own JSON export -> movies, TV shows, anime and books
 - GET  /api/export/media.csv  every movie, show and anime as one CSV
 
 The MAL import never changes a title already on the site (same MAL id, or
@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
 
 from src.api.routes.anime import _derive_sort_title
+from src.api.schemas.library_export import unsupported_format
 from src.core.auth import get_current_user
 from src.database.models.anime import Anime, AnimeSeason
 from src.database.models.movies import Movie
@@ -418,10 +419,13 @@ async def import_media(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This does not look like a library export (expected an object with movies, tv_shows or anime).",
         )
-    if not any(k in payload for k in ("movies", "tv_shows", "anime")):
+    refusal = unsupported_format(payload)
+    if refusal:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=refusal)
+    if not any(k in payload for k in ("movies", "tv_shows", "anime", "books")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This export has no movies, TV shows or anime to restore.",
+            detail="This export has no movies, TV shows, anime or books to restore.",
         )
     return await restore_media(db, current_user.id, payload)
 

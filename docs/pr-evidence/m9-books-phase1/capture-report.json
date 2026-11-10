@@ -1,0 +1,23 @@
+{
+  "stubbed_api": true,
+  "synthetic_data": true,
+  "screenshots": [
+    "books-library-desktop-light.png",
+    "book-detail-desktop-light.png",
+    "book-read-dialog-desktop-light.png",
+    "book-detail-empty-desktop-light.png",
+    "books-library-desktop-dark.png",
+    "book-detail-desktop-dark.png",
+    "book-read-dialog-desktop-dark.png",
+    "book-detail-empty-desktop-dark.png",
+    "books-library-mobile-light.png",
+    "book-detail-mobile-light.png",
+    "book-read-dialog-mobile-light.png",
+    "book-detail-empty-mobile-light.png",
+    "books-library-mobile-dark.png",
+    "book-detail-mobile-dark.png",
+    "book-read-dialog-mobile-dark.png",
+    "book-detail-empty-mobile-dark.png"
+  ],
+  "page_errors": []
+}

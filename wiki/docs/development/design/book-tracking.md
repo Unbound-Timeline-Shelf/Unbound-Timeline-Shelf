@@ -1,6 +1,7 @@
 # Design proposal: book tracking
 
-Status: accepted design, confirmed on 19 October 2026; nothing in this page is implemented. It
+Status: accepted design, confirmed on 19 October 2026. Phase 1 (works, editions, reads, trash, library
+views and export format 3) is implemented; see "Deviations in phase 1" in §9. It
 answers [#265](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/265)
 (part of #248; upstream Rosefall #57). Confirmed scope and implementation phases appear below.
 
@@ -240,6 +241,23 @@ additive book metadata contract in phase 3. There is no new hardcoded provider. 
 provider integrations are deferred until needed. Series remain plain fields; work merging is deferred.
 These decisions complete the design, not book CRUD or provider support. Each phase needs its own implementation,
 regression coverage and migration/contract review.
+
+### Deviations in phase 1 (M9, `programme/m9-books-phase1`)
+
+- **Routes** follow the host's media convention (`/api/book/list|create|get|update|delete`, `/trash`,
+  `/{id}/restore|purge`, `/trash/empty`) instead of the REST shape sketched in §4. Editions and reads
+  are `POST /api/book/{id}/editions|reads` and `PATCH|DELETE .../{edition_id|read_id}`; each answers
+  with the whole work.
+- **Field names:** `rating` is `rating_overall` (as on the other media). `first_publish_year` became the
+  C5 partial date `first_published` + `first_published_precision` (C15 §6.2/§6.5), and an edition's
+  publish date is a partial date too. Typed book dates accept years 1000-2100.
+- **ISBN uniqueness** is also a partial unique index (`book_id`, `isbn_13`), not only an API check.
+- **Statuses** fill the five library tabs: Wishlist and Backlog are *Plan to Read*, On hold is *On Hold*.
+- **Export** is `LibraryExport` format 3 with `books` (editions and reads nested). An import of format > 3
+  is refused with a 400 saying to update the app; formats 1-2 import as before.
+- **Not in phase 1:** the activity log, the media-image proxy (covers load from the typed `cover_url`
+  with `referrerpolicy=no-referrer`), the plugin contract, the CSV export, the command palette, and
+  any metadata provider. The book page has its own hero rather than `MediaDetailHero`.
 
 ## 10. Acceptance mapping
 

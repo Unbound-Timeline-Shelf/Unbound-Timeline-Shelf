@@ -187,8 +187,8 @@ export interface MediaRestoreResult {
   errors: string[];
 }
 
-// The app's own library export (or a backup file): movies, TV shows and
-// anime come back with their seasons and episode progress.
+// The app's own library export (or a backup file): movies, TV shows, anime
+// and books come back with their seasons, episodes, editions and reads.
 export async function restoreMedia(file: File): Promise<MediaRestoreResult> {
   const body = new FormData();
   body.append("file", file);

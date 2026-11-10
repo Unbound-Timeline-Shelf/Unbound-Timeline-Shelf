@@ -17,6 +17,7 @@ from src.core.auth import APP_GRANT_ATTRIBUTE, create_api_key
 from src.database.models.achievement import Achievement
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
 from src.database.models.auth import UserApiKey, UserSession
+from src.database.models.book import Book, BookEdition, BookReading
 from src.database.models.calendar_event import CalendarEvent
 from src.database.models.calendar_source import CalendarSource
 from src.database.models.game import Game, GameStatus
@@ -104,7 +105,14 @@ async def seed_owner(db, tenant: Tenant) -> None:
     movie = Movie(user_id=uid, title="Owner movie", sort_title="owner movie")
     show = TVShow(user_id=uid, title="Owner show", sort_title="owner show")
     anime = Anime(user_id=uid, title="Owner anime", sort_title="owner anime")
-    db.add_all([game, movie, show, anime])
+    book = Book(user_id=uid, title="Owner book", sort_title="owner book")
+    db.add_all([game, movie, show, anime, book])
+    await db.flush()
+    edition = BookEdition(book_id=book.id, isbn_13="9780306406157")
+    db.add(edition)
+    await db.flush()
+    reading = BookReading(book_id=book.id, edition_id=edition.id)
+    db.add(reading)
     await db.flush()
     season = TVSeason(show_id=show.id, season_number=1)
     anime_season = AnimeSeason(show_id=anime.id, season_number=1)
@@ -212,6 +220,9 @@ async def seed_owner(db, tenant: Tenant) -> None:
         movie_id=movie.id,
         tv_id=show.id,
         anime_id=anime.id,
+        book_id=book.id,
+        edition_id=edition.id,
+        read_id=reading.id,
         tv_season_id=season.id,
         anime_season_id=anime_season.id,
         tv_episode_id=episode.id,
@@ -352,6 +363,9 @@ def resolve_path(template: str, ids: dict[str, str]) -> str | None:
     values = {
         "game_id": ids["game_id"],
         "movie_id": ids["movie_id"],
+        "book_id": ids["book_id"],
+        "edition_id": ids["edition_id"],
+        "read_id": ids["read_id"],
         "show_id": ids["anime_id" if anime else "tv_id"],
         "season_id": ids["anime_season_id" if anime else "tv_season_id"],
         "episode_id": ids["anime_episode_id" if anime else "tv_episode_id"],

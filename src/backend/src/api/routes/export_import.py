@@ -8,7 +8,7 @@ import time
 from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.games import _derive_sort_title, _validate_game_relationship
 from src.api.schemas.game import GameCreate, GameReleaseRead
-from src.api.schemas.library_export import LibraryExport
+from src.api.schemas.library_export import LibraryExport, unsupported_format
 from src.core.auth import get_current_user
 from src.core.metrics import (
     DATA_OPERATION_DURATION,
@@ -119,8 +119,10 @@ class ImportedGame(GameCreate):
 
 
 class LibraryImport(BaseModel):
-    """A whole export (or its games with the manual rows); unknown sections are ignored."""
+    """A whole export (or its games with the manual rows); unknown sections are ignored, but an
+    export in a newer format than this build reads is refused before anything is created."""
 
+    format_version: int | None = None
     games: list[ImportedGame]
     manual_achievements: list[Any] = []
     manual_completion: list[Any] = []
@@ -145,6 +147,17 @@ async def _available_folder_location(folder_name: str, db: AsyncSession, user_id
         suffix += 1
 
 
+def _refuse_newer_format(payload: list[ImportedGame] | LibraryImport) -> None:
+    """An export in a format newer than this build reads is refused before anything is created."""
+    refusal = (
+        None
+        if isinstance(payload, list)
+        else unsupported_format({"format_version": payload.format_version})
+    )
+    if refusal:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=refusal)
+
+
 @router.post("/import/library", response_model=ImportResult, status_code=status.HTTP_200_OK)
 async def import_library(
     payload: list[ImportedGame] | LibraryImport,
@@ -152,8 +165,9 @@ async def import_library(
     current_user: User = Depends(get_current_user),
 ) -> ImportResult:
     # Import keeps per-entry transaction and manual-row state in this endpoint.
-    # pylint: disable=too-many-locals
+    # pylint: disable=too-many-locals,too-many-statements
     started = time.monotonic()
+    _refuse_newer_format(payload)
     created = 0
     skipped = 0
     errors: list[str] = []
