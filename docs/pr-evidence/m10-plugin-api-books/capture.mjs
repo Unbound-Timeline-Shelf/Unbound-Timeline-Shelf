@@ -51,7 +51,9 @@ const candidate = (id, title, over = {}) => ({ id, rank: 0, external_id: id, tit
   media_type: "book", alternate_titles: [], authors: [], isbn_13: null, metadata: {}, assets: [], ...over });
 const lantern = candidate("c1", "The Lantern Archive", { year: 1987, authors: ["Mira Holt"],
   isbn_13: "9780000000002", provider_ids: { example: "EX-W1" } });
-const lanternFull = { ...lantern, metadata: { title: "The Lantern Archive",
+// the provider reports its primary ISBN even for a title search; only an ISBN search adds that edition
+const lanternFull = { ...lantern, assets: [{ kind: "poster", url: "https://covers.example.test/lantern.png" }],
+  metadata: { title: "The Lantern Archive",
   description: "An invented novel used only to show the page: a lighthouse keeper catalogues the letters that wash ashore.",
   genres: ["Fantasy", "Mystery"], book: providerBook } };
 const others = [
@@ -60,6 +62,7 @@ const others = [
 ];
 
 const requests = [];
+let coverPng = null; // drawn once in the browser: an invented cover, served by the stubbed artwork preview
 let selectedOnce = false;
 function respond(route, body, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -94,6 +97,8 @@ async function api(route) {
     ...(selectedOnce ? [{ id: 5, event: "result_updated", session_id: "s1", result: lanternFull },
       { id: 6, event: "selection_enrichment_completed", session_id: "s1" }] : []),
   ]);
+  if (p === "/api/metadata/sessions/s1/artwork")
+    return route.fulfill({ status: 200, contentType: "image/png", body: coverPng });
   if (p === "/api/metadata/sessions/s1/selection") {
     selectedOnce = true;
     return respond(route, lanternFull);
@@ -113,6 +118,30 @@ async function api(route) {
 }
 
 const browser = await chromium.launch({ headless: true });
+{
+  const page = await browser.newPage();
+  const dataUrl = await page.evaluate(() => {
+    const canvas = Object.assign(document.createElement("canvas"), { width: 240, height: 360 });
+    const g = canvas.getContext("2d");
+    const sky = g.createLinearGradient(0, 0, 0, 360);
+    sky.addColorStop(0, "#1d3557");
+    sky.addColorStop(1, "#457b9d");
+    g.fillStyle = sky;
+    g.fillRect(0, 0, 240, 360);
+    g.fillStyle = "#f1c453";
+    g.beginPath();
+    g.arc(120, 150, 34, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#f1faee";
+    g.font = "bold 22px serif";
+    g.textAlign = "center";
+    g.fillText("The Lantern", 120, 270);
+    g.fillText("Archive", 120, 298);
+    return canvas.toDataURL("image/png");
+  });
+  coverPng = Buffer.from(dataUrl.split(",")[1], "base64");
+  await page.close();
+}
 const shots = [];
 const errors = [];
 try {
@@ -147,7 +176,29 @@ try {
       await dialog.locator(".metadata-result").first().click();
       await dialog.locator(".found-book").waitFor();
       await dialog.getByText("Gathering metadata and artwork…").waitFor({ state: "hidden" });
+      await dialog.locator(".found-book img").waitFor();
+      assert.match(await dialog.locator(".found-book img").getAttribute("src"), /^blob:/);
+      // a title search: the provider's ISBN adds no edition
+      assert.equal(await dialog.getByText("Also adds the edition you searched for").count(), 0);
       await capture("book-search-found", false);
+      await page.keyboard.press("Escape");
+      // an ISBN search: that edition is added with the work
+      selectedOnce = false;
+      await page.goto(`${origin}/books`, { waitUntil: "domcontentloaded" });
+      await page.getByText("The Lantern Archive").first().waitFor();
+      if (!(await page.locator("button.add-btn").isVisible()))
+        await page.getByRole("button", { name: "Controls" }).click();
+      await page.locator("button.add-btn").click();
+      await dialog.waitFor();
+      await dialog.getByPlaceholder("Search by title, author or ISBN").fill("978-0-00-000000-2");
+      await dialog.getByRole("button", { name: "Search", exact: true }).click();
+      await dialog.locator(".metadata-result").first().waitFor();
+      await dialog.locator(".metadata-result", { hasText: "The Lantern Archive" }).click();
+      await dialog.locator(".found-book").waitFor();
+      await dialog.getByText("Gathering metadata and artwork…").waitFor({ state: "hidden" });
+      await dialog.locator(".found-book img").waitFor();
+      await dialog.getByText("Also adds the edition you searched for").waitFor();
+      await capture("book-search-isbn-found", false);
       await page.keyboard.press("Escape");
       // the book page: the provider's editions, one already held
       await page.goto(`${origin}/books/b1`, { waitUntil: "domcontentloaded" });

@@ -303,6 +303,12 @@ regression coverage and migration/contract review.
 - **Search and add** is in the *Add book* form rather than the shared media-add dialog.
 - **Contract range:** a 1.1.20 manifest may declare `api_contract_max` (C16 §22.6); the host runs the plugin
   at the highest contract both support.
+- **Book gate at registration only.** A registration listing `book` is refused below 1.1.20 when the plugin
+  registers it; there is no second check when stored rows are read, and no declaration-time gate at
+  `core.py` module load (C15 §6.3), because core provider declarations are host-owned and none lists `book`.
+- **Edition on ISBN search only.** The add form adds an edition with the work only when the search text was
+  an ISBN equal to the result's `isbn_13`; the chosen result's provider ids replace any applied earlier, and
+  its cover is shown through the host's artwork preview rather than loaded from the provider URL.
 
 ## 10. Acceptance mapping
 
