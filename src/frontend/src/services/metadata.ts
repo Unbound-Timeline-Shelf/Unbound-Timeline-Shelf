@@ -32,7 +32,13 @@ export interface MetadataProviderStatus {
   checked_at: number | null;
   failure: string | null;
   configured_fields: Record<string, { system: boolean; user: boolean }>;
-  operations: Record<"search" | "metadata" | "media" | "health", string | null>;
+  operations: Record<
+    "search" | "metadata" | "media" | "health",
+    string | null
+  > & {
+    // Plugin API 1.1.20: the batched identifier lookup a book import uses
+    resolve?: string | null;
+  };
   configuration: {
     key: string;
     label: string;
