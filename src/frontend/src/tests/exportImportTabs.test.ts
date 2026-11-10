@@ -53,6 +53,8 @@ it("splits the page into export, import, restore and backups, each reachable by 
   expect(headings(wrapper)[0]).toBe("Import from another site");
   // the AniList import now lives here, loaded when this tab is first opened
   await vi.waitFor(() => expect(wrapper.text()).toContain("AniList Import"));
+  // and so does the book list import (C15 6.2)
+  await vi.waitFor(() => expect(headings(wrapper)).toContain("Import books"));
 
   await tabs(wrapper)[2].trigger("click");
   expect(headings(wrapper)).toEqual([

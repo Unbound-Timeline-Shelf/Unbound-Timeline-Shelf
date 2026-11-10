@@ -164,7 +164,7 @@ the new tables and enums. The generated migration is reviewed manually per AGENT
 - Editions and reads nest inside each exported book so one round trip is self-contained.
 - Importers for Goodreads CSV, StoryGraph CSV and ISBN lists follow the
   `features/imports/yamtrack.py` pattern (bounded size and rows, preview before
-  commit). They are a later phase.
+  commit). They shipped in phase 4 (M11, below).
 
 ### 4.5 Metadata providers and the plugin boundary
 
@@ -299,6 +299,36 @@ regression coverage and migration/contract review.
 - **Edition on ISBN search only.** The add form adds an edition with the work only when the search text was
   an ISBN equal to the result's `isbn_13`; the chosen result's provider ids replace any applied earlier, and
   its cover is shown through the host's artwork preview rather than loaded from the provider URL.
+
+### Phase 4: book list imports (M11, `programme/m11-book-imports`)
+
+- **Routes:** `POST /api/import/books/preview` and `POST /api/import/books` (multipart `file`,
+  `source` = `auto` | `goodreads` | `storygraph` | `isbn_list`, and on import `match`). Files are at
+  most 30 MB and 20 000 rows; a CSV must carry its format's columns.
+- **What comes across.** Goodreads: exclusive shelf (read, currently-reading, to-read, and custom
+  `did-not-finish`/`paused` shelves), stars ×2 onto the ten-point scale (0 = not rated), date read and
+  read count (extra reads kept undated, at most 20), other shelves as tags, review and private notes
+  as the note, the series in the title ("Title (Series, #1)"), and an edition from ISBN, binding,
+  publisher, pages and year. StoryGraph: read status (including `did-not-finish` and `paused`), every
+  `start-finish` range as a read, quarter stars ×2, review, tags, format and ISBN. An ISBN list:
+  ISBN-10 or ISBN-13 per token (hyphens and spaces allowed, `#` comments), each a wish-list book;
+  repeats and non-ISBNs are reported. To-read books on the reader's own shelf (Goodreads "Owned
+  Copies", StoryGraph "Owned?") become **Backlog**, the others **Wishlist**.
+- **Never twice, never overwritten.** A row whose ISBN is on one of the reader's editions, or whose
+  title and author match a book already there, is kept exactly as it is; a row repeated in the file is
+  imported once.
+- **Matching (C15 §6.2).** ISBN first, then title and author, through the account's book providers;
+  a provider with the Plugin API 1.1.20 `resolve` operation gets the rows in batches of at most 200
+  (one Atlas `/resolve` call each through `metadata-atlas`); the others are searched row by row, at
+  most 100 lookups per import. The host re-checks every answer (see
+  [metadata providers](../metadata-providers.md#plugin-api-1120-books)). Nothing is dropped: an
+  unmatched row is a manual book, and an ISBN-only row no provider knows is called "ISBN …" with that
+  ISBN on its edition.
+- **What a match adds:** the provider ids, and the title, authors and first-published year where
+  the file has none. Cover, description and editions are not fetched during an import (one more
+  request per book); "Find editions" on the book page fetches them on request.
+- **Dates** are ISO on the wire; the preview shows each row's last read through the shared formatter.
+- **No migration.**
 
 ## 10. Acceptance mapping
 

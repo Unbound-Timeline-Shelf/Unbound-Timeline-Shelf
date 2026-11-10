@@ -168,6 +168,9 @@ when it is `null`, so the call fails with `invalid_response`.
 | `MetadataCandidate.authors` | up to 30 names (200 characters) | Shown in results; the add-book search also matches them. |
 | `MetadataCandidate.isbn_13` | a valid ISBN-13 | The ISBN the provider matched. It is not a `provider_ids` namespace: provider ids stay confined to the provider's own namespaces. |
 | `MetadataPatch.book` | `MetadataBook` (below) | The work's book details. |
+| `ProviderOperations.resolve` | an action id | The batched identifier lookup (below). Its action declares the `metadata_providers.search` capability. A registration with `resolve` is refused below 1.1.20. |
+| `MetadataResolveRequest` | `{request_id, user_id, media_type, policy, items}` | Sent to the `resolve` action as `request`. `items` are 1–200 `{key, isbn_13, title, authors, year}`, each with an `isbn_13` (books only) or a `title`; keys are unique. |
+| `ProviderResponse.resolved` | up to 200 `{key, matched_by, candidate}` | The rows the provider identified; `matched_by` is `identifier` or `title`. A row it cannot identify is left out. Refused below 1.1.20. |
 
 `MetadataBook` is `{authors, subtitle, isbn_13, isbn_10, page_count, series_name,
 series_position, original_language, first_published, editions}`:
@@ -198,6 +201,23 @@ for a title or author search adds nothing. On a book with provider ids,
 edition** copies one into the work's editions (an edition whose ISBN the work already holds is
 marked *In your editions*). Dates are shown through the shared partial-date formatter, at their
 precision.
+
+**Book list imports and the batched lookup.** *Settings → Export / Import → Import → Import books*
+reads a Goodreads CSV, a StoryGraph CSV or a list of ISBNs, shows what the file holds and what is
+already in the library, and only then adds the new books. With matching on, the host identifies the
+new rows through the account's book providers in their saved order: ISBN rows first, then the rest
+by title and authors. A provider that declares `resolve` gets them in batches of at most 200 rows
+per call (`metadata-atlas` maps one call to one Atlas `POST /resolve`, whose `max_resolve` is 200).
+A provider without `resolve` is searched row by row (the ISBN as the `isbn` option, then
+"title author"), at most 100 lookups per import. The host checks every answer again: an
+identifier answer must not name a different ISBN, and a title answer must have the same title
+(case, accents, punctuation, a subtitle and a leading article aside) and share an author surname
+when both sides name authors. An answer for a row the host did not send, or a candidate of another
+media type, makes the whole answer an `invalid_response`. A matched book keeps the file's data and
+gains the candidate's `provider_ids` (and its title, authors and year where the file has none); a
+row no provider identifies is still imported from the file. Tests:
+`src/backend/tests/test_plugin_api_book_resolve.py`, `test_book_imports.py`,
+`test_book_imports_routes.py`.
 
 **Permissions and enforcement (AGENTS.md §6.3).** Books need no new permission: a book provider
 is an ordinary `metadata_providers.register` registration with the same permission, credential
