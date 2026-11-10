@@ -19,6 +19,7 @@ from src.database.models.auth import UserApiKey
 from src.database.models.book import Book, BookEdition, BookReading
 from src.database.models.user import User
 from src.database.session import SessionLocal
+from src.features.backup import scheduler
 from src.features.books.isbn import InvalidIsbn, isbn10_to_13, normalise_pair, parse_isbn
 from src.main import app
 
@@ -715,3 +716,107 @@ async def test_restore_drops_a_read_that_breaks_the_progress_rules_and_keeps_the
         headers=other.headers,
     )
     assert edited.status_code == 200, edited.text
+
+
+async def test_restore_skips_a_work_over_the_response_limits_so_library_and_export_still_load(
+    http, people
+):
+    _, other = people
+    payload = {
+        "format_version": 3,
+        "exported_at": 1,
+        "books": [
+            {"title": "Too Many Hands", "authors": [f"Author {n}" for n in range(31)]},
+            {"title": "Blank Genre", "genres": [""]},
+            {"title": "Off The Scale", "rating_overall": 15},
+            {"title": "Fits", "rating_overall": 8.5, "genres": ["Mystery"]},
+        ],
+    }
+    result = await http.post("/api/import/media", files=_upload(payload), headers=other.headers)
+    body = result.json()
+    assert body["created"]["books"] == 1 and body["skipped"]["books"] == 3, body
+    for title in ("Too Many Hands", "Blank Genre", "Off The Scale"):
+        assert any(e.startswith(f"{title}: skipped (") for e in body["errors"]), body
+    listed = await http.get("/api/book/list", headers=other.headers)
+    assert listed.status_code == 200, listed.text
+    assert [b["title"] for b in listed.json()["items"]] == ["Fits"]
+    exported = await http.get("/api/export/library", headers=other.headers)
+    assert exported.status_code == 200, exported.text
+    assert [b["title"] for b in exported.json()["books"]] == ["Fits"]
+
+
+async def test_restore_reports_every_edition_or_read_it_leaves_out_and_keeps_the_rest(http, people):
+    _, other = people
+    editions = [
+        {"id": "a", "format": "paperback", "isbn_13": ISBN13},
+        {"id": "b", "format": "ebook", "isbn_10": ISBN10},
+        {"id": "c", "format": "hardcover", "isbn_13": "9780306406158"},
+        {"id": "d", "format": "ebook", "other_identifiers": {"Bad Key": "x"}},
+    ] + [{"id": f"x{n}", "format": "other"} for n in range(48)]
+    payload = {
+        "format_version": 3,
+        "exported_at": 1,
+        "books": [
+            {
+                "title": "Lossy",
+                "editions": editions,
+                "reads": [{"outcome": "finished"} for _ in range(201)],
+                "active_edition_id": "a",
+            }
+        ],
+    }
+    result = await http.post("/api/import/media", files=_upload(payload), headers=other.headers)
+    body = result.json()
+    assert body["created"]["books"] == 1 and body["skipped"]["books"] == 0, body
+    errors = [e for e in body["errors"] if e.startswith("Lossy: ")]
+    assert any("another edition has ISBN" in e for e in errors), errors
+    assert any("ISBN was not valid" in e for e in errors), errors
+    assert any("other_identifiers" in e for e in errors), errors
+    assert any("first 50 editions" in e for e in errors), errors
+    assert any("first 200 reads" in e for e in errors), errors
+    [book] = (await http.get("/api/book/list", headers=other.headers)).json()["items"]
+    # 50 kept by the cap, less the duplicate ISBN and the bad identifier key
+    assert len(book["editions"]) == 48
+    assert len(book["reads"]) == 200
+    [paperback] = [e for e in book["editions"] if e["format"] == "paperback"]
+    assert paperback["isbn_13"] == ISBN13
+    assert book["active_edition_id"] == paperback["id"]
+
+
+async def test_editing_an_older_read_does_not_overwrite_the_works_status(http, people):
+    me, _ = people
+    book = await _create(http, me, status="BACKLOG")
+    reads = f"/api/book/{book['id']}/reads"
+    first = await http.post(
+        reads,
+        json={"started_on": "2023-01-02", "finished_on": "2023-02-03", "outcome": "finished"},
+        headers=me.headers,
+    )
+    old_read = first.json()["reads"][0]["id"]
+    await http.post(reads, json={"started_on": "2024-06-01"}, headers=me.headers)
+    # the person marks the reread In progress themselves
+    marked = await http.patch(
+        f"/api/book/update/{book['id']}", json={"status": "IN_PROGRESS"}, headers=me.headers
+    )
+    assert marked.status_code == 200, marked.text
+    edited = await http.patch(
+        f"{reads}/{old_read}", json={"finished_on": "2023-02-04"}, headers=me.headers
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["status"] == "IN_PROGRESS"
+    # changing the outcome still speaks for the work
+    open_read = next(r["id"] for r in edited.json()["reads"] if r["id"] != old_read)
+    done = await http.patch(
+        f"{reads}/{open_read}", json={"outcome": "finished"}, headers=me.headers
+    )
+    assert done.json()["status"] == "READ"
+
+
+async def test_scheduled_backup_covers_a_library_of_only_books(http, people, monkeypatch, tmp_path):
+    _, other = people
+    await _create(http, other, title="Only Books Here")
+    monkeypatch.setattr(scheduler, "_BACKUP_ROOT", tmp_path)
+    path = await scheduler.run_backup_for_user(other.id)
+    assert path is not None
+    payload = json.loads(path.read_text())
+    assert [b["title"] for b in payload["books"]] == ["Only Books Here"]

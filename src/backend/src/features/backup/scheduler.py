@@ -40,6 +40,7 @@ async def run_backup_for_user(user_id) -> Path | None:
             and not snapshot.movies
             and not snapshot.tv_shows
             and not snapshot.anime
+            and not snapshot.books
         ):
             return None
         payload = snapshot.model_dump(mode="json")
