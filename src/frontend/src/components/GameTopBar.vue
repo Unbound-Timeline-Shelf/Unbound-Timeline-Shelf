@@ -6,6 +6,7 @@
 import AppTopBar from "./AppTopBar.vue";
 import SegmentedTabs from "./SegmentedTabs.vue";
 import type { SegmentOption } from "./SegmentedTabs.vue";
+import { navigationViewport } from "../state/sidebarMode";
 
 defineProps<{ active: "games" | "collections" }>();
 
@@ -26,11 +27,14 @@ const KINDS: SegmentOption[] = [
 </script>
 
 <template>
-  <AppTopBar>
+  <!-- on a phone the Games / Collections switch shrinks to its icons and
+       shares one row with the page's own controls (UX-AUDIT-APP A12) -->
+  <AppTopBar one-row>
     <SegmentedTabs
       :options="KINDS"
       :model-value="active"
       aria-label="Games area"
+      :icon-only="navigationViewport === 'phone'"
     />
     <template #actions>
       <slot name="actions" />

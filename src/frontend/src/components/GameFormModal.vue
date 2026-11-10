@@ -1468,6 +1468,20 @@ async function cancel() {
           :defaults="pageDefaults"
           @update:model-value="pageOverrides = $event as PageOverrides"
         />
+        <!-- away from the everyday actions in the footer (UX-AUDIT-APP A13) -->
+        <section v-if="isEditing" class="danger-zone" aria-label="Delete">
+          <p class="editor-section">Delete</p>
+          <p class="hint">
+            Removes this game, its notes and its files from your library.
+          </p>
+          <button
+            type="button"
+            class="danger-button"
+            @click="emit('delete', props.game!.id)"
+          >
+            Delete game
+          </button>
+        </section>
       </div>
 
       <div
@@ -1532,14 +1546,6 @@ async function cancel() {
     </template>
 
     <template #actions="{ formId }">
-      <button
-        v-if="isEditing"
-        type="button"
-        class="danger-button"
-        @click="emit('delete', props.game!.id)"
-      >
-        Delete game
-      </button>
       <button
         v-if="compact"
         type="button"
