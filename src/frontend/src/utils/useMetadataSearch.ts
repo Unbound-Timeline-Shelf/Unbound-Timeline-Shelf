@@ -40,7 +40,7 @@ export function useMetadataSearch<
     )
       return null;
     if (!progressive.hasSearched.value) return null;
-    return `No ${options.noun === "show" ? "shows" : options.noun === "movie" ? "movies" : options.noun} found. Check installed providers in Settings > Metadata/API.`;
+    return `No ${options.noun === "show" ? "shows" : options.noun === "movie" ? "movies" : options.noun === "book" ? "books" : options.noun} found. Check installed providers in Settings > Metadata/API.`;
   });
   watch(query, () => {
     appliedMessage.value = null;
