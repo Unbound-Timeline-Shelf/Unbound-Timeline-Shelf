@@ -903,7 +903,9 @@ async function cancel() {
           class="steamgriddb-hint"
         >
           Configure the built-in artwork providers in
-          <router-link to="/settings?section=sources" @click="closeForLink"
+          <router-link
+            to="/settings/preferences/metadata?tab=sources"
+            @click="closeForLink"
             >Settings &rsaquo; Metadata/API</router-link
           >
           to receive cover and hero artwork after choosing a game.

@@ -106,7 +106,7 @@ export function quickTourSteps(
       title: "Choose your appearance",
       description:
         "Light, Dark and System share the same controls. Explore palettes, spacing and navigation here. Changes you choose are saved to your account.",
-      path: "/settings?section=appearance",
+      path: "/settings/preferences/appearance",
       target: '[data-tour="ui-appearance"]',
       requirement: "read",
     },

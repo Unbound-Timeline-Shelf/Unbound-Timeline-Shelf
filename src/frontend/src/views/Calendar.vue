@@ -197,7 +197,7 @@ const {
         >
           External calendars: {{ notice }}
         </p>
-        <RouterLink class="section-hint" to="/settings?section=calendar"
+        <RouterLink class="section-hint" to="/settings/preferences/calendar"
           >Manage external calendars</RouterLink
         >
         <div class="month-bar">

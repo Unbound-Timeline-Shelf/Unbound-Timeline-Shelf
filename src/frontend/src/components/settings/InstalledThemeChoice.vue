@@ -109,7 +109,7 @@ const serverName = computed(
         </p>
         <RouterLink
           v-if="currentUser?.is_admin"
-          to="/settings?area=administration&section=themes"
+          to="/settings/administration/themes"
           >Manage installed themes</RouterLink
         >
       </div>

@@ -41,7 +41,7 @@ def _page(title: str, text: str, *, token: str = "", status: int = 200) -> HTMLR
         "background:#f1ad55;color:#201a12;font:inherit;font-weight:650;cursor:pointer}"
         "</style></head><body><main>"
         f"<h1>{escape(title)}</h1><p>{escape(text)}</p>{form}"
-        '<p><a href="/settings?section=notifications">Manage account notifications</a></p>'
+        '<p><a href="/settings/account/notifications">Manage account notifications</a></p>'
         "</main></body></html>",
         status_code=status,
         headers=private_page_headers(

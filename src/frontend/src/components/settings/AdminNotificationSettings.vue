@@ -75,7 +75,7 @@ async function configure(
     <p class="hint">
       Configure delivery for this server. Personal addresses, destinations and
       routing are under
-      <router-link to="/settings?section=notifications"
+      <router-link to="/settings/account/notifications"
         >Account → Notifications</router-link
       >.
     </p>
@@ -85,9 +85,9 @@ async function configure(
       <h3>Plugin providers</h3>
       <p class="hint">
         Install and grant notification providers under
-        <router-link to="/settings?section=plugins">Plugins</router-link>. Their
-        configuration appears when installed. Plugins cannot lower destination
-        trust requirements.
+        <router-link to="/settings/administration/plugins">Plugins</router-link
+        >. Their configuration appears when installed. Plugins cannot lower
+        destination trust requirements.
       </p>
       <p v-if="status" class="hint" role="status">{{ status }}</p>
       <details

@@ -197,7 +197,7 @@ watch(pluginConnections, () => void plugins.load(), { immediate: true });
       The accounts your library is linked to. Connect, update or disconnect an
       account here. Metadata sources and API keys are under Library > Metadata.
       Set up periodic library sync in
-      <RouterLink to="/settings?section=background-tasks"
+      <RouterLink to="/settings/account/background-tasks"
         >Background tasks</RouterLink
       >.
     </p>

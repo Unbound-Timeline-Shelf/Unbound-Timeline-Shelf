@@ -29,10 +29,9 @@ const PROVIDER_ID = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 export type ProviderOrderKind = "metadata" | "artwork";
 
 export const METADATA_SETTINGS_LINKS = {
-  sources: "/settings?area=preferences&section=metadata&tab=sources",
-  plugins: "/settings?area=administration&section=plugins",
-  serverIntegrations:
-    "/settings?area=administration&section=server-integrations",
+  sources: "/settings/preferences/metadata?tab=sources",
+  plugins: "/settings/administration/plugins",
+  serverIntegrations: "/settings/administration/server-integrations",
 } as const;
 
 /** Search and metadata providers form one order; artwork providers form the other. */

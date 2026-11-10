@@ -777,564 +777,582 @@ async function openRandomPicker() {
           Retry
         </button>
       </p>
-      <p v-if="loading" class="empty-state">Loading…</p>
-      <p
-        v-else-if="error && !hasAnyGames"
-        class="empty-state error"
-        role="alert"
-      >
-        {{ friendlyError }}
-        <button type="button" class="ui-btn" @click="loadGames">Retry</button>
-      </p>
-
-      <div v-else-if="isEmpty" class="empty-state rich">
-        <svg
-          v-if="!hasAnyGames"
-          viewBox="0 0 24 24"
-          width="48"
-          height="48"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.4"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+      <!-- the status tabs control this panel in every state: loading,
+           error, empty and results (UX-AUDIT-APP A15) -->
+      <div id="library-results" role="tabpanel" aria-label="Games">
+        <p v-if="loading" class="empty-state">Loading…</p>
+        <p
+          v-else-if="error && !hasAnyGames"
+          class="empty-state error"
+          role="alert"
         >
-          <rect x="3" y="5" width="18" height="14" rx="2" />
-          <path d="M3 9h18" />
-          <path d="M8 13h.01M12 13h.01M16 13h.01" />
-        </svg>
-        <h3 v-if="!hasAnyGames">Your library is empty</h3>
-        <p>
-          {{
-            hasAnyGames
-              ? "Nothing matches. Try a different filter or search."
-              : "Add your first game to get started."
-          }}
+          {{ friendlyError }}
+          <button type="button" class="ui-btn" @click="loadGames">Retry</button>
         </p>
-        <div v-if="searchSuggestions.length" class="search-suggestions">
-          <span>Did you mean:</span>
-          <button
-            v-for="s in searchSuggestions"
-            :key="s"
-            type="button"
-            class="search-suggestion-item"
-            @click="searchQuery = s"
+
+        <div v-else-if="isEmpty" class="empty-state rich">
+          <svg
+            v-if="!hasAnyGames"
+            viewBox="0 0 24 24"
+            width="48"
+            height="48"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
           >
-            {{ s }}
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <path d="M3 9h18" />
+            <path d="M8 13h.01M12 13h.01M16 13h.01" />
+          </svg>
+          <h3 v-if="!hasAnyGames">Your library is empty</h3>
+          <p>
+            {{
+              hasAnyGames
+                ? "Nothing matches. Try a different filter or search."
+                : "Add your first game to get started."
+            }}
+          </p>
+          <div v-if="searchSuggestions.length" class="search-suggestions">
+            <span>Did you mean:</span>
+            <button
+              v-for="s in searchSuggestions"
+              :key="s"
+              type="button"
+              class="search-suggestion-item"
+              @click="searchQuery = s"
+            >
+              {{ s }}
+            </button>
+          </div>
+          <button
+            v-if="hasAnyGames"
+            type="button"
+            class="btn-outline"
+            @click="clearAllFilters"
+          >
+            Clear filters
           </button>
+          <template v-else>
+            <button
+              type="button"
+              class="btn-solid"
+              data-shortcut="create"
+              @click="openAddModal"
+            >
+              + Add Game
+            </button>
+            <ul class="empty-hint-list">
+              <li>
+                Add a game manually, or connect Steam/GOG/PlayStation in
+                Settings to sync a library
+              </li>
+              <li>
+                Drop screenshots or files into Upload and assign them to a game
+                later
+              </li>
+            </ul>
+          </template>
         </div>
-        <button
-          v-if="hasAnyGames"
-          type="button"
-          class="btn-outline"
-          @click="clearAllFilters"
-        >
-          Clear filters
-        </button>
+
         <template v-else>
-          <button
-            type="button"
-            class="btn-solid"
-            data-shortcut="create"
-            @click="openAddModal"
-          >
-            + Add Game
-          </button>
-          <ul class="empty-hint-list">
-            <li>
-              Add a game manually, or connect Steam/GOG/PlayStation in Settings
-              to sync a library
-            </li>
-            <li>
-              Drop screenshots or files into Upload and assign them to a game
-              later
-            </li>
-          </ul>
-        </template>
-      </div>
-
-      <template v-else>
-        <div
-          v-if="viewMode === 'cards'"
-          id="library-results"
-          class="grid-virtual-container"
-          :style="{ height: rowVirtualizer.getTotalSize() + 'px' }"
-        >
           <div
-            v-for="virtualRow in rowVirtualizer.getVirtualItems()"
-            :key="virtualRow.index"
-            :ref="(el) => rowVirtualizer.measureElement(el as HTMLElement)"
-            :data-index="virtualRow.index"
-            class="grid-row"
-            :style="{
-              transform: `translateY(${virtualRow.start}px)`,
-              gridTemplateColumns: `repeat(${CARD_COLUMNS}, 1fr)`,
-            }"
-          >
-            <GameCard
-              v-for="(game, colIndex) in cardsInRow(virtualRow.index)"
-              :key="game.id"
-              :game="game"
-              prioritize-images
-              :copy-summary="copySummary(game)"
-              :version-context="contextFor(game)"
-              :nested-label="nestedLabel(game)"
-              :possible-duplicate="possibleDuplicateIds.has(game.id)"
-              :rank="rankByGameId.get(game.id) ?? null"
-              :select-mode="selectMode"
-              :selected="selectedIds.has(game.id)"
-              :keyboard-focused="
-                gridFocusIndex === virtualRow.index * CARD_COLUMNS + colIndex
-              "
-              @edit="openEditModal"
-              @updated="onGameUpdated"
-              @add-to-collection="handleAddToCollection"
-              @toggle-select="toggleSelect"
-            />
-          </div>
-        </div>
-
-        <div
-          v-else-if="viewMode === 'list'"
-          id="library-results"
-          class="list-view"
-        >
-          <div v-if="filteredGames.length" class="list-header">
-            <span></span>
-            <button
-              type="button"
-              class="sortable left"
-              :class="{ active: sortBy === 'name' }"
-              @click="sortBy = 'name'"
-            >
-              Name
-            </button>
-            <span></span>
-            <button
-              type="button"
-              class="sortable"
-              :class="{ active: sortBy === 'playtime' }"
-              @click="sortBy = 'playtime'"
-            >
-              Playtime
-            </button>
-            <button
-              type="button"
-              class="sortable"
-              :class="{ active: sortBy === 'rating' }"
-              @click="sortBy = 'rating'"
-            >
-              Rating
-            </button>
-            <span>Rank</span>
-            <button
-              type="button"
-              class="sortable"
-              :class="{ active: sortBy === 'neglected' }"
-              @click="sortBy = 'neglected'"
-            >
-              Last played
-            </button>
-            <span>Released</span>
-            <span>Status</span>
-          </div>
-          <div
-            class="list-virtual-container"
-            :style="{ height: `${listRowVirtualizer.getTotalSize()}px` }"
+            v-if="viewMode === 'cards'"
+            class="grid-virtual-container"
+            :style="{ height: rowVirtualizer.getTotalSize() + 'px' }"
           >
             <div
-              v-for="row in visibleListRows"
-              :key="row.index"
-              :ref="
-                (el) => listRowVirtualizer.measureElement(el as HTMLElement)
-              "
-              :data-index="row.index"
-              class="list-row virtual-list-row"
-              :style="{ transform: `translateY(${row.start}px)` }"
-              @click="selectMode ? toggleSelect(row.game) : openGame(row.game)"
+              v-for="virtualRow in rowVirtualizer.getVirtualItems()"
+              :key="virtualRow.index"
+              :ref="(el) => rowVirtualizer.measureElement(el as HTMLElement)"
+              :data-index="virtualRow.index"
+              class="grid-row"
+              :style="{
+                transform: `translateY(${virtualRow.start}px)`,
+                gridTemplateColumns: `repeat(${CARD_COLUMNS}, 1fr)`,
+              }"
             >
-              <template v-for="game in [row.game]" :key="game.id">
-                <div class="list-thumb-wrap">
-                  <GameArtwork
-                    class="list-cover"
-                    :src="
-                      game.hasKeyArt === false
-                        ? ''
-                        : sizedAssetUrl(game.coverImageUrl, 112)
-                    "
-                    :title="game.title"
-                    :eager="isLibraryRowInViewport(row.index)"
-                  />
-                  <div
-                    v-if="selectMode"
-                    class="select-checkbox"
-                    :class="{ checked: selectedIds.has(game.id) }"
-                    @click.stop="toggleSelect(game)"
-                  >
-                    <CheckIcon v-if="selectedIds.has(game.id)" />
-                  </div>
-                </div>
-                <div class="list-title-col">
-                  <div class="list-title">{{ game.title }}</div>
-                  <RouterLink
-                    v-if="possibleDuplicateIds.has(game.id)"
-                    class="list-sub"
-                    to="/settings?section=library&tab=duplicates"
-                    @click.stop
-                    >Review possible duplicate</RouterLink
-                  >
-                  <div v-if="contextFor(game)" class="list-sub">
-                    {{ contextFor(game)?.label }}
-                  </div>
-                  <div v-else-if="copySummary(game)" class="list-sub">
-                    {{ copySummary(game) }}
-                  </div>
-                  <div v-if="nestedLabel(game)" class="list-sub">
-                    {{ nestedLabel(game) }}
-                  </div>
-                  <div class="list-sub">
-                    {{ game.tags[0] ?? "No genre"
-                    }}<template v-if="game.platforms[0]">
-                      · {{ game.platforms[0].platform }}</template
-                    >
-                  </div>
-                </div>
-                <div class="icon-cluster">
-                  <button
-                    type="button"
-                    class="icon-btn"
-                    :class="{ active: game.favorite }"
-                    :title="
-                      game.favorite
-                        ? 'Remove from favorites'
-                        : 'Add to favorites'
-                    "
-                    @click.stop="toggleFavorite(game)"
-                  >
-                    <HeartIcon :filled="game.favorite" />
-                  </button>
-                  <button
-                    type="button"
-                    class="icon-btn"
-                    title="Add to collection"
-                    @click.stop="handleAddToCollection(game)"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path
-                        d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    class="icon-btn"
-                    title="Edit"
-                    @click.stop="openEditModal(game)"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                    </svg>
-                  </button>
-                </div>
-                <div class="stat-cell strong">
-                  {{
-                    totalPlaytime(game) === "N/A" ? "–" : totalPlaytime(game)
-                  }}
-                </div>
-                <div class="score-cell" :class="{ empty: !computeScore(game) }">
-                  {{
-                    computeScore(game)
-                      ? `★ ${computeScore(game)!.sum.toFixed(1)}`
-                      : "–"
-                  }}
-                </div>
-                <div class="rank-cell">
-                  <span v-if="rankByGameId.get(game.id)" class="rank-badge"
-                    >#{{ rankByGameId.get(game.id) }}</span
-                  >
-                  <span v-else class="rank-empty">–</span>
-                </div>
-                <div class="stat-cell">
-                  {{
-                    gameLastPlayed(game)
-                      ? formatInstant(gameLastPlayed(game), { time: false })
-                      : "–"
-                  }}
-                </div>
-                <div class="stat-cell">
-                  {{ game.releaseDate ? formatReleaseDate(game) : "–" }}
-                </div>
-                <div class="status-cell">
-                  <span
-                    class="status-pill"
-                    :class="`st-${game.status.replace(' ', '-')}`"
-                    >{{ game.status }}</span
-                  >
-                </div>
-              </template>
+              <GameCard
+                v-for="(game, colIndex) in cardsInRow(virtualRow.index)"
+                :key="game.id"
+                :game="game"
+                prioritize-images
+                :copy-summary="copySummary(game)"
+                :version-context="contextFor(game)"
+                :nested-label="nestedLabel(game)"
+                :possible-duplicate="possibleDuplicateIds.has(game.id)"
+                :rank="rankByGameId.get(game.id) ?? null"
+                :select-mode="selectMode"
+                :selected="selectedIds.has(game.id)"
+                :keyboard-focused="
+                  gridFocusIndex === virtualRow.index * CARD_COLUMNS + colIndex
+                "
+                @edit="openEditModal"
+                @updated="onGameUpdated"
+                @add-to-collection="handleAddToCollection"
+                @toggle-select="toggleSelect"
+              />
             </div>
           </div>
-        </div>
 
-        <div v-else id="library-results" class="detail-view">
-          <div class="detail-list">
-            <button
-              v-for="game in filteredGames"
-              :key="game.id"
-              type="button"
-              class="detail-list-item"
-              :class="{ active: selectedGame?.id === game.id }"
-              @click="selectedGame = game"
-            >
-              <GameArtwork
-                class="detail-list-thumb"
-                :src="
-                  game.hasKeyArt === false
-                    ? ''
-                    : sizedAssetUrl(game.coverImageUrl, 112)
-                "
-                :title="game.title"
-              />
-              <span>{{ game.title }}</span>
-            </button>
-          </div>
-
-          <Transition name="preview-fade" mode="out-in">
+          <div v-else-if="viewMode === 'list'" class="list-view">
+            <div v-if="filteredGames.length" class="list-header">
+              <span></span>
+              <button
+                type="button"
+                class="sortable left"
+                :class="{ active: sortBy === 'name' }"
+                @click="sortBy = 'name'"
+              >
+                Name
+              </button>
+              <span></span>
+              <button
+                type="button"
+                class="sortable"
+                :class="{ active: sortBy === 'playtime' }"
+                @click="sortBy = 'playtime'"
+              >
+                Playtime
+              </button>
+              <button
+                type="button"
+                class="sortable"
+                :class="{ active: sortBy === 'rating' }"
+                @click="sortBy = 'rating'"
+              >
+                Rating
+              </button>
+              <span>Rank</span>
+              <button
+                type="button"
+                class="sortable"
+                :class="{ active: sortBy === 'neglected' }"
+                @click="sortBy = 'neglected'"
+              >
+                Last played
+              </button>
+              <span>Released</span>
+              <span>Status</span>
+            </div>
             <div
-              v-if="selectedGame"
-              :key="selectedGame.id"
-              class="detail-preview"
+              class="list-virtual-container"
+              :style="{ height: `${listRowVirtualizer.getTotalSize()}px` }"
             >
               <div
-                class="preview-banner"
-                :style="{
-                  backgroundImage: `url(${sizedAssetUrl(selectedGame.bannerImageUrl, 800)})`,
-                }"
+                v-for="row in visibleListRows"
+                :key="row.index"
+                :ref="
+                  (el) => listRowVirtualizer.measureElement(el as HTMLElement)
+                "
+                :data-index="row.index"
+                class="list-row virtual-list-row"
+                :style="{ transform: `translateY(${row.start}px)` }"
+                @click="
+                  selectMode ? toggleSelect(row.game) : openGame(row.game)
+                "
               >
-                <div class="preview-banner-overlay"></div>
-              </div>
-              <div class="preview-info">
-                <h2>{{ selectedGame.title }}</h2>
-                <div class="preview-meta">
-                  <span class="preview-badge">{{ selectedGame.status }}</span>
-                  <span
-                    v-if="computeScore(selectedGame)"
-                    class="preview-badge score"
-                  >
-                    ★ {{ computeScore(selectedGame)!.sum.toFixed(1) }}
-                  </span>
-                  <span class="preview-badge">{{
-                    totalPlaytime(selectedGame)
-                  }}</span>
-                </div>
-                <div class="preview-details">
-                  <div v-if="selectedGame.developer" class="preview-detail-row">
-                    <span class="preview-detail-label">Developer</span>
-                    <span>{{ selectedGame.developer }}</span>
-                  </div>
-                  <div v-if="selectedGame.publisher" class="preview-detail-row">
-                    <span class="preview-detail-label">Publisher</span>
-                    <span>{{ selectedGame.publisher }}</span>
-                  </div>
-                  <div v-if="selectedGame.series" class="preview-detail-row">
-                    <span class="preview-detail-label">Series</span>
-                    <span>{{ selectedGame.series }}</span>
-                  </div>
-                  <div v-if="selectedGame.source" class="preview-detail-row">
-                    <span class="preview-detail-label">Source</span>
-                    <span>{{ selectedGame.source }}</span>
-                  </div>
-                  <div v-if="selectedGame.ageRating" class="preview-detail-row">
-                    <span class="preview-detail-label">Age Rating</span>
-                    <span>{{ selectedGame.ageRating }}</span>
-                  </div>
-                  <div
-                    v-if="selectedGame.releaseDate"
-                    class="preview-detail-row"
-                  >
-                    <span class="preview-detail-label">Released</span>
-                    <span>{{ formatReleaseDate(selectedGame) }}</span>
-                  </div>
-                  <div
-                    v-if="activePriority(selectedGame) !== null"
-                    class="preview-detail-row"
-                  >
-                    <span class="preview-detail-label">Priority</span>
-                    <span>{{
-                      priorityLabel(activePriority(selectedGame)!)
-                    }}</span>
-                  </div>
-                  <div v-if="selectedGame.dateAdded" class="preview-detail-row">
-                    <span class="preview-detail-label">Added</span>
-                    <span>{{
-                      formatInstant(selectedGame.dateAdded, { time: false })
-                    }}</span>
-                  </div>
-                  <div
-                    v-if="selectedGame.platforms.length"
-                    class="preview-detail-row"
-                  >
-                    <span class="preview-detail-label">Platforms</span>
-                    <div class="preview-platforms">
-                      <div
-                        v-for="p in selectedGame.platforms"
-                        :key="p.platform"
-                      >
-                        {{ p.platform }}:
-                        {{ Math.round(p.playtimeMinutes / 60) }}h
-                        <span v-if="p.completionPercent !== null"
-                          >· {{ p.completionPercent }}%</span
-                        >
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    v-if="selectedGame.tags.length"
-                    class="preview-detail-row"
-                  >
-                    <span class="preview-detail-label">Tags</span>
-                    <span class="preview-pills">
-                      <span
-                        v-for="tag in selectedGame.tags"
-                        :key="tag"
-                        class="preview-pill"
-                        >{{ tag }}</span
-                      >
-                    </span>
-                  </div>
-                  <div
-                    v-if="selectedGame.features.length"
-                    class="preview-detail-row"
-                  >
-                    <span class="preview-detail-label">Features</span>
-                    <span class="preview-pills">
-                      <span
-                        v-for="f in selectedGame.features"
-                        :key="f"
-                        class="preview-pill"
-                        >{{ f }}</span
-                      >
-                    </span>
-                  </div>
-                  <div
-                    v-if="selectedGame.links.length"
-                    class="preview-detail-row"
-                  >
-                    <span class="preview-detail-label">Links</span>
-                    <div class="preview-links">
-                      <a
-                        v-for="link in selectedGame.links"
-                        :key="link.url"
-                        :href="link.url"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {{ link.label }}
-                      </a>
-                    </div>
-                  </div>
-                  <div
-                    v-if="
-                      selectedGame.ownership.format ||
-                      selectedGame.ownership.price !== null
-                    "
-                    class="preview-detail-row"
-                  >
-                    <span class="preview-detail-label">Ownership</span>
-                    <span>
-                      {{ selectedGame.ownership.format ?? "N/A" }}
-                      <span v-if="selectedGame.ownership.price !== null">
-                        · {{ selectedGame.ownership.priceCurrency ?? "USD" }}
-                        {{ selectedGame.ownership.price.toFixed(2) }}
-                      </span>
-                    </span>
-                  </div>
-                  <div
-                    v-if="selectedGame.folderLocation"
-                    class="preview-detail-row"
-                  >
-                    <span class="preview-detail-label">Folder</span>
-                    <span>{{ selectedGame.folderLocation }}</span>
-                  </div>
-                </div>
-                <div
-                  v-if="selectedGameDescriptionHtml"
-                  class="preview-description-html"
-                  v-html="selectedGameDescriptionHtml"
-                ></div>
-                <div class="preview-actions">
-                  <button
-                    type="button"
-                    class="primary-button"
-                    @click="openGame(selectedGame)"
-                  >
-                    Open Full Page
-                  </button>
-                  <button
-                    type="button"
-                    class="secondary-button"
-                    @click="openEditModal(selectedGame)"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    class="icon-button"
-                    title="Add to collection"
-                    @click="handleAddToCollection(selectedGame)"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      width="16"
-                      height="16"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
+                <template v-for="game in [row.game]" :key="game.id">
+                  <div class="list-thumb-wrap">
+                    <GameArtwork
+                      class="list-cover"
+                      :src="
+                        game.hasKeyArt === false
+                          ? ''
+                          : sizedAssetUrl(game.coverImageUrl, 112)
+                      "
+                      :title="game.title"
+                      :eager="isLibraryRowInViewport(row.index)"
+                    />
+                    <div
+                      v-if="selectMode"
+                      class="select-checkbox"
+                      :class="{ checked: selectedIds.has(game.id) }"
+                      @click.stop="toggleSelect(game)"
                     >
-                      <path
-                        d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    class="icon-button"
-                    :class="{ active: selectedGame.favorite }"
-                    :title="
-                      selectedGame.favorite
-                        ? 'Remove from favorites'
-                        : 'Add to favorites'
-                    "
-                    @click="toggleFavorite(selectedGame)"
+                      <CheckIcon v-if="selectedIds.has(game.id)" />
+                    </div>
+                  </div>
+                  <div class="list-title-col">
+                    <div class="list-title">{{ game.title }}</div>
+                    <RouterLink
+                      v-if="possibleDuplicateIds.has(game.id)"
+                      class="list-sub"
+                      to="/settings/preferences/library?tab=duplicates"
+                      @click.stop
+                      >Review possible duplicate</RouterLink
+                    >
+                    <div v-if="contextFor(game)" class="list-sub">
+                      {{ contextFor(game)?.label }}
+                    </div>
+                    <div v-else-if="copySummary(game)" class="list-sub">
+                      {{ copySummary(game) }}
+                    </div>
+                    <div v-if="nestedLabel(game)" class="list-sub">
+                      {{ nestedLabel(game) }}
+                    </div>
+                    <div class="list-sub">
+                      {{ game.tags[0] ?? "No genre"
+                      }}<template v-if="game.platforms[0]">
+                        · {{ game.platforms[0].platform }}</template
+                      >
+                    </div>
+                  </div>
+                  <div class="icon-cluster">
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      :class="{ active: game.favorite }"
+                      :title="
+                        game.favorite
+                          ? 'Remove from favorites'
+                          : 'Add to favorites'
+                      "
+                      @click.stop="toggleFavorite(game)"
+                    >
+                      <HeartIcon :filled="game.favorite" />
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      title="Add to collection"
+                      @click.stop="handleAddToCollection(game)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path
+                          d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      title="Edit"
+                      @click.stop="openEditModal(game)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M12 20h9" />
+                        <path
+                          d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="stat-cell strong">
+                    {{
+                      totalPlaytime(game) === "N/A" ? "–" : totalPlaytime(game)
+                    }}
+                  </div>
+                  <div
+                    class="score-cell"
+                    :class="{ empty: !computeScore(game) }"
                   >
-                    <HeartIcon :filled="selectedGame.favorite" />
-                  </button>
-                </div>
+                    {{
+                      computeScore(game)
+                        ? `★ ${computeScore(game)!.sum.toFixed(1)}`
+                        : "–"
+                    }}
+                  </div>
+                  <div class="rank-cell">
+                    <span v-if="rankByGameId.get(game.id)" class="rank-badge"
+                      >#{{ rankByGameId.get(game.id) }}</span
+                    >
+                    <span v-else class="rank-empty">–</span>
+                  </div>
+                  <div class="stat-cell">
+                    {{
+                      gameLastPlayed(game)
+                        ? formatInstant(gameLastPlayed(game), { time: false })
+                        : "–"
+                    }}
+                  </div>
+                  <div class="stat-cell">
+                    {{ game.releaseDate ? formatReleaseDate(game) : "–" }}
+                  </div>
+                  <div class="status-cell">
+                    <span
+                      class="status-pill"
+                      :class="`st-${game.status.replace(' ', '-')}`"
+                      >{{ game.status }}</span
+                    >
+                  </div>
+                </template>
               </div>
             </div>
-          </Transition>
-          <p v-if="!selectedGame" class="empty-row">
-            Select a game to preview it.
-          </p>
-        </div>
-      </template>
+          </div>
+
+          <div v-else class="detail-view">
+            <div class="detail-list">
+              <button
+                v-for="game in filteredGames"
+                :key="game.id"
+                type="button"
+                class="detail-list-item"
+                :class="{ active: selectedGame?.id === game.id }"
+                @click="selectedGame = game"
+              >
+                <GameArtwork
+                  class="detail-list-thumb"
+                  :src="
+                    game.hasKeyArt === false
+                      ? ''
+                      : sizedAssetUrl(game.coverImageUrl, 112)
+                  "
+                  :title="game.title"
+                />
+                <span>{{ game.title }}</span>
+              </button>
+            </div>
+
+            <Transition name="preview-fade" mode="out-in">
+              <div
+                v-if="selectedGame"
+                :key="selectedGame.id"
+                class="detail-preview"
+              >
+                <div
+                  class="preview-banner"
+                  :style="{
+                    backgroundImage: `url(${sizedAssetUrl(selectedGame.bannerImageUrl, 800)})`,
+                  }"
+                >
+                  <div class="preview-banner-overlay"></div>
+                </div>
+                <div class="preview-info">
+                  <h2>{{ selectedGame.title }}</h2>
+                  <div class="preview-meta">
+                    <span class="preview-badge">{{ selectedGame.status }}</span>
+                    <span
+                      v-if="computeScore(selectedGame)"
+                      class="preview-badge score"
+                    >
+                      ★ {{ computeScore(selectedGame)!.sum.toFixed(1) }}
+                    </span>
+                    <span class="preview-badge">{{
+                      totalPlaytime(selectedGame)
+                    }}</span>
+                  </div>
+                  <div class="preview-details">
+                    <div
+                      v-if="selectedGame.developer"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Developer</span>
+                      <span>{{ selectedGame.developer }}</span>
+                    </div>
+                    <div
+                      v-if="selectedGame.publisher"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Publisher</span>
+                      <span>{{ selectedGame.publisher }}</span>
+                    </div>
+                    <div v-if="selectedGame.series" class="preview-detail-row">
+                      <span class="preview-detail-label">Series</span>
+                      <span>{{ selectedGame.series }}</span>
+                    </div>
+                    <div v-if="selectedGame.source" class="preview-detail-row">
+                      <span class="preview-detail-label">Source</span>
+                      <span>{{ selectedGame.source }}</span>
+                    </div>
+                    <div
+                      v-if="selectedGame.ageRating"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Age Rating</span>
+                      <span>{{ selectedGame.ageRating }}</span>
+                    </div>
+                    <div
+                      v-if="selectedGame.releaseDate"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Released</span>
+                      <span>{{ formatReleaseDate(selectedGame) }}</span>
+                    </div>
+                    <div
+                      v-if="activePriority(selectedGame) !== null"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Priority</span>
+                      <span>{{
+                        priorityLabel(activePriority(selectedGame)!)
+                      }}</span>
+                    </div>
+                    <div
+                      v-if="selectedGame.dateAdded"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Added</span>
+                      <span>{{
+                        formatInstant(selectedGame.dateAdded, { time: false })
+                      }}</span>
+                    </div>
+                    <div
+                      v-if="selectedGame.platforms.length"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Platforms</span>
+                      <div class="preview-platforms">
+                        <div
+                          v-for="p in selectedGame.platforms"
+                          :key="p.platform"
+                        >
+                          {{ p.platform }}:
+                          {{ Math.round(p.playtimeMinutes / 60) }}h
+                          <span v-if="p.completionPercent !== null"
+                            >· {{ p.completionPercent }}%</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      v-if="selectedGame.tags.length"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Tags</span>
+                      <span class="preview-pills">
+                        <span
+                          v-for="tag in selectedGame.tags"
+                          :key="tag"
+                          class="preview-pill"
+                          >{{ tag }}</span
+                        >
+                      </span>
+                    </div>
+                    <div
+                      v-if="selectedGame.features.length"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Features</span>
+                      <span class="preview-pills">
+                        <span
+                          v-for="f in selectedGame.features"
+                          :key="f"
+                          class="preview-pill"
+                          >{{ f }}</span
+                        >
+                      </span>
+                    </div>
+                    <div
+                      v-if="selectedGame.links.length"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Links</span>
+                      <div class="preview-links">
+                        <a
+                          v-for="link in selectedGame.links"
+                          :key="link.url"
+                          :href="link.url"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {{ link.label }}
+                        </a>
+                      </div>
+                    </div>
+                    <div
+                      v-if="
+                        selectedGame.ownership.format ||
+                        selectedGame.ownership.price !== null
+                      "
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Ownership</span>
+                      <span>
+                        {{ selectedGame.ownership.format ?? "N/A" }}
+                        <span v-if="selectedGame.ownership.price !== null">
+                          · {{ selectedGame.ownership.priceCurrency ?? "USD" }}
+                          {{ selectedGame.ownership.price.toFixed(2) }}
+                        </span>
+                      </span>
+                    </div>
+                    <div
+                      v-if="selectedGame.folderLocation"
+                      class="preview-detail-row"
+                    >
+                      <span class="preview-detail-label">Folder</span>
+                      <span>{{ selectedGame.folderLocation }}</span>
+                    </div>
+                  </div>
+                  <div
+                    v-if="selectedGameDescriptionHtml"
+                    class="preview-description-html"
+                    v-html="selectedGameDescriptionHtml"
+                  ></div>
+                  <div class="preview-actions">
+                    <button
+                      type="button"
+                      class="primary-button"
+                      @click="openGame(selectedGame)"
+                    >
+                      Open Full Page
+                    </button>
+                    <button
+                      type="button"
+                      class="secondary-button"
+                      @click="openEditModal(selectedGame)"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-button"
+                      title="Add to collection"
+                      @click="handleAddToCollection(selectedGame)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="16"
+                        height="16"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path
+                          d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-button"
+                      :class="{ active: selectedGame.favorite }"
+                      :title="
+                        selectedGame.favorite
+                          ? 'Remove from favorites'
+                          : 'Add to favorites'
+                      "
+                      @click="toggleFavorite(selectedGame)"
+                    >
+                      <HeartIcon :filled="selectedGame.favorite" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Transition>
+            <p v-if="!selectedGame" class="empty-row">
+              Select a game to preview it.
+            </p>
+          </div>
+        </template>
+      </div>
 
       <GameQuickEditModal
         v-if="quickEditingGame"

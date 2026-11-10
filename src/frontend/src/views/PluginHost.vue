@@ -110,7 +110,7 @@ onMounted(load);
       </p>
       <RouterLink
         v-if="currentUser?.is_admin"
-        to="/settings?area=administration&section=plugins"
+        to="/settings/administration/plugins"
         class="ui-btn ui-btn-primary"
         >Open plugin manager</RouterLink
       >
