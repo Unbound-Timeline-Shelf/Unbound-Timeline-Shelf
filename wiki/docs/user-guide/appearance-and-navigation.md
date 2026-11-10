@@ -4,14 +4,14 @@ The application uses Archive's desktop structure with Pocket's floating navigati
 
 ## Navigation
 
-On a desktop, the navigation pane stays visible. On a tablet, **Auto** uses an icon rail; its menu button expands the labels. On a phone, the rounded bottom bar opens Home, All Games, Movies and Settings directly. The hamburger at the top left opens the full library, tools and active plugin links. Preferences, administration and your account share a compact footer that scrolls with the menu, leaving more room for library entries on short phone screens.
+On a desktop, the navigation pane stays visible. On a tablet, **Auto** uses an icon rail; its menu button expands the labels. On a phone, the rounded bottom bar opens Home, All Games, Movies and Settings directly, and **More** opens the full menu. The hamburger at the top left opens the full library, tools and active plugin links. Preferences, administration and your account share a compact footer that scrolls with the menu, leaving more room for library entries on short phone screens.
 
 Switching between Games and Media keeps the loaded library visible while refreshing it in the background. Sign out asks for confirmation in both the navigation menu and account menu.
 
 ### Back, reload and unsaved edits
 
 - **Your place is kept.** Reloading a page, or going Back or Forward to it, returns to the same scroll position once the page has loaded (the games library loads further pages to get there). The libraries, Home, Calendar, Statistics and Notifications also return to where you left them when you come back through the navigation. Other new pages start at the top, and so does a new settings section; changing a filter, sort or tab keeps your position. Scrolling while a page is still loading cancels the jump.
-- **Back walks back through what you opened.** Settings sections and their tabs, a game page's tabs, the plugin manager's Installed / Updates Available / Discover views, and the library's status tab, sort and filters are part of the address, so Back returns to the previous one, a reload keeps it and a link opens it (for example `/games/<id>?tab=Stats` or `/settings?section=plugins&view=discover`). A library search adds one Back step each time you pause typing.
+- **Back walks back through what you opened.** Settings sections and their tabs, a game page's tabs, the plugin manager's Installed / Updates Available / Discover views, and the library's status tab, sort and filters are part of the address, so Back returns to the previous one, a reload keeps it and a link opens it (for example `/games/<id>?tab=Stats` or `/settings/administration/plugins?view=discover`). A library search adds one Back step each time you pause typing.
 - **Unsaved edits ask first.** With changes in the game editor, Escape, clicking outside it, ×, Cancel, Back or leaving the page ask **Discard changes?** (Keep editing / Discard changes). Reloading or closing the tab shows the browser's own warning. On a game page the editor is its own Back step, so Back (or the phone's back gesture) closes it instead of leaving the game, and a reload reopens it. The game page's back arrow returns to the library when the page was opened from outside the app.
 
 The sidebar highlights the most specific library entry. Game collections and
@@ -30,7 +30,11 @@ Disabled, incompatible or uninstalled plugins do not contribute navigation. Plug
 - **Account** contains profile/password, connections (connect, import and disconnect accounts in a popup; plugins can add their own) and API keys.
 - **Administration** contains server management, [app branding](../administration/branding.md), plugins, background tasks and storage/usage. Only administrators see this area. Its banner explains that changes affect everyone on the server.
 
-Settings starts with grouped links. On desktop a section keeps its area navigation beside the form; on a phone it opens as a separate screen, with a back link to its area. Existing `/settings?section=…` links continue to work, including the older aliases for library, metadata and administration tabs. The unfinished Logs entry is not offered.
+Settings starts with grouped links. Each area and section has its own address, `/settings/<area>/<section>` (for example `/settings/preferences/appearance` or `/settings/account/connections`), and a section's tab is added as `?tab=`. On desktop a section keeps its area navigation beside the form; on a phone it opens as a separate screen, with a back link to its area. Existing `/settings?section=…` links open the matching address, including the older aliases for library, metadata and administration tabs. The unfinished Logs entry is not offered.
+
+Names are not repeated between areas: your own **My notifications** and **My background tasks** are in Account, while **Notification delivery** and **Server background tasks** are the server-wide pages in Administration.
+
+**Preferences → Library & sources → Import & sync** lists every way into your library in one place: store connections, imports from other sites, restoring an export, the Upload page and automatic syncing (plus server integrations for administrators). Each entry links to the page where that source is set up, and **Sync / import** syncs a connected store straight away.
 
 Active plugins may place their settings pages in Account, Preferences or Administration and name a useful group there. Administration pages remain administrator-only. The primary sidebar highlights the active area for core and plugin pages.
 
@@ -62,6 +66,10 @@ Navigation, Settings, [Home](home.md), games, collections, cards, sets, media an
 
 
 ## Search and keyboard help
+
+### Moving around with the keyboard
+
+The first Tab on any page reaches **Skip to content**, which moves to the page heading. Opening a page from the navigation also puts focus on its heading and announces its name, so the next Tab stops go to the page itself; filters, search, sorting and tabs on the same page leave focus where it is. A game card is a single link to the game, so Enter opens it and Ctrl/Cmd-click or middle-click opens it in a new tab; its Favorite, collection and edit buttons follow it. Groups of tabs and toggles, such as the library's status filter, card size and the game page's sections, are one Tab stop each: the arrow keys (and Home/End) move within the group, and Enter or Space chooses.
 
 Open **Search library** from the menu, or press **Ctrl/Cmd + K**, to find games, movies, TV shows, anime, collections, goals, settings and active plugin pages. A failed provider leaves available results visible and offers Retry. Search and settings results respect your account's permissions.
 
