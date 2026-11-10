@@ -235,8 +235,13 @@ onBeforeUnmount(() => {
     max-height: calc(100dvh - 20px);
     border-radius: 28px;
   }
+  /* a big editor is a full-screen sheet on a phone (UX-AUDIT-APP A13) */
   .ui-modal-bounded {
-    height: calc(100dvh - 20px);
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
   }
   .modal-header {
     padding: 20px;

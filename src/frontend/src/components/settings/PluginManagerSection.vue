@@ -1044,11 +1044,38 @@ onMounted(() => {
 
 <template>
   <section class="plugin-manager">
-    <h2>Plugins</h2>
-    <p class="muted">
-      Browse plugins, review access, and manage installed releases and
-      persistent data.
-    </p>
+    <!-- the page heading already says Plugins (UX-AUDIT-APP A11); the
+         page's actions sit with it and are the same on every view (A25) -->
+    <div class="manager-head">
+      <p class="muted">
+        Browse plugins, review access, and manage installed releases and
+        persistent data.
+      </p>
+      <div class="manager-actions">
+        <button
+          type="button"
+          class="primary"
+          :disabled="installing || previewing || view === 'Discover'"
+          @click="discoverPlugins"
+        >
+          Install a plugin
+        </button>
+        <button
+          type="button"
+          :disabled="installing || previewing"
+          @click="openInstaller"
+        >
+          Install package or URL
+        </button>
+        <button
+          type="button"
+          :disabled="checkingUpdates"
+          @click="refreshUpdates"
+        >
+          {{ checkingUpdates ? "Checking…" : "Check for updates" }}
+        </button>
+      </div>
+    </div>
     <PluginIsolationWarning
       v-if="runtime"
       ref="isolationWarning"
@@ -1062,154 +1089,6 @@ onMounted(() => {
     <p v-if="focusedMissing" class="muted" role="status">
       The linked plugin is not installed or listed in your catalogues.
     </p>
-    <details
-      v-if="runtime"
-      class="manager-settings"
-      :open="
-        runtime.version_health === 'incompatible' ||
-        runtime.gateway_configured === false
-      "
-    >
-      <summary>Plugin platform versions & health</summary>
-      <dl>
-        <div>
-          <dt>Version health</dt>
-          <dd>{{ runtime.version_health ?? "Not reported" }}</dd>
-        </div>
-        <div>
-          <dt>UI/API contract</dt>
-          <dd>
-            Host {{ runtime.host_api_contract_version ?? "Not reported" }} ·
-            Runtime {{ runtime.api_contract_version ?? "Not reported" }}
-          </dd>
-        </div>
-        <div>
-          <dt>Plugin SDK compatibility version</dt>
-          <dd>
-            Host {{ runtime.host_sdk_version ?? "Not reported" }} · Runtime
-            {{ runtime.sdk_version ?? "Not reported" }}
-          </dd>
-        </div>
-        <div>
-          <dt>Application compatibility version</dt>
-          <dd>
-            Host {{ runtime.host_application_version ?? "Not reported" }} ·
-            Runtime {{ runtime.application_version ?? "Not reported" }}
-          </dd>
-        </div>
-        <div>
-          <dt>Gateway protocol</dt>
-          <dd>
-            {{ runtime.api_version ?? "Not reported" }} ·
-            {{ runtime.plugin_transport ?? "Not reported" }}
-          </dd>
-        </div>
-        <div>
-          <dt>Gateway configuration</dt>
-          <dd>
-            {{
-              runtime.gateway_configured === true
-                ? "Configured"
-                : runtime.gateway_configured === false
-                  ? "Needs repair"
-                  : "Not reported"
-            }}
-            <template v-if="runtime.gateway_configured">
-              ·
-              {{
-                runtime.gateway_configuration_source === "host"
-                  ? "App service"
-                  : "Runtime service"
-              }}
-            </template>
-          </dd>
-        </div>
-      </dl>
-      <p class="muted">
-        Compatibility versions are the targets checked against plugin manifests.
-        Package release numbers and the gateway protocol are separate. Update
-        host and runtime together when these targets differ.
-      </p>
-      <p v-if="runtime.version_error" class="error" role="alert">
-        {{ runtime.version_error }}
-      </p>
-      <p v-if="runtime.version_health === 'unavailable'" class="error">
-        Version checks are unavailable until the plugin runtime reconnects.
-      </p>
-    </details>
-    <details class="manager-settings">
-      <summary>Plugin Manager settings</summary>
-      <p class="muted">
-        Control catalogue updates and retained package history for this server.
-      </p>
-      <p v-if="managerSettingsError" role="alert" class="error">
-        {{ managerSettingsError }}
-      </p>
-      <p v-if="managerSettingsMessage" role="status" class="success">
-        {{ managerSettingsMessage }}
-      </p>
-      <fieldset :disabled="!managerSettingsLoaded || managerSettingsBusy">
-        <div
-          v-if="managerSettings.reduced_isolation_acknowledged"
-          class="manager-setting"
-        >
-          <span
-            ><strong>Reduced isolation acknowledged</strong
-            ><small
-              >Approval applies to this server. Withdrawing it stops plugins
-              when Bubblewrap is unavailable, unless the deployment override is
-              enabled.</small
-            ></span
-          >
-          <button type="button" @click="withdrawReducedIsolation">
-            Withdraw approval
-          </button>
-        </div>
-        <label class="manager-setting"
-          ><input v-model="managerSettings.automatic_updates" type="checkbox" />
-          <span
-            ><strong>Automatic catalogue updates</strong
-            ><small
-              >Allow eligible catalogue releases to update automatically. New
-              permissions still require approval.</small
-            ></span
-          ></label
-        >
-        <label class="manager-setting"
-          ><span
-            ><strong>Old package versions to retain</strong
-            ><small
-              >Keep 1–100 package versions for rollback. Plugin data is stored
-              separately.</small
-            ></span
-          >
-          <input
-            v-model.number="managerSettings.retained_versions"
-            type="number"
-            min="1"
-            max="100"
-            aria-label="Old package versions to retain"
-        /></label>
-        <p v-if="!retainedVersionsValid" role="alert" class="error">
-          Enter a whole number from 1 to 100.
-        </p>
-        <button
-          type="button"
-          class="primary"
-          :disabled="!retainedVersionsValid"
-          @click="saveGlobalSettings"
-        >
-          {{ managerSettingsBusy ? "Saving…" : "Save manager settings" }}
-        </button>
-      </fieldset>
-      <button
-        v-if="!managerSettingsLoaded"
-        type="button"
-        @click="loadManagerSettings"
-      >
-        Retry loading settings
-      </button>
-    </details>
     <nav class="manager-tabs" aria-label="Plugin views">
       <button
         v-for="item in [
@@ -1259,25 +1138,6 @@ onMounted(() => {
       :busy="installing || previewing"
       @package="reviewDroppedPackage"
     >
-      <button
-        type="button"
-        class="primary install-launcher"
-        v-if="view !== 'Discover'"
-        :disabled="installing || previewing"
-        @click="discoverPlugins"
-      >
-        Install a plugin
-      </button>
-      <button
-        type="button"
-        :disabled="installing || previewing"
-        @click="openInstaller"
-      >
-        Install package or URL
-      </button>
-      <button type="button" :disabled="checkingUpdates" @click="refreshUpdates">
-        {{ checkingUpdates ? "Checking…" : "Check for updates" }}
-      </button>
       <p class="muted">
         Discover a plugin and review its access before installing. Use Updates
         Available to review updates; click an installed plugin for
@@ -1716,6 +1576,156 @@ onMounted(() => {
         </button></template
       >
     </UiModal>
+    <!-- platform health and manager settings come after the list -->
+    <h3 class="manager-more">Plugin platform</h3>
+    <details
+      v-if="runtime"
+      class="manager-settings"
+      :open="
+        runtime.version_health === 'incompatible' ||
+        runtime.gateway_configured === false
+      "
+    >
+      <summary>Plugin platform versions & health</summary>
+      <dl>
+        <div>
+          <dt>Version health</dt>
+          <dd>{{ runtime.version_health ?? "Not reported" }}</dd>
+        </div>
+        <div>
+          <dt>UI/API contract</dt>
+          <dd>
+            Host {{ runtime.host_api_contract_version ?? "Not reported" }} ·
+            Runtime {{ runtime.api_contract_version ?? "Not reported" }}
+          </dd>
+        </div>
+        <div>
+          <dt>Plugin SDK compatibility version</dt>
+          <dd>
+            Host {{ runtime.host_sdk_version ?? "Not reported" }} · Runtime
+            {{ runtime.sdk_version ?? "Not reported" }}
+          </dd>
+        </div>
+        <div>
+          <dt>Application compatibility version</dt>
+          <dd>
+            Host {{ runtime.host_application_version ?? "Not reported" }} ·
+            Runtime {{ runtime.application_version ?? "Not reported" }}
+          </dd>
+        </div>
+        <div>
+          <dt>Gateway protocol</dt>
+          <dd>
+            {{ runtime.api_version ?? "Not reported" }} ·
+            {{ runtime.plugin_transport ?? "Not reported" }}
+          </dd>
+        </div>
+        <div>
+          <dt>Gateway configuration</dt>
+          <dd>
+            {{
+              runtime.gateway_configured === true
+                ? "Configured"
+                : runtime.gateway_configured === false
+                  ? "Needs repair"
+                  : "Not reported"
+            }}
+            <template v-if="runtime.gateway_configured">
+              ·
+              {{
+                runtime.gateway_configuration_source === "host"
+                  ? "App service"
+                  : "Runtime service"
+              }}
+            </template>
+          </dd>
+        </div>
+      </dl>
+      <p class="muted">
+        Compatibility versions are the targets checked against plugin manifests.
+        Package release numbers and the gateway protocol are separate. Update
+        host and runtime together when these targets differ.
+      </p>
+      <p v-if="runtime.version_error" class="error" role="alert">
+        {{ runtime.version_error }}
+      </p>
+      <p v-if="runtime.version_health === 'unavailable'" class="error">
+        Version checks are unavailable until the plugin runtime reconnects.
+      </p>
+    </details>
+    <details class="manager-settings">
+      <summary>Plugin Manager settings</summary>
+      <p class="muted">
+        Control catalogue updates and retained package history for this server.
+      </p>
+      <p v-if="managerSettingsError" role="alert" class="error">
+        {{ managerSettingsError }}
+      </p>
+      <p v-if="managerSettingsMessage" role="status" class="success">
+        {{ managerSettingsMessage }}
+      </p>
+      <fieldset :disabled="!managerSettingsLoaded || managerSettingsBusy">
+        <div
+          v-if="managerSettings.reduced_isolation_acknowledged"
+          class="manager-setting"
+        >
+          <span
+            ><strong>Reduced isolation acknowledged</strong
+            ><small
+              >Approval applies to this server. Withdrawing it stops plugins
+              when Bubblewrap is unavailable, unless the deployment override is
+              enabled.</small
+            ></span
+          >
+          <button type="button" @click="withdrawReducedIsolation">
+            Withdraw approval
+          </button>
+        </div>
+        <label class="manager-setting"
+          ><input v-model="managerSettings.automatic_updates" type="checkbox" />
+          <span
+            ><strong>Automatic catalogue updates</strong
+            ><small
+              >Allow eligible catalogue releases to update automatically. New
+              permissions still require approval.</small
+            ></span
+          ></label
+        >
+        <label class="manager-setting"
+          ><span
+            ><strong>Old package versions to retain</strong
+            ><small
+              >Keep 1–100 package versions for rollback. Plugin data is stored
+              separately.</small
+            ></span
+          >
+          <input
+            v-model.number="managerSettings.retained_versions"
+            type="number"
+            min="1"
+            max="100"
+            aria-label="Old package versions to retain"
+        /></label>
+        <p v-if="!retainedVersionsValid" role="alert" class="error">
+          Enter a whole number from 1 to 100.
+        </p>
+        <button
+          type="button"
+          class="primary"
+          :disabled="!retainedVersionsValid"
+          @click="saveGlobalSettings"
+        >
+          {{ managerSettingsBusy ? "Saving…" : "Save manager settings" }}
+        </button>
+      </fieldset>
+      <button
+        v-if="!managerSettingsLoaded"
+        type="button"
+        @click="loadManagerSettings"
+      >
+        Retry loading settings
+      </button>
+    </details>
   </section>
 </template>
 
