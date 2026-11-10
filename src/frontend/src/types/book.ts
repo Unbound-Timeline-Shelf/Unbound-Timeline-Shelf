@@ -87,6 +87,8 @@ export interface BookInput {
   seriesName?: string | null;
   seriesPosition?: string | null;
   coverUrl?: string | null;
+  // the provider identities a metadata search found (atlas, openlibrary, ...)
+  providerIds?: Record<string, string>;
   status?: BookStatus;
   priority?: string | null;
   favorite?: boolean;
