@@ -88,11 +88,17 @@ export function bookMetadataResult(
   };
 }
 
-/** The edition the person's ISBN search named, to add with the work. */
+/**
+ * The edition the person's ISBN search named, to add with the work. Only an
+ * ISBN query names an edition: a provider may also report an ISBN (its primary
+ * edition, say) for a title or author search, and that is not one the person
+ * asked for, so nothing is added then.
+ */
 export function matchedEdition(
   result: BookMetadataResult,
+  query: string,
 ): MetadataBookEdition | null {
-  if (!result.isbn13) return null;
+  if (!result.isbn13 || normalizeIsbn13(query) !== result.isbn13) return null;
   return (
     result.editions.find((edition) => edition.isbn_13 === result.isbn13) ?? {
       isbn_13: result.isbn13,
