@@ -75,7 +75,7 @@ const steps = computed(() => [
   {
     label: "Connect a library",
     hint: "Choose your metadata sources and account connections.",
-    to: "/settings?section=metadata",
+    to: "/settings/preferences/metadata",
     done: props.games.some((game) => game.source),
   },
   {

@@ -74,7 +74,7 @@ async function change(changes: Partial<Preferences>) {
     </ToggleButton>
     <p class="section-hint">
       The schedule lives in
-      <RouterLink to="/settings?section=background-tasks"
+      <RouterLink to="/settings/account/background-tasks"
         >Background tasks</RouterLink
       >
       under "AniList import". Turn it on there to import automatically, choose

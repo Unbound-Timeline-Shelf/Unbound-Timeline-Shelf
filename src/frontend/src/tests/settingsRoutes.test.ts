@@ -140,6 +140,26 @@ describe("settings sections are paths", () => {
     expect(sidebarSource).toContain('to="/settings/account"');
     expect(sidebarSource).not.toContain("section=appearance");
   });
+
+  it("links inside the app use settings paths, not the legacy ?section= form", () => {
+    // Every in-app link goes straight to its path, so a click costs no
+    // redirect hop. Only the redirect itself and the command palette's
+    // fallback for a plugin section whose area is not known yet keep the
+    // old form.
+    const sources = import.meta.glob(
+      ["../**/*.{vue,ts}", "!../tests/**", "!../**/*.test.ts"],
+      { query: "?raw", import: "default", eager: true },
+    ) as Record<string, string>;
+    const allowed = new Set([
+      "../state/settingsRegistry.ts",
+      "../components/CommandPalette.vue",
+    ]);
+    const offenders = Object.entries(sources)
+      .filter(([file]) => !allowed.has(file))
+      .filter(([, text]) => /\/settings\?(section|area)=/.test(text))
+      .map(([file]) => file);
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe("settings names and the Import & sync hub (A20)", () => {

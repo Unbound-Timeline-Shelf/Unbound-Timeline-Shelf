@@ -567,7 +567,7 @@ function copyFolderPath() {
       <RouterLink
         v-if="possibleDuplicate"
         class="copy-review-link"
-        to="/settings?section=library&tab=duplicates"
+        to="/settings/preferences/library?tab=duplicates"
         @click.stop
         >Review possible duplicate</RouterLink
       >
