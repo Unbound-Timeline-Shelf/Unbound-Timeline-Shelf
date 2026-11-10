@@ -314,3 +314,26 @@ html.high-contrast :focus-visible {
     font-size: 16px;
   }
 }
+/* A page heading focused after a navigation (state/routeFocus.ts) is a
+   starting point for the keyboard, not a control, so it draws no ring. */
+[data-route-focus]:focus {
+  outline: none;
+}
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* Phone: whatever is scrolled into view (a focused field, a tab) stops above
+   the floating bottom navigation instead of under it (UX-AUDIT-APP A12). */
+@media (max-width: 760px) {
+  html {
+    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+}
