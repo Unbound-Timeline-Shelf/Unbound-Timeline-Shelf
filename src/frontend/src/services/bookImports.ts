@@ -16,6 +16,8 @@ export interface BookImportPreviewRow {
   // ISO date of the last finished read, if the file gives one
   last_read: string | null;
   already_here: boolean;
+  // the same book as an earlier row of the file: imported once
+  repeated: boolean;
 }
 
 export interface BookImportPreview {

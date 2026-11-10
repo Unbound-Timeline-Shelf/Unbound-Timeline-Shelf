@@ -316,11 +316,14 @@ regression coverage and migration/contract review.
   Copies", StoryGraph "Owned?") become **Backlog**, the others **Wishlist**.
 - **Never twice, never overwritten.** A row whose ISBN is on one of the reader's editions, or whose
   title and author match a book already there, is kept exactly as it is; a row repeated in the file is
-  imported once.
+  imported once (and marked "Repeated" in the preview). Different subtitles are different books
+  ("Ember Cycle: The First Spark" is not "Ember Cycle: The Second Flame"), and a row whose ISBN
+  differs from every ISBN of a same-titled book is another book.
 - **Matching (C15 §6.2).** ISBN first, then title and author, through the account's book providers;
   a provider with the Plugin API 1.1.20 `resolve` operation gets the rows in batches of at most 200
   (one Atlas `/resolve` call each through `metadata-atlas`); the others are searched row by row, at
-  most 100 lookups per import. The host re-checks every answer (see
+  most 100 lookups per import. One import makes at most 20 batched calls and spends at most two
+  minutes matching; rows left then are added from the file. The host re-checks every answer (see
   [metadata providers](../metadata-providers.md#plugin-api-1120-books)). Nothing is dropped: an
   unmatched row is a manual book, and an ISBN-only row no provider knows is called "ISBN …" with that
   ISBN on its edition.

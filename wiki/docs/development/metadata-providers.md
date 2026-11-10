@@ -209,12 +209,15 @@ new rows through the account's book providers in their saved order: ISBN rows fi
 by title and authors. A provider that declares `resolve` gets them in batches of at most 200 rows
 per call (`metadata-atlas` maps one call to one Atlas `POST /resolve`, whose `max_resolve` is 200).
 A provider without `resolve` is searched row by row (the ISBN as the `isbn` option, then
-"title author"), at most 100 lookups per import. The host checks every answer again: an
-identifier answer must not name a different ISBN, and a title answer must have the same title
-(case, accents, punctuation, a subtitle and a leading article aside) and share an author surname
-when both sides name authors. An answer for a row the host did not send, or a candidate of another
+"title author"), at most 100 lookups per import; an import makes at most 20 `resolve` calls and
+spends at most 120 seconds matching in all. The host checks every answer again: an identifier
+answer must not name a different ISBN, and a title answer must have the same title (case, accents,
+punctuation and a leading article aside; a subtitle only when one side has none, so different
+subtitles never agree) and share an author surname when both sides name authors. An answer for a row the host did not send, or a candidate of another
 media type, makes the whole answer an `invalid_response`. A matched book keeps the file's data and
-gains the candidate's `provider_ids` (and its title, authors and year where the file has none); a
+gains the candidate's `provider_ids` in the namespaces that provider owns (its provider id and
+`identifier_namespace`; the `provider`/`external_id` fallback only when `provider` is one of them)
+(and its title, authors and year where the file has none); a
 row no provider identifies is still imported from the file. Tests:
 `src/backend/tests/test_plugin_api_book_resolve.py`, `test_book_imports.py`,
 `test_book_imports_routes.py`.
