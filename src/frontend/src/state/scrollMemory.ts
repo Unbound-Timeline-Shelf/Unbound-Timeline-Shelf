@@ -89,11 +89,31 @@ export function waitForScrollTarget(
     const interrupt = () => {
       interrupted = true;
     };
-    const events = ["wheel", "touchmove", "keydown"] as const;
+    // Any sign the person has taken over: the wheel, a swipe, a key, a press
+    // (dragging the scrollbar, middle-click autoscroll, a click that does not
+    // navigate) or the page scrolling while nothing here scrolls it.
+    const events = [
+      "wheel",
+      "touchmove",
+      "keydown",
+      "pointerdown",
+      "mousedown",
+    ] as const;
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      // The document shrinking under the viewport pulls the position back to
+      // the new end; that is the layout settling, not the person scrolling.
+      const clamped = y < lastY && y >= maxScrollY() - 1;
+      if (Math.abs(y - lastY) > 1 && !clamped) interrupted = true;
+      lastY = y;
+    };
     for (const name of events)
       window.addEventListener(name, interrupt, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
     const finish = (value: boolean) => {
       for (const name of events) window.removeEventListener(name, interrupt);
+      window.removeEventListener("scroll", onScroll);
       resolve(value);
     };
     const check = () => {

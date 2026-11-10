@@ -61,6 +61,66 @@ it("gives up when the person scrolls before the page is ready", async () => {
   view.unmount();
 });
 
+it.each(["pointerdown", "mousedown"])(
+  "gives up on a %s, e.g. dragging the scrollbar or middle-click autoscroll",
+  async (name) => {
+    const view = mount(
+      defineComponent({
+        setup() {
+          useScrollReady(() => false);
+          return () => h("div");
+        },
+      }),
+    );
+    const pending = waitForScrollTarget(400);
+    window.dispatchEvent(new Event(name));
+    expect(await pending).toBe(false);
+    view.unmount();
+  },
+);
+
+it("gives up when the page scrolls without any input event", async () => {
+  height = 5000;
+  window.scrollTo(0, 0);
+  const view = mount(
+    defineComponent({
+      setup() {
+        useScrollReady(() => false);
+        return () => h("div");
+      },
+    }),
+  );
+  const pending = waitForScrollTarget(400);
+  window.scrollTo(0, 300);
+  window.dispatchEvent(new Event("scroll"));
+  expect(await pending).toBe(false);
+  view.unmount();
+  window.scrollTo(0, 0);
+});
+
+it("keeps waiting when the page only shrinks under the viewport", async () => {
+  height = 5000;
+  window.scrollTo(0, 3000);
+  const ready = ref(false);
+  const view = mount(
+    defineComponent({
+      setup() {
+        useScrollReady(() => ready.value);
+        return () => h("div");
+      },
+    }),
+  );
+  const pending = waitForScrollTarget(1000, 2000);
+  // the document shrinks to 2000px, which pulls the position back to its end
+  height = 2000;
+  window.scrollTo(0, 1200);
+  window.dispatchEvent(new Event("scroll"));
+  ready.value = true;
+  expect(await pending).toBe(true);
+  view.unmount();
+  window.scrollTo(0, 0);
+});
+
 it("abandons a restore when another navigation starts", async () => {
   const view = mount(
     defineComponent({
