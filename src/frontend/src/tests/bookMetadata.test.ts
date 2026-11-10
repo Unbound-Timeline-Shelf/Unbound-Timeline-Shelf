@@ -133,13 +133,24 @@ describe("a book result", () => {
       "1813-01-01",
       "year",
     ]);
-    expect(matchedEdition(bare)).toBeNull();
+    expect(matchedEdition(bare, "978-0-00-000000-2")).toBeNull();
   });
 
   it("adds the edition the ISBN search named", () => {
-    expect(matchedEdition(result)?.key).toBe("ED1");
+    expect(matchedEdition(result, "978-0-00-000000-2")?.key).toBe("ED1");
     const unlisted = { ...result, isbn13: "9790000000001" };
-    expect(matchedEdition(unlisted)).toEqual({ isbn_13: "9790000000001" });
+    expect(matchedEdition(unlisted, "9790000000001")).toEqual({
+      isbn_13: "9790000000001",
+    });
+  });
+
+  it("adds no edition after a title or author search", () => {
+    // the provider reports an ISBN, but the person searched by title
+    expect(result.isbn13).toBe("9780000000002");
+    expect(matchedEdition(result, "Lantern Archive")).toBeNull();
+    expect(matchedEdition(result, "Ada Quill")).toBeNull();
+    // an ISBN naming another edition does not pick this one either
+    expect(matchedEdition(result, "9780000000019")).toBeNull();
   });
 
   it("turns a provider edition into the edition form", () => {

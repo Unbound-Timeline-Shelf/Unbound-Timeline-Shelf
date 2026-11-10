@@ -3,7 +3,7 @@
 // installed book providers (by title, author or ISBN, C15 6.2) to fill the
 // form in; every field stays editable and is saved only when the person adds
 // the book. Editions and reads are managed on the book's own page.
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import UiModal from "./UiModal.vue";
 import PartialDateInput from "./PartialDateInput.vue";
 import MediaMetadataSearch from "./MediaMetadataSearch.vue";
@@ -63,8 +63,8 @@ const canSave = computed(
 
 const text = (v: string) => v.trim() || null;
 
-// Provider search (new books only). Identities found here are saved with the
-// book; the edition an ISBN search named is added with it.
+// Provider search (new books only). The identities of the result applied last
+// are saved with the book; the edition an ISBN search named is added with it.
 const search = useMetadataSearch<BookMetadataResult>({
   mediaType: "book",
   convert: bookMetadataResult,
@@ -72,7 +72,20 @@ const search = useMetadataSearch<BookMetadataResult>({
 });
 const providerIds = ref<Record<string, string>>({});
 const pendingEdition = ref<MetadataBookEdition | null>(null);
-onBeforeUnmount(() => search.stop());
+// The query the chosen result answered: only an ISBN query names an edition.
+const pickedQuery = ref("");
+// The chosen result's cover is shown through the host's artwork preview, which
+// fetches only the selected result's own asset URLs, so the browser contacts no
+// provider host before the person commits anything.
+const coverPreview = ref<string | null>(null);
+function clearCoverPreview() {
+  if (coverPreview.value) URL.revokeObjectURL(coverPreview.value);
+  coverPreview.value = null;
+}
+onBeforeUnmount(() => {
+  search.stop();
+  clearCoverPreview();
+});
 const searchResults = computed(() =>
   search.results.value.map((result) => ({
     key: result.candidateId,
@@ -101,11 +114,29 @@ const foundPublished = computed(() =>
     : "",
 );
 const foundEdition = computed(() =>
-  found.value ? matchedEdition(found.value) : null,
+  found.value ? matchedEdition(found.value, pickedQuery.value) : null,
+);
+watch(
+  () => found.value?.coverUrl ?? null,
+  async (url) => {
+    clearCoverPreview();
+    if (!url) return;
+    try {
+      const blob = await search.previewArtwork(url);
+      if (found.value?.coverUrl === url) {
+        clearCoverPreview();
+        coverPreview.value = URL.createObjectURL(blob);
+      }
+    } catch {
+      // no preview: the cover URL is still filled in when the details are used
+    }
+  },
 );
 function pickResult(key: string) {
   const result = search.results.value.find((r) => r.candidateId === key);
-  if (result) void search.select(result).catch(() => {});
+  if (!result) return;
+  pickedQuery.value = search.query.value;
+  void search.select(result).catch(() => {});
 }
 function applyResult() {
   const result = found.value;
@@ -126,8 +157,9 @@ function applyResult() {
   if (result.genres.length) f.genres = result.genres.join(", ");
   f.coverUrl = keep(result.coverUrl, f.coverUrl);
   f.description = keep(result.description, f.description);
-  providerIds.value = { ...providerIds.value, ...result.providerIds };
-  pendingEdition.value = matchedEdition(result);
+  // replaced, not merged: one book carries one work's identities
+  providerIds.value = { ...result.providerIds };
+  pendingEdition.value = matchedEdition(result, pickedQuery.value);
   search.applied(result, []);
   search.stop();
 }
@@ -208,12 +240,7 @@ async function submit() {
         @pick="pickResult"
       />
       <section v-if="found" class="found-book" aria-label="Book found">
-        <img
-          v-if="found.coverUrl"
-          :src="found.coverUrl"
-          alt=""
-          referrerpolicy="no-referrer"
-        />
+        <img v-if="coverPreview" :src="coverPreview" alt="" />
         <div class="found-text">
           <strong>{{ found.title }}</strong>
           <span v-if="found.subtitle">{{ found.subtitle }}</span>

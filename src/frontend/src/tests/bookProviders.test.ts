@@ -48,10 +48,12 @@ vi.mock("../composables/useMetadataSearch", () => ({
 // the add form's search box
 const formResults = ref<BookMetadataResult[]>([]);
 const formSelected = ref<BookMetadataResult | null>(null);
+const formQuery = ref("");
 const select = vi.fn();
+const previewArtwork = vi.fn();
 vi.mock("../utils/useMetadataSearch", () => ({
   useMetadataSearch: () => ({
-    query: ref(""),
+    query: formQuery,
     results: formResults,
     selected: formSelected,
     searching: ref(false),
@@ -64,6 +66,7 @@ vi.mock("../utils/useMetadataSearch", () => ({
     stop: () => {
       formSelected.value = null;
     },
+    previewArtwork: (url: string) => previewArtwork(url),
   }),
 }));
 
@@ -172,6 +175,9 @@ beforeEach(() => {
   lookupEnriching.value = false;
   formResults.value = [];
   formSelected.value = null;
+  formQuery.value = "978-0-00-000000-2";
+  previewArtwork.mockReset();
+  previewArtwork.mockRejectedValue(new Error("no artwork"));
 });
 
 describe("provider editions on the book page", () => {
@@ -320,6 +326,122 @@ describe("adding a book found through a provider", () => {
       .trigger("click");
     await flushPromises();
     expect(form.emitted("saved")).toHaveLength(1);
+  });
+
+  async function chooseAndUse(
+    form: ReturnType<typeof mount>,
+    result: BookMetadataResult,
+  ) {
+    formResults.value = [result];
+    select.mockImplementation(async () => {
+      formSelected.value = result;
+    });
+    await flushPromises();
+    await form.find(".metadata-result").trigger("click");
+    await flushPromises();
+    await form
+      .findAll("button")
+      .find((button) => button.text() === "Use these details")!
+      .trigger("click");
+    await flushPromises();
+  }
+  async function addBook(form: ReturnType<typeof mount>) {
+    await form
+      .findAll("button")
+      .find((button) => button.text() === "Add book")!
+      .trigger("click");
+    await flushPromises();
+  }
+
+  it("adds no edition after a title search", async () => {
+    // the provider reports an ISBN for its work, but nobody searched by ISBN
+    formQuery.value = "lantern";
+    const result = bookMetadataResult(PROVIDER_BOOK);
+    formResults.value = [result];
+    select.mockImplementation(async () => {
+      formSelected.value = result;
+    });
+    createBook.mockResolvedValue(book());
+    const form = mount(BookFormModal, {
+      global: { stubs: { teleport: true } },
+    });
+    await flushPromises();
+    await form.find(".metadata-result").trigger("click");
+    await flushPromises();
+    expect(form.find(".found-book").text()).not.toContain(
+      "Also adds the edition",
+    );
+    await form
+      .findAll("button")
+      .find((button) => button.text() === "Use these details")!
+      .trigger("click");
+    await flushPromises();
+    expect(form.text()).not.toContain("is added with the book");
+    await addBook(form);
+    expect(createBook).toHaveBeenCalledOnce();
+    expect(addEdition).not.toHaveBeenCalled();
+  });
+
+  it("saves only the identities of the result used last", async () => {
+    formQuery.value = "lantern";
+    createBook.mockResolvedValue(book());
+    const form = mount(BookFormModal, {
+      global: { stubs: { teleport: true } },
+    });
+    await chooseAndUse(form, bookMetadataResult(PROVIDER_BOOK));
+    const other: MetadataCandidate = {
+      ...PROVIDER_BOOK,
+      id: "c2",
+      title: "Lanterns of the Salt Road",
+      provider: "official.metadata-example.books",
+      provider_ids: { example: "EX-W9" },
+      isbn_13: null,
+      metadata: { title: "Lanterns of the Salt Road" },
+    };
+    await chooseAndUse(form, bookMetadataResult(other));
+    await addBook(form);
+    expect(createBook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Lanterns of the Salt Road",
+        providerIds: { example: "EX-W9" },
+      }),
+    );
+  });
+
+  it("shows the chosen cover through the host's artwork preview", async () => {
+    const created = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:cover-preview");
+    const revoked = vi.spyOn(URL, "revokeObjectURL").mockReturnValue();
+    previewArtwork.mockResolvedValue(new Blob(["png"], { type: "image/png" }));
+    const result = bookMetadataResult({
+      ...PROVIDER_BOOK,
+      assets: [
+        {
+          kind: "poster",
+          url: "https://covers.example.test/1.jpg",
+        } as MetadataCandidate["assets"][number],
+      ],
+    });
+    formResults.value = [result];
+    select.mockImplementation(async () => {
+      formSelected.value = result;
+    });
+    const form = mount(BookFormModal, {
+      global: { stubs: { teleport: true } },
+    });
+    await form.find(".metadata-result").trigger("click");
+    await flushPromises();
+    expect(previewArtwork).toHaveBeenCalledWith(
+      "https://covers.example.test/1.jpg",
+    );
+    const img = form.find(".found-book img");
+    expect(img.attributes("src")).toBe("blob:cover-preview");
+    expect(form.html()).not.toContain('src="https://covers.example.test');
+    form.unmount();
+    expect(revoked).toHaveBeenCalledWith("blob:cover-preview");
+    created.mockRestore();
+    revoked.mockRestore();
   });
 
   it("has no provider search when editing", async () => {
