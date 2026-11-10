@@ -32,6 +32,8 @@ from pydantic import (
     model_validator,
 )
 
+from src.features.books.isbn import _isbn10_check, _isbn13_check, isbn10_to_13
+
 from .base_contracts import UNIFIED_CONTRACT, parse_semver
 from .vocab import BOOK_CREATOR_ROLES, BOOK_FORMATS
 
@@ -72,17 +74,6 @@ def _require_unified_contract(info: ValidationInfo, used: list[str]) -> None:
 _require_releases_contract = _require_unified_contract
 
 
-def _isbn10_check(first_nine: str) -> str:
-    total = sum((10 - index) * int(digit) for index, digit in enumerate(first_nine))
-    check = (11 - total % 11) % 11
-    return "X" if check == 10 else str(check)
-
-
-def _isbn13_check(first_twelve: str) -> str:
-    total = sum(int(digit) * (3 if index % 2 else 1) for index, digit in enumerate(first_twelve))
-    return str((10 - total % 10) % 10)
-
-
 def valid_isbn13(value: str) -> bool:
     """A normalised ISBN-13: 978 or 979, thirteen digits, right check digit."""
     return (
@@ -106,8 +97,7 @@ def valid_isbn10(value: str) -> bool:
 
 
 def isbn10_as_13(value: str) -> str:
-    body = "978" + value[:9]
-    return body + _isbn13_check(body)
+    return isbn10_to_13(value)
 
 
 def _checked_isbn13(value: str | None) -> None:
@@ -225,7 +215,7 @@ class MetadataCandidate(MetadataModel):
     @model_validator(mode="after")
     def declared_contract(self, info: ValidationInfo) -> "MetadataCandidate":
         _checked_isbn13(self.isbn_13)
-        used = [name for name in ("authors", "isbn_13") if name in self.model_fields_set]
+        used: list[str] = [name for name in ("authors", "isbn_13") if name in self.model_fields_set]
         if self.media_type == MediaType.BOOK:
             used.insert(0, "media_type book")
         _require_unified_contract(info, used)
