@@ -10,7 +10,7 @@ import MetadataProviderSettings from "../plugins/MetadataProviderSettings.vue";
       Expand a tile to configure your account credentials or view its validation
       status. Accounts you import a library from, such as Steam, PlayStation and
       RetroAchievements, are managed under
-      <router-link to="/settings?area=account&section=connections"
+      <router-link to="/settings/account/connections"
         >Account &gt; Connections</router-link
       >.
     </p>

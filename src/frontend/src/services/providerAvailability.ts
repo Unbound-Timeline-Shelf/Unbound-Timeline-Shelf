@@ -27,15 +27,15 @@ export const MEDIA_NAMES: Record<MetadataMediaType, string> = {
 
 export const SOURCES_LINK: SetupLink = {
   label: "Settings › Metadata › Sources & API keys",
-  href: "/settings?section=metadata&tab=sources",
+  href: "/settings/preferences/metadata?tab=sources",
 };
 export const PROVIDERS_LINK: SetupLink = {
   label: "Settings › Metadata › Scan & providers",
-  href: "/settings?section=metadata&tab=scan",
+  href: "/settings/preferences/metadata?tab=scan",
 };
 export const PLUGINS_LINK: SetupLink = {
   label: "Settings › Administration › Plugins",
-  href: "/settings?area=administration&section=plugins",
+  href: "/settings/administration/plugins",
 };
 
 function missingFields(provider: MetadataProviderStatus): string[] {

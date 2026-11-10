@@ -677,12 +677,14 @@ onUnmounted(() => {
         </RouterLink>
         <!-- Calendar, Statistics, Notifications and Upload live in the menu;
              More opens it from the thumb's reach (UX-AUDIT-APP A12) -->
+        <!-- hidden (not removed) while the menu is open so aria-expanded
+             reflects the real state for assistive technology -->
         <button
-          v-if="!open"
+          v-show="!open"
           type="button"
           class="mobile-more"
           aria-controls="app-navigation"
-          :aria-expanded="open"
+          :aria-expanded="open ? 'true' : 'false'"
           @click="openMenu()"
         >
           <AppIcon name="menu" /><span>More</span>

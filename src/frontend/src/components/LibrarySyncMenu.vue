@@ -31,7 +31,7 @@ const plugins = computed(() =>
 async function syncBuiltIn(connection: ConnectionConfig) {
   if (menu.value) menu.value.open = false;
   if (!isConnectionConnected(state.credentialStatus[connection.key])) {
-    await router.push("/settings?section=connections");
+    await router.push("/settings/account/connections");
     return;
   }
   if (connection.syncProvider)
@@ -46,7 +46,7 @@ async function syncPlugin(connection: PluginConnectionContribution) {
   if (menu.value) menu.value.open = false;
   const key = pluginKey(connection);
   if (!pluginState.states[key]?.connected) {
-    await router.push("/settings?section=connections");
+    await router.push("/settings/account/connections");
     return;
   }
   await pluginState.sync(key, connection.label);

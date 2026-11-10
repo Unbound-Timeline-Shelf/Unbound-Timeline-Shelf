@@ -103,7 +103,7 @@ onMounted(async () => {
           It finishes signing in by itself within a few seconds.
         </template>
       </p>
-      <RouterLink to="/settings?section=connected-apps"
+      <RouterLink to="/settings/account/connected-apps"
         >Review connected apps</RouterLink
       >
     </template>
