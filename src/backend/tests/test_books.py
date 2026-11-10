@@ -385,6 +385,62 @@ async def test_trash_restore_and_purge_take_editions_and_reads_along(http, peopl
     assert await _children(emptied_book["id"]) == (0, 0)
 
 
+async def _book_with_active_edition(http, who, title: str) -> str:
+    book = await _create(http, who, title=title)
+    work = (
+        await http.post(
+            f"/api/book/{book['id']}/editions", json={"page_count": 300}, headers=who.headers
+        )
+    ).json()
+    edition_id = work["editions"][0]["id"]
+    work = (
+        await http.post(
+            f"/api/book/{book['id']}/reads",
+            json={"edition_id": edition_id, "progress_value": 12},
+            headers=who.headers,
+        )
+    ).json()
+    # the work points at its edition and the edition at its work: the foreign-key cycle
+    assert work["active_edition_id"] == edition_id
+    return book["id"]
+
+
+async def test_purge_empty_trash_and_account_removal_clear_a_book_with_an_active_edition(
+    http, people
+):
+    me, _ = people
+    purged = await _book_with_active_edition(http, me, "Purged")
+    await http.delete(f"/api/book/delete/{purged}", headers=me.headers)
+    response = await http.delete(f"/api/book/{purged}/purge", headers=me.headers)
+    assert response.status_code == 204, response.text
+    assert await _children(purged) == (0, 0)
+
+    emptied = await _book_with_active_edition(http, me, "Emptied")
+    await http.delete(f"/api/book/delete/{emptied}", headers=me.headers)
+    response = await http.post("/api/book/trash/empty", json={"confirm": True}, headers=me.headers)
+    assert response.status_code == 200 and response.json()["deleted"] == 1, response.text
+    assert await _children(emptied) == (0, 0)
+
+    # removing the account cascades through the same cycle
+    ghost = await _person()
+    kept = await _book_with_active_edition(http, ghost, "Kept until the account goes")
+    async with SessionLocal() as db:
+        await db.execute(delete(User).where(User.id == ghost.id))
+        await db.commit()
+    async with SessionLocal() as db:
+        assert await db.scalar(select(Book).where(Book.id == kept)) is None
+    assert await _children(kept) == (0, 0)
+
+
+async def test_book_tags_join_the_tag_catalogue(http, people):
+    me, _ = people
+    await _create(http, me, tags=["Gothic Fiction"])
+    found = await http.post("/api/tags/discover", headers=me.headers)
+    assert found.json() == {"created": 1}, found.text
+    labels = [t["label"] for t in (await http.get("/api/tags", headers=me.headers)).json()["tags"]]
+    assert labels == ["Gothic Fiction"]
+
+
 async def test_another_user_cannot_read_change_or_list_a_book_its_editions_or_reads(http, people):
     owner, stranger = people
     book = await _create(http, owner)
@@ -619,3 +675,43 @@ async def test_restore_keeps_a_book_whose_edition_has_an_unknown_format_or_bad_i
     assert formats == {"other": None, "ebook": OTHER13}
     ebook = next(e["id"] for e in book["editions"] if e["format"] == "ebook")
     assert book["active_edition_id"] == ebook and book["reads"][0]["edition_id"] == ebook
+
+
+async def test_restore_drops_a_read_that_breaks_the_progress_rules_and_keeps_the_work(http, people):
+    _, other = people
+    payload = {
+        "format_version": 3,
+        "exported_at": 1,
+        "books": [
+            {
+                "title": "Hand Edited",
+                "editions": [{"id": "e1", "format": "paperback", "page_count": 200}],
+                "reads": [
+                    {"edition_id": "e1", "progress_unit": "page", "progress_value": 250},
+                    {"edition_id": "e1", "progress_unit": "percent", "progress_value": 140},
+                    {
+                        "edition_id": "e1",
+                        "started_on": "2024-05-02",
+                        "finished_on": "2024-05-01",
+                    },
+                    {"edition_id": "e1", "progress_unit": "page", "progress_value": 80},
+                ],
+                "active_edition_id": "e1",
+            }
+        ],
+    }
+    result = await http.post("/api/import/media", files=_upload(payload), headers=other.headers)
+    body = result.json()
+    assert body["created"]["books"] == 1 and body["skipped"]["books"] == 0, body
+    assert sum("a read was skipped" in e for e in body["errors"]) == 3, body
+    [book] = (await http.get("/api/book/list", headers=other.headers)).json()["items"]
+    assert len(book["editions"]) == 1
+    assert [float(r["progress_value"]) for r in book["reads"]] == [80.0]
+    # the kept read can still be edited, because it obeys the API's rules
+    read_id = book["reads"][0]["id"]
+    edited = await http.patch(
+        f"/api/book/{book['id']}/reads/{read_id}",
+        json={"progress_value": 90},
+        headers=other.headers,
+    )
+    assert edited.status_code == 200, edited.text

@@ -255,9 +255,19 @@ regression coverage and migration/contract review.
 - **Statuses** fill the five library tabs: Wishlist and Backlog are *Plan to Read*, On hold is *On Hold*.
 - **Export** is `LibraryExport` format 3 with `books` (editions and reads nested). An import of format > 3
   is refused with a 400 saying to update the app; formats 1-2 import as before.
+- **Older builds do not refuse format 3 (gap against §4.4).** Releases before this change have no
+  `format_version` check in `/api/import/media` or `/api/import/library`, so importing a format-3
+  export into one of them silently drops the books. That cannot be fixed retroactively: only builds
+  from this change onward refuse a format newer than the one they know.
+- **Restore keeps the read rules.** A restored read that breaks the API's rules (page progress past
+  its edition's page count, percent over 100, a finish before its start) is dropped with an error
+  naming the work; the work, its editions and its other reads are still restored. The read routes
+  and the restore share one check (`reading_problem`).
+- **Tags:** book tags are part of the tag catalogue (counts, discovery and alias suggestions).
 - **Not in phase 1:** the activity log, the media-image proxy (covers load from the typed `cover_url`
-  with `referrerpolicy=no-referrer`), the plugin contract, the CSV export, the command palette, and
-  any metadata provider. The book page has its own hero rather than `MediaDetailHero`.
+  with `referrerpolicy=no-referrer`, on the book page and on the List/Shelf/Board library tiles), the
+  plugin contract, the CSV export, the command palette, and any metadata provider. The book page has
+  its own hero rather than `MediaDetailHero`.
 
 ## 10. Acceptance mapping
 
