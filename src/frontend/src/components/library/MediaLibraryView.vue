@@ -1241,6 +1241,7 @@ defineExpose({ openQuickAdd });
                     <img
                       v-if="it.poster"
                       v-viewport-image="it.poster"
+                      referrerpolicy="no-referrer"
                       :alt="it.title"
                       loading="lazy"
                       decoding="async"
@@ -1399,6 +1400,7 @@ defineExpose({ openQuickAdd });
                   <img
                     v-if="it.poster"
                     v-viewport-image="it.poster"
+                    referrerpolicy="no-referrer"
                     :alt="it.title"
                     loading="lazy"
                     decoding="async"
@@ -1592,6 +1594,7 @@ defineExpose({ openQuickAdd });
                     <img
                       v-if="it.poster"
                       v-viewport-image="it.poster"
+                      referrerpolicy="no-referrer"
                       :alt="it.title"
                       loading="lazy"
                       decoding="async"

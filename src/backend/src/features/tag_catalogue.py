@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import count as sql_count
 
 from src.database.models.anime import Anime
+from src.database.models.book import Book
 from src.database.models.game import Game
 from src.database.models.game_archive import GameArchive
 from src.database.models.game_file_item import GameFileItem
@@ -357,6 +358,7 @@ def _tag_selects(user_id: UUID) -> list[Any]:
         select(func.unnest(Anime.tags).label("tag")).where(Anime.user_id == user_id),
         select(func.unnest(TVShow.tags).label("tag")).where(TVShow.user_id == user_id),
         select(func.unnest(Movie.tags).label("tag")).where(Movie.user_id == user_id),
+        select(func.unnest(Book.tags).label("tag")).where(Book.user_id == user_id),
         select(func.unnest(MediaItem.tags).label("tag")).where(MediaItem.game_id.in_(owned)),
         select(func.unnest(GameArchive.tags).label("tag")).where(GameArchive.game_id.in_(owned)),
         select(func.unnest(GameFileItem.tags).label("tag")).where(GameFileItem.game_id.in_(owned)),
