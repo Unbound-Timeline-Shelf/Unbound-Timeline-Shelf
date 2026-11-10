@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watchEffect } from "vue";
 import UiModal from "./UiModal.vue";
-import { preferences } from "../state/preferences";
+import { preferences, welcomeHiddenFor } from "../state/preferences";
 import { currentUser } from "../state/auth";
 import { startQuickTour } from "../state/quickTour";
 import { queuePreferences } from "../services/preferences";
@@ -42,6 +42,12 @@ watchEffect(() => {
       choices.value.ui_style,
     );
 });
+// "Later", ×, Escape or the backdrop: closes for this visit without saving,
+// so the welcome never blocks the first page (UX-AUDIT-APP A24).
+function later() {
+  if (saving.value) return;
+  welcomeHiddenFor.value = accountId ?? null;
+}
 const saving = ref(false);
 const error = ref("");
 async function finish(withTour = false) {
@@ -74,7 +80,8 @@ async function finish(withTour = false) {
     title="Make yourself at home"
     description="Choose your appearance. You can change these choices and create or import a palette later in Preferences → Appearance."
     size="wide"
-    :dismissible="false"
+    :dismissible="!saving"
+    @close="later"
   >
     <div class="welcome-layout">
       <fieldset :disabled="saving" class="welcome-choices">
@@ -178,6 +185,14 @@ async function finish(withTour = false) {
         @click="finish(true)"
       >
         Save & take a tour
+      </button>
+      <button
+        type="button"
+        class="ui-btn ui-btn-ghost welcome-later"
+        :disabled="saving"
+        @click="later"
+      >
+        Later
       </button></template
     >
   </UiModal>
