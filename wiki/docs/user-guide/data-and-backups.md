@@ -17,7 +17,7 @@ preview, progress and error messages when you switch between them, so a half-rev
 A **library export is not a disaster-recovery backup.** It holds titles, progress and metadata; it does not hold attached
 files (screenshots, saves, documents), accounts, settings or credentials. Only a copy of the database and the data volume
 taken by whoever runs the server restores everything. Every earlier action and file format is still available, and
-`/settings?section=export&tab=restore` (or `import`, `backups`) opens a tab directly.
+`/settings/preferences/export?tab=restore` (or `import`, `backups`) opens a tab directly; the older `/settings?section=export&tab=restore` link still works.
 
 ## Automatic backups
 

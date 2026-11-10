@@ -1,14 +1,14 @@
 # Your Home
 
-Home starts with a quiet welcome and links to your library. It does not open a welcome tour automatically. **Quick tour** remains available whenever you want an introduction.
+Until you choose your own widgets, Home suggests **Continue playing**, **Recently added** and **Library summary** for a library with games, or a getting-started card for an empty one. Choose your own widgets to replace the suggestion; a Home you save empty stays empty. It does not open a welcome tour automatically. **Quick tour** remains available whenever you want an introduction.
 
 The guided tour takes you through Search, All games and its filters, collection creation, Movies, appearance settings, Home widgets and shortcut help. It highlights the real controls and follows you into their dialogs. On desktop, practice **Ctrl/Cmd + K**, **Alt + G**, **Alt + M**, **Alt + P** and **?** to complete the shortcut steps. Touch screens offer tap controls for the same tasks. Close each demonstrated dialog before continuing; creating or saving content is optional. You can go back, skip a step or end the tour at any time.
 
-On first sign-in, **Save & take a tour** saves your appearance choices and starts the tour. **Save & continue** saves them without starting it. Replay later from Home or **Preferences → Keyboard shortcuts**.
+On first sign-in, **Save & take a tour** saves your appearance choices and starts the tour. **Save & continue** saves them without starting it. **Later**, Escape or × closes the welcome for this visit without saving, and it appears again next time. Tips you dismiss, such as the library's bulk-edit tip, stay dismissed on your account across devices. Replay later from Home or **Preferences → Keyboard shortcuts**.
 
 Choose **Add widgets** or **Customize Home** to select what appears. Use the up/down buttons to set the order, or Remove to take a widget off Home. **Save Home** stores the selection and order on your account, across devices. Cancel leaves the saved layout unchanged. If a save fails, the chooser keeps your draft and shows an error; reconnect and save again.
 
-Use **Refresh Home** to reload selected built-in widgets without fetching unselected library data. Home shows the last successful update for each selected data source. If part of a refresh fails, the existing content and its successful update time stay visible, and the affected widget offers a retry.
+Home refreshes stale widgets when you come back to its browser tab. Use **Refresh Home** to reload selected built-in widgets without fetching unselected library data. Home shows the last successful update for each selected data source. If part of a refresh fails, the existing content and its successful update time stay visible, and the affected widget offers a retry.
 
 ## Available widgets
 
