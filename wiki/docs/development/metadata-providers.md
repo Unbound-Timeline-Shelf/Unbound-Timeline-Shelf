@@ -162,7 +162,7 @@ when it is `null`, so the call fails with `invalid_response`.
 
 | Where | Addition | Rules |
 |---|---|---|
-| `MetadataProviderRegistration.media_types` | `book` | At most one of each media type (now five). A registration listing `book` is refused below 1.1.20, at registration and again when the host stores it. |
+| `MetadataProviderRegistration.media_types` | `book` | At most one of each media type (now five). A registration listing `book` is refused below 1.1.20 when the plugin registers the provider (the registration is validated against the contract the plugin declares). |
 | `MetadataProviderRequest.media_type` | `book` | |
 | `MetadataProviderRequest.options.isbn` | a normalised ISBN-13 | Sent only on a book search whose text is a valid ISBN-10 or ISBN-13 (hyphens and spaces allowed; an ISBN-10 is converted). Refused on any other media type and on a wrong check digit. Not sent to older plugins, which never register `book`. |
 | `MetadataCandidate.authors` | up to 30 names (200 characters) | Shown in results; the add-book search also matches them. |
@@ -188,9 +188,12 @@ series_position, original_language, first_published, editions}`:
 vocabularies.
 
 **What the host does with it.** Nothing is stored by a provider on its own: the person chooses.
-*Add book* searches the book providers (title, author or ISBN), shows the chosen result and,
-with **Use these details**, fills the form; saving keeps the result's `provider_ids` on the
-work and, when the search was an ISBN, also adds that edition. On a book with provider ids,
+*Add book* searches the book providers (title, author or ISBN), shows the chosen result (its cover
+through the host's artwork preview, which fetches only the selected result's own asset URLs) and,
+with **Use these details**, fills the form; saving keeps the `provider_ids` of the result used
+last (they replace, never merge with, those of an earlier result) and, only when the search text
+was an ISBN equal to the result's `isbn_13`, also adds that edition. An ISBN a provider reports
+for a title or author search adds nothing. On a book with provider ids,
 **Find editions** asks the providers for that work again and lists their `editions`; **Add this
 edition** copies one into the work's editions (an edition whose ISBN the work already holds is
 marked *In your editions*). Dates are shown through the shared partial-date formatter, at their
