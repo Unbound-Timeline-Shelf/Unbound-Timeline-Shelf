@@ -11,6 +11,8 @@ import TagFilterPicker from "../components/TagFilterPicker.vue";
 import GameTopBar from "../components/GameTopBar.vue";
 import LibrarySyncMenu from "../components/LibrarySyncMenu.vue";
 import SegmentedTabs from "../components/SegmentedTabs.vue";
+import { onRovingKeydown, rovingTabIndex } from "../utils/rovingFocus";
+import { friendlyLoadError } from "../utils/loadErrors";
 import type { ViewMode, CardDensity } from "../composables/useGameLibrary";
 import { useGameLibrary } from "../composables/useGameLibrary";
 import { computed, ref, defineAsyncComponent, onMounted, watch } from "vue";
@@ -219,6 +221,22 @@ function nestedLabel(game: Game): string | null {
     ? `+ ${relationshipKindLabel(nested[0].kind, nested[0].label)}: ${nested[0].game.title}`
     : `+ ${nested.length} related games`;
 }
+const DENSITIES: CardDensity[] = ["compact", "cozy", "large"];
+const DENSITY_LABELS: Record<CardDensity, string> = {
+  compact: "Small cards",
+  cozy: "Medium cards",
+  large: "Large cards",
+};
+// While the library has not loaded, or could not load, no count is known:
+// "—", never a "0 games" that contradicts the error below (A18).
+const countUnknown = computed(
+  () => !hasAnyGames.value && (loading.value || Boolean(error.value)),
+);
+function statusCountLabel(status: string): string | number {
+  if (countUnknown.value) return "—";
+  return statusCountsComplete.value ? (statusCounts.value[status] ?? 0) : "…";
+}
+const friendlyError = computed(() => friendlyLoadError(error.value));
 async function selectAllGames() {
   await loadAllGames();
   selectedIds.value = new Set(filteredGames.value.map((game) => game.id));
@@ -262,7 +280,8 @@ async function openRandomPicker() {
         <div>
           <h1>Games</h1>
           <div class="sub">
-            <template v-if="hasMoreGames">
+            <template v-if="countUnknown">— games</template>
+            <template v-else-if="hasMoreGames">
               <template v-if="filterCount === 0">
                 {{
                   statusFilter === "all"
@@ -516,15 +535,22 @@ async function openRandomPicker() {
         <div
           v-if="viewMode === 'cards'"
           class="density-toggle"
+          role="toolbar"
+          aria-label="Card size"
           title="Card size"
+          @keydown="onRovingKeydown($event)"
         >
           <button
-            v-for="d in ['compact', 'cozy', 'large'] as CardDensity[]"
+            v-for="(d, index) in DENSITIES"
             :key="d"
             type="button"
             class="density-button"
+            data-roving
             :class="{ active: cardDensity === d }"
-            :title="d"
+            :aria-pressed="cardDensity === d"
+            :aria-label="DENSITY_LABELS[d]"
+            :title="DENSITY_LABELS[d]"
+            :tabindex="rovingTabIndex(index, DENSITIES.indexOf(cardDensity))"
             @click="cardDensity = d"
           >
             {{ d === "compact" ? "S" : d === "cozy" ? "M" : "L" }}
@@ -691,18 +717,29 @@ async function openRandomPicker() {
         </div>
       </div>
 
-      <div class="status-tabs">
+      <!-- one Tab stop; arrows move between statuses (UX-AUDIT-APP A15) -->
+      <div
+        class="status-tabs"
+        role="tablist"
+        aria-label="Status"
+        @keydown="onRovingKeydown($event)"
+      >
         <button
-          v-for="s in statusOptions"
+          v-for="(s, index) in statusOptions"
           :key="s"
           type="button"
+          role="tab"
           class="status-tab"
+          data-roving
           :class="{ active: statusFilter === s }"
+          :aria-selected="statusFilter === s"
+          aria-controls="library-results"
+          :tabindex="rovingTabIndex(index, statusOptions.indexOf(statusFilter))"
           @click="statusFilter = s"
         >
           {{ s === "all" ? "All" : s }}
           <span class="n">
-            {{ statusCountsComplete ? statusCounts[s] : "…" }}
+            {{ statusCountLabel(s) }}
           </span>
         </button>
       </div>
@@ -731,7 +768,7 @@ async function openRandomPicker() {
         {{ favoriteError }}
       </p>
       <p v-if="error && hasAnyGames" class="empty-state error" role="alert">
-        {{ error }} The list below may be out of date.
+        {{ friendlyError }} The list below may be out of date.
         <button type="button" class="ui-btn" @click="loadGames">Retry</button>
       </p>
       <p v-if="loadMoreError" class="empty-state error" role="alert">
@@ -746,7 +783,7 @@ async function openRandomPicker() {
         class="empty-state error"
         role="alert"
       >
-        {{ error }}
+        {{ friendlyError }}
         <button type="button" class="ui-btn" @click="loadGames">Retry</button>
       </p>
 
@@ -819,6 +856,7 @@ async function openRandomPicker() {
       <template v-else>
         <div
           v-if="viewMode === 'cards'"
+          id="library-results"
           class="grid-virtual-container"
           :style="{ height: rowVirtualizer.getTotalSize() + 'px' }"
         >
@@ -856,7 +894,11 @@ async function openRandomPicker() {
           </div>
         </div>
 
-        <div v-else-if="viewMode === 'list'" class="list-view">
+        <div
+          v-else-if="viewMode === 'list'"
+          id="library-results"
+          class="list-view"
+        >
           <div v-if="filteredGames.length" class="list-header">
             <span></span>
             <button
@@ -1049,7 +1091,7 @@ async function openRandomPicker() {
           </div>
         </div>
 
-        <div v-else class="detail-view">
+        <div v-else id="library-results" class="detail-view">
           <div class="detail-list">
             <button
               v-for="game in filteredGames"
