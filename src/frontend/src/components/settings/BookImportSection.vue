@@ -157,8 +157,8 @@ function plural(count: number, one: string, many = `${one}s`): string {
         file's data alone.
       </template>
       <template v-if="result.not_looked_up">
-        {{ result.not_looked_up }} were not looked up (the lookup limit for one
-        import was reached); import the file again to try them.
+        {{ result.not_looked_up }} were not looked up (the lookup or time limit
+        for one import was reached) and were added from the file's data.
       </template>
       <template v-if="result.failed_providers.length">
         {{ result.failed_providers.join(", ") }} could not be reached; those
@@ -193,7 +193,7 @@ function plural(count: number, one: string, many = `${one}s`): string {
         <li
           v-for="row in preview.rows"
           :key="`${row.line}-${row.isbn_13}-${row.title}`"
-          :class="{ here: row.already_here }"
+          :class="{ here: row.already_here || row.repeated }"
         >
           <span class="book-title">{{
             row.title ?? `ISBN ${row.isbn_13}`
@@ -209,6 +209,7 @@ function plural(count: number, one: string, many = `${one}s`): string {
             >
           </span>
           <span v-if="row.already_here" class="book-badge">In library</span>
+          <span v-else-if="row.repeated" class="book-badge">Repeated</span>
         </li>
       </ul>
       <p v-if="hiddenRows > 0" class="book-more">
@@ -303,6 +304,22 @@ function plural(count: number, one: string, many = `${one}s`): string {
 }
 .book-source {
   margin-bottom: 12px;
+}
+/* "ISBN list" stays on one line in its pill at phone width */
+.book-source :deep(.segment) {
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .book-source :deep(.segmented-control) {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+  .book-source :deep(.segment) {
+    flex: 1 1 auto;
+    padding: 8px 6px;
+    font-size: 0.78rem;
+  }
 }
 .book-review {
   display: flex;

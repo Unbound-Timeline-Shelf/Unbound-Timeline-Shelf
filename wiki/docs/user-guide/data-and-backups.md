@@ -43,7 +43,8 @@ restore drill. This operator workflow does not change the Settings import/export
 a list of ISBNs (pasted or as a text file, one or more per line). You see how many books the file holds,
 which are already in your library and the first rows before anything is added. Books already in your
 library (same ISBN, or same title and author) are kept exactly as they are, so importing the same file
-twice adds nothing.
+twice adds nothing. Books whose subtitles differ, such as two volumes of a series, are different
+books; so is a row whose ISBN differs from the ISBNs of the book with that title already here.
 
 If a book metadata provider is set up (for example the Atlas plugin), the new books are identified
 through it, by ISBN first and then by title and author; a book it does not know is still added from the

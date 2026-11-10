@@ -18,7 +18,12 @@ import pytest
 
 from src.database.models.book import BookFormat, BookStatus, ReadOutcome
 from src.features.imports import book_matching
-from src.features.imports.book_matching import MAX_ROW_LOOKUPS, match_books, title_agrees
+from src.features.imports.book_matching import (
+    MAX_ROW_LOOKUPS,
+    match_books,
+    title_agrees,
+    titles_agree,
+)
 from src.features.imports.books import (
     BookImportError,
     ImportedBook,
@@ -476,8 +481,108 @@ async def test_no_provider_means_every_row_stays_manual():
         ("The Glass Orchard", ["Ada Quill"], "The Glass Orchard", ["Cora Vale"], False),
         ("The Glass Orchard", ["Ada Quill"], "The Glass Orchards", ["Ada Quill"], False),
         ("The Glass Orchard", ["Ada Quill"], "The Glass Orchard", [], True),
+        # different subtitles are different books, even with the same series title and author
+        (
+            "Ember Cycle: The First Spark",
+            ["Ann Sand"],
+            "Ember Cycle: The Last Coal",
+            ["Ann Sand"],
+            False,
+        ),
+        (
+            "Ember Cycle: The First Spark",
+            ["Ann Sand"],
+            "Ember Cycle: First Spark",
+            ["Ann Sand"],
+            True,
+        ),
+        ("Ember Cycle: The First Spark", ["Ann Sand"], "Ember Cycle", ["Ann Sand"], True),
     ],
 )
 def test_title_agrees(row_title, row_authors, candidate_title, candidate_authors, agrees):
     row = _title_row(row_title, row_authors)
     assert title_agrees(row, _candidate(candidate_title, authors=candidate_authors)) is agrees
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "agrees"),
+    [
+        ("Lantern Archive: The Glass Orchard", "Lantern Archive: Salt and Ember", False),
+        ("Lantern Archive: The Glass Orchard", "lantern archive : glass orchard", True),
+        ("Lantern Archive", "Lantern Archive: The Glass Orchard", True),
+        ("The Lantern", "Lantern", True),
+        ("Lantern", "Lanterns", False),
+        (":", ":", False),
+    ],
+)
+def test_titles_agree(first, second, agrees):
+    assert titles_agree(first, second) is agrees
+    assert titles_agree(second, first) is agrees
+
+
+async def test_a_title_answer_for_another_volume_is_not_taken():
+    """A provider answering with the next volume of a series is refused, in both the batched and
+    the row-by-row lookups."""
+    row = _title_row("Lantern Archive: The Glass Orchard", ["Ada Quill"])
+    other = _candidate("Lantern Archive: Salt and Ember", authors=["Ada Quill"])
+    batched = ResolvingProvider(by_title={row.title: other})
+    assert (await match_books([row], [batched], uuid4())).matches == {}
+    searched = SearchOnlyProvider(results={f"{row.title} Ada Quill": (other,)})
+    assert (await match_books([row], [searched], uuid4())).matches == {}
+
+
+async def test_a_match_carries_the_namespaces_its_provider_owns():
+    row = _isbn_row(GLASS_13)
+    provider = ResolvingProvider(by_isbn={GLASS_13: _candidate("The Glass Orchard", isbn=GLASS_13)})
+    (match,) = (await match_books([row], [provider], uuid4())).matches.values()
+    assert match.namespaces == frozenset({"books.example"})
+
+
+@dataclass
+class SlowProvider(ResolvingProvider):
+    """A resolve provider that takes ``seconds`` per call."""
+
+    seconds: float = 0.0
+
+    async def resolve(self, request: MetadataResolveRequest) -> ProviderResponse:
+        import asyncio
+
+        await asyncio.sleep(self.seconds)
+        return await super().resolve(request)
+
+
+def _isbn_rows(count: int) -> list[ImportedBook]:
+    from src.features.books.isbn import _isbn13_check
+
+    rows = []
+    for number in range(count):
+        prefix = f"979100{number:06d}"
+        rows.append(_isbn_row(prefix + _isbn13_check(prefix)))
+    return rows
+
+
+async def test_batched_calls_are_bounded_per_import(monkeypatch):
+    assert book_matching.MAX_RESOLVE_CALLS >= 10  # the real bound covers a large library
+    monkeypatch.setattr(book_matching, "MAX_RESOLVE_CALLS", 2)
+    provider = ResolvingProvider()
+    report = await match_books(_isbn_rows(1000), [provider], uuid4())
+    # two calls of 200, then no more: the rest are added by hand, not reported as a failure
+    assert [len(call.items) for call in provider.calls] == [200, 200]
+    assert report.resolve_calls == 2
+    assert report.not_looked_up == 600
+    assert report.failed_providers == []
+
+
+async def test_matching_stops_at_the_import_deadline(monkeypatch):
+    assert book_matching.MATCH_SECONDS <= 300  # well inside a reverse proxy's timeout
+    monkeypatch.setattr(book_matching, "MATCH_SECONDS", 0.2)
+    slow = SlowProvider(seconds=0.15)
+    later = SearchOnlyProvider()
+    report = await match_books(_isbn_rows(600), [slow, later], uuid4())
+    # the first call ends in time, the second is cut off at the deadline, the third never starts
+    assert len(slow.calls) == 1
+    assert report.resolve_calls == 2
+    assert later.searches == []
+    assert report.not_looked_up == 400
+    # running out of the import's time is not the provider's failure
+    assert report.failed_providers == []
