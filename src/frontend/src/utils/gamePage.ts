@@ -168,8 +168,6 @@ export interface TabPlan {
   more: string[];
 }
 
-// Works out the tab bar. The tab you are on always stays, so a tab that
-// empties (or is hidden) under you does not make the page jump.
 /**
  * The tab a game page opens on: the one a link or `?tab=` asks for when the
  * game has it, else the page's default tab unless that is hidden.
@@ -194,6 +192,8 @@ export function pickTab<T extends string>(
   return null;
 }
 
+// Works out the tab bar. The tab you are on always stays, so a tab that
+// empties (or is hidden) under you does not make the page jump.
 export function planTabs(
   all: readonly string[],
   settings: PageSettings,

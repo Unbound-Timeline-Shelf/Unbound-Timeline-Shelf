@@ -778,9 +778,13 @@ async function submit() {
 }
 
 // Unsaved edits (UX-AUDIT-APP A1, A2): the form compares what Save would
-// send with what it opened with, once the person has touched it, so values
-// that arrive asynchronously never count as edits. Values handed over by the
-// quick editor are unsaved from the start.
+// send with what it opened with, once the person has edited something.
+// Until then the starting point keeps moving with the form, so values that
+// arrive asynchronously (metadata, artwork settling after open) never count
+// as edits. Typing or changing a field is an edit; a click is one only when it
+// changes what Save would send (a chip removed, a reset button), so switching
+// editor tabs or opening a menu leaves the starting point free to move.
+// Values handed over by the quick editor are unsaved from the start.
 const touched = ref(false);
 let openedWith: string | null = null;
 function editorSnapshot(): string {
@@ -802,6 +806,17 @@ onMounted(() =>
 );
 function markTouched() {
   touched.value = true;
+}
+// Before the first edit, take a fresh starting point as a click begins, then
+// count the click only if it changed the form.
+function beforeClick() {
+  if (!touched.value && openedWith !== null) openedWith = editorSnapshot();
+}
+function afterClick() {
+  if (touched.value || openedWith === null) return;
+  void nextTick(() => {
+    if (!touched.value && editorSnapshot() !== openedWith) markTouched();
+  });
 }
 const dirty = computed(
   () =>
@@ -851,7 +866,8 @@ async function cancel() {
     @close="onShellClose"
     @input="markTouched"
     @change="markTouched"
-    @click="markTouched"
+    @click.capture="beforeClick"
+    @click="afterClick"
     @submit="submit"
     @cover="activeTab = 'Artwork'"
   >
