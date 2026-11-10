@@ -569,7 +569,11 @@ async def test_export_v3_round_trips_books_editions_reads_and_locks(http, people
 
 async def test_an_export_from_before_books_still_imports_and_reports_no_books(http, people):
     _, other = people
-    older = {"format_version": 2, "exported_at": 1, "movies": [{"title": "Old Film"}]}
+    older = {
+        "format_version": 2,
+        "exported_at": 1,
+        "movies": [{"title": "Old Film", "sort_title": "Old Film"}],
+    }
     result = await http.post("/api/import/media", files=_upload(older), headers=other.headers)
     assert result.status_code == 200, result.text
     assert result.json()["created"] == {"movies": 1, "tv_shows": 0, "anime": 0}

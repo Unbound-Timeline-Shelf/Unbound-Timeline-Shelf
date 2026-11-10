@@ -148,6 +148,8 @@ class LibraryFilters:
         )
 
 
+# Parallel routes/models intentionally share this shape.
+# pylint: disable=duplicate-code
 # The five status tabs of the movie, TV show and anime libraries. A kind whose statuses mean
 # something else (books: Backlog is a to-read pile, not a paused read) passes its own.
 WATCH_STATUS_BUCKETS: dict[str, set[str]] = {
@@ -159,8 +161,6 @@ WATCH_STATUS_BUCKETS: dict[str, set[str]] = {
 }
 
 
-# Parallel routes/models intentionally share this shape.
-# pylint: disable=duplicate-code
 def _status_bucket(
     status_type: type[Enum], bucket: str | None, buckets: dict[str, set[str]] | None = None
 ) -> set[Enum] | None:
