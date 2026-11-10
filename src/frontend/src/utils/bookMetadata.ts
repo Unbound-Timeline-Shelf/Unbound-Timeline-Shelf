@@ -133,13 +133,29 @@ function editionIsbn13(edition: MetadataBookEdition): string | null {
   );
 }
 
-/** Whether the work already holds this provider edition (same ISBN-13). */
+/**
+ * Whether the work already holds this provider edition: the same ISBN-13, or,
+ * for an edition with no ISBN at all, an ISBN-less edition of ours with the
+ * same format, publisher, date, page count and language (what "Add this
+ * edition" would store), so the button cannot add the same copy twice.
+ */
 export function editionInLibrary(
   book: Book,
   edition: MetadataBookEdition,
 ): boolean {
   const isbn = editionIsbn13(edition);
-  return isbn !== null && book.editions.some((own) => own.isbn13 === isbn);
+  if (isbn !== null) return book.editions.some((own) => own.isbn13 === isbn);
+  const input = editionInput(edition);
+  return book.editions.some(
+    (own) =>
+      !own.isbn13 &&
+      !own.isbn10 &&
+      own.format === input.format &&
+      own.publisher === input.publisher &&
+      own.publishDate === input.publishDate &&
+      own.pageCount === input.pageCount &&
+      own.language === input.language,
+  );
 }
 
 /** A provider edition's label: its own name, else format and publisher. */
