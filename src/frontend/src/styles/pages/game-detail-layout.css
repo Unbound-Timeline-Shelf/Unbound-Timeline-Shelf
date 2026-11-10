@@ -372,6 +372,13 @@
   box-sizing: border-box;
 }
 
+/* The open tab panel leaves room for a full screen below the tab bar, so
+   switching to a shorter tab or restoring a scroll position after a reload
+   never clamps the page back to the top (UX-AUDIT-APP A7). */
+.game-detail-page.detail > .tabbar-wrap + * {
+  min-height: calc(100dvh - 64px);
+}
+
 .game-detail-page .tabbar {
   display: flex;
   gap: 4px;

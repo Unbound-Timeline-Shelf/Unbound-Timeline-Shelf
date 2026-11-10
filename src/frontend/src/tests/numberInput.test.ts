@@ -92,7 +92,8 @@ afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   vi.unstubAllGlobals();
 });
-vi.mock("vue-router", () => ({
+vi.mock("vue-router", async (original) => ({
+  ...(await original<typeof import("vue-router")>()),
   useRoute: () => ({ query: {} }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));

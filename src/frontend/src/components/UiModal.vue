@@ -9,6 +9,7 @@ let savedOverflow = "";
 import { ref, onMounted, onBeforeUnmount, useId } from "vue";
 import AppIcon from "./AppIcon.vue";
 import { containModalTab } from "../services/focus";
+import { askDiscardChanges } from "../composables/useUnsavedGuard";
 defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(
@@ -20,23 +21,41 @@ const props = withDefaults(
     // A fixed-height dialog whose content manages its own scrolling, so tabs
     // and actions stay put while only the editor body scrolls.
     bounded?: boolean;
+    // Unsaved edits inside: Escape, the backdrop and × ask "Discard
+    // changes?" before closing (UX-AUDIT-APP A1).
+    dirty?: boolean;
   }>(),
-  { dismissible: true, size: "standard", bounded: false },
+  { dismissible: true, size: "standard", bounded: false, dirty: false },
 );
 const emit = defineEmits<{ close: [] }>();
 const dialog = ref<HTMLDialogElement | null>(null);
 const titleId = useId();
 let previousFocus: HTMLElement | null = null;
 let active = false;
-function dismiss() {
-  if (props.dismissible) emit("close");
+let asking = false;
+async function dismiss() {
+  if (!props.dismissible || asking) return;
+  if (props.dirty) {
+    asking = true;
+    try {
+      if (!(await askDiscardChanges())) return;
+    } finally {
+      asking = false;
+    }
+    if (!active) return;
+  }
+  emit("close");
 }
 // Browsers may close a <dialog> despite a prevented cancel (e.g. a repeated
 // Escape); keep the component and its parent in step with what's on screen.
+// Unsaved edits reopen the dialog and ask instead of being lost.
 function closed() {
   if (!active || !dialog.value || dialog.value.open) return;
-  if (props.dismissible) emit("close");
-  else dialog.value.showModal();
+  if (props.dismissible && !props.dirty) emit("close");
+  else {
+    dialog.value.showModal();
+    if (props.dismissible) void dismiss();
+  }
 }
 function backdrop(event: MouseEvent) {
   if (event.target !== dialog.value || !dialog.value) return;

@@ -222,10 +222,21 @@ const activeSection = ref(initial.section);
 const initialTab = ref<string | undefined>(
   (route.query.tab as string | undefined) ?? initial.tab,
 );
+// Opening a section is navigation (UX-AUDIT-APP A9): it adds a history step,
+// so Back returns to the previous section or the area landing. The route
+// watcher below then shows it. Only fallbacks and normalising replace.
 function openSection(id: string) {
   const r = resolveSection(id);
-  initialTab.value = r.tab;
-  activeSection.value = r.section;
+  if (r.section === activeSection.value && r.tab === initialTab.value) return;
+  // a section's own state (a tab, the plugin manager's view) stays behind
+  void router.push({
+    path: "/settings",
+    query: {
+      section: r.section,
+      tab: r.tab,
+      host: showHostSettings.value ? "1" : undefined,
+    },
+  });
 }
 
 watch(
@@ -324,7 +335,7 @@ function backToArea() {
 // containing tab, then move focus into the opened section.
 async function openSearchResult(entry: SettingsSearchEntry) {
   const { query } = settingsSearchLocation(entry);
-  await router.replace({
+  await router.push({
     query: { ...route.query, area: undefined, tab: undefined, ...query },
   });
   initialTab.value = entry.tab;

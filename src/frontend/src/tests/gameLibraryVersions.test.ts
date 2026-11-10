@@ -106,6 +106,8 @@ beforeEach(() => {
       routing.route.fullPath = `/games?${stringifyQuery(query)}`;
     },
   );
+  // filter changes are history steps now (UX-AUDIT-APP A16)
+  routing.push.mockImplementation(routing.replace.getMockImplementation()!);
 });
 afterEach(() => {
   vi.clearAllMocks();

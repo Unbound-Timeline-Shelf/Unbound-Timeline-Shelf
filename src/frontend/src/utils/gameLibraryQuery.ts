@@ -227,3 +227,33 @@ export function writeGameLibraryQuery(
   if (filters.missingFilter !== "none") result.missing = filters.missingFilter;
   return result;
 }
+
+function comparableQueryValue(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (Array.isArray(value))
+    return JSON.stringify(
+      value.length === 1 ? String(value[0]) : value.map(String),
+    );
+  return JSON.stringify(String(value));
+}
+
+/**
+ * How a library address change enters the browser history (UX-AUDIT-APP
+ * §3.1, A16): a status tab, sort or filter is a step Back can undo ("push");
+ * typing in the search box is one step per pause ("search"); opening the
+ * filter panel or normalising the address adds nothing ("replace").
+ */
+export function libraryHistoryMode(
+  current: LocationQuery | LocationQueryRaw,
+  next: LocationQuery | LocationQueryRaw,
+): "push" | "replace" | "search" {
+  const changed = [...new Set([...Object.keys(current), ...Object.keys(next)])]
+    .filter(
+      (key) =>
+        comparableQueryValue(current[key]) !== comparableQueryValue(next[key]),
+    )
+    .filter((key) => key !== "filters");
+  if (!changed.length) return "replace";
+  if (changed.every((key) => key === "q")) return "search";
+  return "push";
+}

@@ -45,7 +45,8 @@ vi.mock("../composables/useMetadataSearch", async () => {
   };
 });
 
-vi.mock("vue-router", () => ({
+vi.mock("vue-router", async (original) => ({
+  ...(await original<typeof import("vue-router")>()),
   useRoute: () => ({ path: "/movies", query: {} }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));

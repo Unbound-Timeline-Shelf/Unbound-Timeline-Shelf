@@ -27,7 +27,7 @@ import {
 } from "vue";
 import { useKeptAlive } from "../utils/useKeptAlive";
 import { libraryFreshness } from "../utils/libraryFreshness";
-import { takeLibraryScroll } from "../state/libraryScroll";
+import { useScrollReady } from "../state/scrollMemory";
 import { useRoute, useRouter, stringifyQuery } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
 import { useWindowVirtualizer } from "@tanstack/vue-virtual";
@@ -65,6 +65,7 @@ import {
   normalizeGameTags,
   normalizeGameExclusions,
   readGameLibraryFilterVisibility,
+  libraryHistoryMode,
   readGameLibraryQuery,
   writeGameLibraryQuery,
   type GameLibraryFilters,
@@ -764,6 +765,11 @@ export function useGameLibrary() {
       ),
     );
   const pendingQueries = new Set<string>();
+  // the first write only normalises the address this visit arrived with
+  let firstQueryWrite = true;
+  let searchStepOpen = false;
+  let searchStepTimer: ReturnType<typeof setTimeout> | undefined;
+  const SEARCH_STEP_PAUSE_MS = 900;
   function applyQueryFilters() {
     if (route.path !== "/games") return;
     if (pendingQueries.has(queryKey(route.query))) return;
@@ -807,9 +813,24 @@ export function useGameLibrary() {
       const key = queryKey(query);
       if (key === queryKey(route.query)) return;
       pendingQueries.add(key);
-      void router
-        .replace({ path: route.path, query, hash: route.hash })
-        .finally(() => pendingQueries.delete(key));
+      const mode = firstQueryWrite
+        ? "replace"
+        : libraryHistoryMode(route.query, query);
+      firstQueryWrite = false;
+      // Typing adds one history step when it starts, then refines that step
+      // until the person pauses, so Back undoes a search rather than a letter.
+      const push = mode === "push" || (mode === "search" && !searchStepOpen);
+      if (mode === "search") {
+        searchStepOpen = true;
+        if (searchStepTimer) clearTimeout(searchStepTimer);
+        searchStepTimer = setTimeout(() => {
+          searchStepOpen = false;
+        }, SEARCH_STEP_PAUSE_MS);
+      } else searchStepOpen = false;
+      const location = { path: route.path, query, hash: route.hash };
+      void (push ? router.push(location) : router.replace(location)).finally(
+        () => pendingQueries.delete(key),
+      );
     },
     { deep: true, immediate: true, flush: "post" },
   );
@@ -1053,23 +1074,19 @@ export function useGameLibrary() {
     if (searchReloadTimer) clearTimeout(searchReloadTimer);
   });
 
-  async function restoreLibraryScroll() {
-    await nextTick();
-    if (route.path !== "/games") return;
-    const y = takeLibraryScroll();
-    if (y > 0) window.scrollTo(0, y);
-  }
-  onMounted(async () => {
-    await loadGames();
-    await restoreLibraryScroll();
-  });
+  // A restored scroll position (Back, reload, or a link back to Games) waits
+  // for the first page and asks for further pages until it can be reached.
+  useScrollReady(
+    () => !loading.value && !refreshing.value && !queryReloadPending.value,
+    () => (hasMoreGames.value ? loadMoreGames() : undefined),
+  );
+  onMounted(() => void loadGames());
   useKeptAlive(
     () => {
       // KeepAlive preserves the library and its controls between routes. Do
       // not immediately repeat the full paged transfer when returning to a
       // recently loaded library; failed/stale data still refreshes on return.
       if (error.value !== null || freshness.isStale()) void loadGames();
-      void restoreLibraryScroll();
     },
     {
       isLoading: () => refreshing.value,

@@ -421,6 +421,8 @@ describe("Settings page navigation from search", () => {
         );
       },
     );
+    // opening a search result is a history step (UX-AUDIT-APP A9)
+    routing.push.mockImplementation(routing.replace.getMockImplementation()!);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("[]", { status: 200 })),
@@ -439,7 +441,7 @@ describe("Settings page navigation from search", () => {
     );
     await flushPromises();
 
-    expect(routing.replace).toHaveBeenCalledWith({
+    expect(routing.push).toHaveBeenCalledWith({
       query: { section: "library", tab: "trash" },
     });
     expect(view.get("library-settings-stub").attributes("initial-tab")).toBe(
