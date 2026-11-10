@@ -29,7 +29,6 @@ from src.api.routes.media_common import (
 )
 from src.api.schemas.book import (
     MAX_EDITIONS,
-    MAX_PAGES,
     MAX_READS,
     BookCreate,
     BookEditionCreate,
@@ -38,7 +37,7 @@ from src.api.schemas.book import (
     BookReadingCreate,
     BookReadingUpdate,
     BookUpdate,
-    check_reading,
+    reading_problem,
 )
 from src.api.schemas.media_trash import MediaTrashEmptyRequest, MediaTrashEmptyResult
 from src.api.schemas.pagination import LibraryQuery, PaginatedResponse
@@ -185,7 +184,7 @@ def _sync_status(book: Book, reading: BookReading) -> None:
 
 async def _checked_reading(db: AsyncSession, book: Book, reading: BookReading) -> None:
     """A read's edition is one of this work's own; pages stop at that edition's page count."""
-    limit = MAX_PAGES
+    page_count = None
     if reading.edition_id is not None:
         # the pending read is checked before the database sees it
         with db.no_autoflush:
@@ -196,19 +195,16 @@ async def _checked_reading(db: AsyncSession, book: Book, reading: BookReading) -
             )
         if edition is None:
             raise _invalid("The edition of a read must be one of this book's editions.")
-        limit = edition.page_count or MAX_PAGES
-    try:
-        check_reading(
-            reading.progress_unit, reading.progress_value, reading.started_on, reading.finished_on
-        )
-    except ValueError as exc:
-        raise _invalid(str(exc)) from exc
-    if (
-        reading.progress_unit == ProgressUnit.PAGE
-        and reading.progress_value is not None
-        and reading.progress_value > limit
-    ):
-        raise _invalid(f"Page progress cannot pass the edition's {limit} pages.")
+        page_count = edition.page_count
+    problem = reading_problem(
+        reading.progress_unit,
+        reading.progress_value,
+        reading.started_on,
+        reading.finished_on,
+        page_count,
+    )
+    if problem is not None:
+        raise _invalid(problem)
 
 
 @router.post("/create", response_model=BookRead, status_code=status.HTTP_201_CREATED)

@@ -26,9 +26,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import class_mapper
 
+from src.api.schemas.book import reading_problem
 from src.core.titles import derive_sort_title
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
-from src.database.models.book import Book, BookEdition, BookFormat, BookReading
+from src.database.models.book import Book, BookEdition, BookFormat, BookReading, ProgressUnit
 from src.database.models.movies import Movie
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow
 from src.features.books.isbn import InvalidIsbn, normalise_pair
@@ -210,7 +211,9 @@ def _edition_fields(raw: dict[str, Any], seen_isbns: set[str]) -> dict[str, Any]
     return fields
 
 
-async def _add_book_children(db: AsyncSession, book: Book, raw: dict[str, Any]) -> None:
+async def _add_book_children(
+    db: AsyncSession, book: Book, raw: dict[str, Any], errors: list[str]
+) -> None:
     editions: dict[str, BookEdition] = {}
     seen_isbns: set[str] = set()
     for entry in (raw.get("editions") or [])[:MAX_BOOK_EDITIONS]:
@@ -227,13 +230,26 @@ async def _add_book_children(db: AsyncSession, book: Book, raw: dict[str, Any]) 
         if not isinstance(entry, dict):
             continue
         read_edition = editions.get(str(entry.get("edition_id")))
-        db.add(
-            BookReading(
-                book_id=book.id,
-                edition_id=read_edition.id if read_edition is not None else None,
-                **_fields(BookReading, entry),
-            )
+        fields = _fields(BookReading, entry)
+        if fields.get("progress_unit") is None:
+            fields["progress_unit"] = ProgressUnit.PAGE
+        reading = BookReading(
+            book_id=book.id,
+            edition_id=read_edition.id if read_edition is not None else None,
+            **fields,
         )
+        problem = reading_problem(
+            reading.progress_unit,
+            reading.progress_value,
+            reading.started_on,
+            reading.finished_on,
+            read_edition.page_count if read_edition is not None else None,
+        )
+        if problem is not None:
+            # one bad read is dropped; the work and its other editions and reads stay
+            errors.append(f"{book.title}: a read was skipped ({problem.rstrip('.')})")
+            continue
+        db.add(reading)
     await db.flush()
 
 
@@ -263,7 +279,7 @@ async def _restore_books(
                 book = Book(user_id=user_id, **fields)
                 db.add(book)
                 await db.flush()
-                await _add_book_children(db, book, raw)
+                await _add_book_children(db, book, raw, errors)
             seen.add(identity)
             created += 1
         except (SQLAlchemyError, ValueError, TypeError, KeyError, AttributeError) as exc:

@@ -265,6 +265,28 @@ def check_reading(
     _check_dates(started, finished)
 
 
+def reading_problem(
+    unit: ProgressUnit,
+    value: Decimal | None,
+    started: date | None,
+    finished: date | None,
+    page_count: int | None,
+) -> str | None:
+    """Why a read breaks the rules, or None. Page progress stops at the edition's page count.
+
+    The read routes and the library restore share this, so a restored read stays editable."""
+    try:
+        check_reading(unit, value, started, finished)
+    except ValueError as exc:
+        return str(exc)
+    if value is not None and value < 0:
+        return "Progress cannot be negative"
+    limit = page_count or MAX_PAGES
+    if unit == ProgressUnit.PAGE and value is not None and value > limit:
+        return f"Page progress cannot pass the edition's {limit} pages."
+    return None
+
+
 class BookEditionRead(BookEditionCreate):
     model_config = ConfigDict(from_attributes=True)
 
