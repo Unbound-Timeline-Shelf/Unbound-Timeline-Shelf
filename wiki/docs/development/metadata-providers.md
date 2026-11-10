@@ -210,7 +210,8 @@ by title and authors. A provider that declares `resolve` gets them in batches of
 per call (`metadata-atlas` maps one call to one Atlas `POST /resolve`, whose `max_resolve` is 200).
 A provider without `resolve` is searched row by row (the ISBN as the `isbn` option, then
 "title author"), at most 100 lookups per import; an import makes at most 20 `resolve` calls and
-spends at most 120 seconds matching in all. The host checks every answer again: an identifier
+spends at most 120 seconds matching in all. A call cut short by that limit ends matching and is
+not counted as the provider's failure. The host checks every answer again: an identifier
 answer must not name a different ISBN, and a title answer must have the same title (case, accents,
 punctuation and a leading article aside; a subtitle only when one side has none, so different
 subtitles never agree) and share an author surname when both sides name authors. An answer for a row the host did not send, or a candidate of another
