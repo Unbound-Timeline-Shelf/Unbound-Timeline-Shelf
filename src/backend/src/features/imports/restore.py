@@ -20,13 +20,14 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, TypeAlias
 
+from pydantic import Field, ValidationError, model_validator
 from sqlalchemy import Date, Numeric, select
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import class_mapper
 
-from src.api.schemas.book import reading_problem
+from src.api.schemas.book import BookBase, BookEditionCreate, reading_problem
 from src.core.titles import derive_sort_title
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason
 from src.database.models.book import Book, BookEdition, BookFormat, BookReading, ProgressUnit
@@ -180,6 +181,37 @@ async def _restore_entries(
     return created, skipped
 
 
+class _RestoredBook(BookBase):
+    """A restored work must fit the same limits the book responses (and so the library, the
+    export and the scheduled backup) validate; otherwise one hand-edited entry would break all
+    three for its owner."""
+
+    sort_title: str = Field(min_length=1, max_length=500)
+    locked_fields: list[str] = Field(default_factory=list)
+
+
+class _RestoredEdition(BookEditionCreate):
+    """An edition's limits as its response checks them; ISBNs and precision are already
+    normalised by the restore itself."""
+
+    @model_validator(mode="after")
+    def _normalise(self) -> "_RestoredEdition":
+        return self
+
+
+def _limits_problem(
+    model: type[BookBase] | type[BookEditionCreate], fields: dict[str, Any]
+) -> str | None:
+    """The first field that breaks the response model's limits, or None."""
+    try:
+        model.model_validate({k: v for k, v in fields.items() if k in model.model_fields})
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        where = ".".join(str(part) for part in first["loc"]) or "entry"
+        return f"{where}: {first['msg']}"
+    return None
+
+
 def _partial_precision(day: Any, precision: Any) -> str | None:
     """A stored year or month precision is kept only when the date is that period's first day."""
     if not isinstance(day, dt.date) or precision not in ("year", "month"):
@@ -189,7 +221,10 @@ def _partial_precision(day: Any, precision: Any) -> str | None:
     return str(precision)
 
 
-def _edition_fields(raw: dict[str, Any], seen_isbns: set[str]) -> dict[str, Any]:
+def _edition_fields(
+    raw: dict[str, Any], seen_isbns: set[str], problems: list[str]
+) -> dict[str, Any] | None:
+    """The edition's columns, or None when it cannot be kept; every loss is told in ``problems``."""
     data = dict(raw)
     # a format this build does not know is "other", never a reason to lose the edition
     if data.get("format") not in {member.value for member in BookFormat}:
@@ -202,31 +237,52 @@ def _edition_fields(raw: dict[str, Any], seen_isbns: set[str]) -> dict[str, Any]
         pair = normalise_pair(fields.get("isbn_13"), fields.get("isbn_10"))
     except InvalidIsbn:
         pair = None
+        problems.append("an edition's ISBN was not valid and was left out")
     fields["isbn_13"] = pair.isbn_13 if pair else None
     fields["isbn_10"] = pair.isbn_10 if pair else None
+    if pair is not None and pair.isbn_13 in seen_isbns:
+        # only the duplicate is dropped; the work and its other editions stay
+        problems.append(f"an edition was skipped (another edition has ISBN {pair.isbn_13})")
+        return None
+    limit = _limits_problem(_RestoredEdition, fields)
+    if limit is not None:
+        problems.append(f"an edition was skipped ({limit})")
+        return None
     if pair is not None:
-        if pair.isbn_13 in seen_isbns:
-            raise ValueError(f"two editions share ISBN {pair.isbn_13}")
         seen_isbns.add(pair.isbn_13)
     return fields
+
+
+def _capped(raw: dict[str, Any], key: str, cap: int, label: str, problems: list[str]) -> list[Any]:
+    entries = raw.get(key) or []
+    if not isinstance(entries, list):
+        problems.append(f"{key} was not a list and was left out")
+        return []
+    if len(entries) > cap:
+        problems.append(f"only the first {cap} {label} were kept ({len(entries) - cap} left out)")
+    return entries[:cap]
 
 
 async def _add_book_children(
     db: AsyncSession, book: Book, raw: dict[str, Any], errors: list[str]
 ) -> None:
+    problems: list[str] = []
     editions: dict[str, BookEdition] = {}
     seen_isbns: set[str] = set()
-    for entry in (raw.get("editions") or [])[:MAX_BOOK_EDITIONS]:
+    for entry in _capped(raw, "editions", MAX_BOOK_EDITIONS, "editions", problems):
         if not isinstance(entry, dict):
             continue
-        edition = BookEdition(book_id=book.id, **_edition_fields(entry, seen_isbns))
+        fields = _edition_fields(entry, seen_isbns, problems)
+        if fields is None:
+            continue
+        edition = BookEdition(book_id=book.id, **fields)
         db.add(edition)
         if entry.get("id") is not None:
             editions[str(entry["id"])] = edition
     await db.flush()
     active = editions.get(str(raw.get("active_edition_id")))
     book.active_edition_id = active.id if active is not None else None
-    for entry in (raw.get("reads") or [])[:MAX_BOOK_READS]:
+    for entry in _capped(raw, "reads", MAX_BOOK_READS, "reads", problems):
         if not isinstance(entry, dict):
             continue
         read_edition = editions.get(str(entry.get("edition_id")))
@@ -243,10 +299,11 @@ async def _add_book_children(
         )
         if problem is not None:
             # one bad read is dropped; the work and its other editions and reads stay
-            errors.append(f"{book.title}: a read was skipped ({problem.rstrip('.')})")
+            problems.append(f"a read was skipped ({problem.rstrip('.')})")
             continue
         db.add(reading)
     await db.flush()
+    errors.extend(f"{book.title}: {problem}" for problem in problems)
 
 
 async def _restore_books(
@@ -267,6 +324,9 @@ async def _restore_books(
             # a hand-written or trimmed export may leave the derived sort title out
             if not fields.get("sort_title"):
                 fields["sort_title"] = derive_sort_title(title)
+            limit = _limits_problem(_RestoredBook, fields)
+            if limit is not None:
+                raise ValueError(f"skipped ({limit})")
             identity = (title.lower(), _year(fields.get("first_published")))
             if identity in seen:
                 skipped += 1
