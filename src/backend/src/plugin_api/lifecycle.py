@@ -74,8 +74,10 @@ def plugin_contributions_active(plugin: Mapping[str, object]) -> bool:
 def plugin_contract_active(plugin: Mapping[str, object]) -> bool:
     """Missing metadata remains legacy, including cached runtime responses."""
     try:
+        declared_max = plugin.get("api_contract_max")
         return plugin_contract_compatibility_reason(
-            str(plugin.get("api_contract_version", "1.0.0"))
+            str(plugin.get("api_contract_version", "1.0.0")),
+            declared_max=str(declared_max) if declared_max else None,
         ) is None or (
             plugin.get("legacy_compatibility") is True
             and is_legacy_contract(str(plugin.get("api_contract_version", "1.0.0")))

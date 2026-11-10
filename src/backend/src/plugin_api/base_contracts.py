@@ -12,6 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 API_VERSION = "v1"
 PLUGIN_API_CONTRACT_VERSION = "1.1.20"
+# The one Plugin API release this programme ships (C15 6.4, C16 7.1 and 22.6). Every field and
+# value added in it (release dates, identity, books, ``api_contract_max``) is gated on this one
+# constant, so renumbering the release changes every gate together. It equals the host's own
+# contract until the release is tagged; a later additive change takes a constant of its own.
+UNIFIED_CONTRACT = (1, 1, 20)
 Timestamp = datetime
 
 
@@ -781,6 +786,9 @@ class PluginManifest(ContractModel):
     version: str
     # Missing declarations remain legacy; ranges must never imply UI/API migration.
     api_contract_version: str = "1.0.0"
+    # The newest contract the plugin also supports (C16 22.6). Absent means the same as
+    # ``api_contract_version``. The host runs the plugin at min(this, host maximum).
+    api_contract_max: str | None = None
     description: str = Field(default="", max_length=2_000)
     icon: str | None = Field(default=None, max_length=2048)
     tags: tuple[str, ...] = ()
@@ -811,6 +819,33 @@ class PluginManifest(ContractModel):
     def validate_plugin_version(cls, value: str) -> str:
         parse_semver(value)
         return value
+
+    @field_validator("api_contract_max")
+    @classmethod
+    def validate_contract_max(cls, value: str | None) -> str | None:
+        if value is not None:
+            parse_semver(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_contract_range(self) -> "PluginManifest":
+        """A contract range needs Plugin API 1.1.20: older hosts refuse the unknown field."""
+        if self.api_contract_max is None:
+            return self
+        low = parse_semver(self.api_contract_version)
+        high = parse_semver(self.api_contract_max)
+        if low < UNIFIED_CONTRACT:
+            raise ValueError(
+                "api_contract_max requires api_contract_version "
+                + ".".join(map(str, UNIFIED_CONTRACT))
+                + " or later"
+            )
+        if high[0] != low[0] or high < low:
+            raise ValueError(
+                "api_contract_max must be in the same major version and not below "
+                "api_contract_version"
+            )
+        return self
 
     @field_validator("sdk_version_range", "application_version_range")
     @classmethod

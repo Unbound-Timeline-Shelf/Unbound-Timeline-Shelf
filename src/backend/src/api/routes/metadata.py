@@ -19,6 +19,7 @@ from src.core.preferences import load_preferences
 from src.database.models.plugin_metadata_provider import PluginMetadataProviderRegistration
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.books.isbn import InvalidIsbn, parse_isbn
 from src.features.metadata.artwork import preview_artwork
 from src.features.metadata.automatic_search import (
     automatic_search_status,
@@ -35,7 +36,12 @@ from src.features.metadata.providers import (
 )
 from src.helpers.remote_images import RemoteImageError
 from src.plugin_api.grants import has_capability_grant
-from src.plugin_api.metadata_contracts import MediaType, MetadataCandidate, MetadataProviderRequest
+from src.plugin_api.metadata_contracts import (
+    ISBN_OPTION,
+    MediaType,
+    MetadataCandidate,
+    MetadataProviderRequest,
+)
 
 router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 Database = Annotated[AsyncSession, Depends(get_db)]
@@ -137,11 +143,25 @@ async def start_search(payload: SearchInput, db: Database, user: CurrentUser) ->
             options={
                 "steam_user_tags": (await load_preferences(db, user.id))["steam_user_tags"],
                 "automatic_search": payload.trigger == "automatic",
+                **book_lookup_options(payload.media_type, query),
             },
         ),
         providers,
     )
     return session.snapshot()
+
+
+def book_lookup_options(media_type: MediaType, query: str) -> dict[str, str]:
+    """An ISBN typed into a book search is an identifier lookup, not a title (C15 6.2).
+
+    Only a valid ISBN-10 or ISBN-13 (hyphens and spaces allowed) counts; it is sent normalised
+    as the reserved ``isbn`` option. Anything else stays an ordinary title search."""
+    if media_type != MediaType.BOOK:
+        return {}
+    try:
+        return {ISBN_OPTION: parse_isbn(query).isbn_13}
+    except InvalidIsbn:
+        return {}
 
 
 @router.get("/sessions/{session_id}")

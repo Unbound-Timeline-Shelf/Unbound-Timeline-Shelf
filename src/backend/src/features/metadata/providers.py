@@ -104,6 +104,11 @@ async def register_provider(
     if not declaration.provider_id.startswith(plugin_id + "."):
         raise PermissionError("metadata provider ID must belong to this plugin")
     document = await bounded(PluginRuntimeClient().plugin_ui(plugin_id), 3)
+    # The declaration is held to the contract the plugin declared (C15 6.3): ``book`` needs
+    # Plugin API 1.1.20. The UI document's version is the manifest's (the runtime enforces it).
+    declaration = MetadataProviderRegistration.model_validate(
+        payload, context=contract_context(str(document.get("api_contract_version") or "1.0.0"))
+    )
     actions = {action["id"]: action for action in document.get("actions", [])}
     for operation, action_id in declaration.operations.model_dump().items():
         if action_id is None:
@@ -254,7 +259,7 @@ class PluginMetadataProvider:
         try:
             # The response is held to the contract the plugin declared: a 1.1.20 field from a
             # plugin built for an older host is an invalid response, as an unknown field was.
-            context = contract_context(str(state.get("api_contract_version") or "1.0.0"))
+            context = contract_context(plugin_contract(state))
             payload = await PluginRuntimeClient().action(
                 self.plugin_id, action_id, values, user_id=str(self.user_id)
             )
@@ -277,6 +282,15 @@ class PluginMetadataProvider:
         if self.declaration.identifier_namespace:
             owned.add(self.declaration.identifier_namespace)
         return fit_response(confine_to_namespaces(result, owned))
+
+
+def plugin_contract(plugin: dict[str, Any]) -> str:
+    """The contract a plugin's output is held to: the one the runtime negotiated
+    (min(api_contract_max, host maximum), C16 22.6), or its declared version on a runtime that
+    reports none."""
+    return str(
+        plugin.get("negotiated_api_contract") or plugin.get("api_contract_version") or "1.0.0"
+    )
 
 
 def _provider_state(
@@ -367,9 +381,7 @@ async def discover_providers(
                     preferences["image_provider_order"],
                     CORE_PROVIDER_NAMES,
                 ),
-                api_contract=str(
-                    live.get(row.plugin_id, {}).get("api_contract_version") or "1.0.0"
-                ),
+                api_contract=plugin_contract(live.get(row.plugin_id, {})),
             )
         )
     return providers

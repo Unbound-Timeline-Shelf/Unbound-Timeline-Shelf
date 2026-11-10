@@ -97,6 +97,7 @@ async def installed_plugins() -> list[dict[str, Any]]:
                 api_contract_version=item.get("api_contract_version", "1.0.0"),
                 sdk_version_range=item["sdk_version_range"],
                 application_version_range=item["application_version_range"],
+                api_contract_max=item.get("api_contract_max"),
             )
             try:
                 item["compatibility_checks"] = manifest_compatibility_checks(
