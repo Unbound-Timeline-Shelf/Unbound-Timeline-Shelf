@@ -27,7 +27,11 @@ import {
 } from "../state/pluginExtensions";
 import {
   SETTINGS_AREA_NAMES,
+  isSettingsArea,
   resolveSettingsSection,
+  settingsAreaLocation,
+  settingsAreaOf,
+  settingsLocation,
   settingsGroups,
   settingsSearchLocation,
   visiblePluginSettings,
@@ -154,14 +158,26 @@ const SessionsSection = lazySettingsSection(
 );
 const PluginManagerSection = lazySettingsSection(loadPluginManagerSection);
 const ThemesSection = lazySettingsSection(loadThemesSection);
+const ImportSyncSection = lazySettingsSection(
+  () => import("../components/settings/ImportSyncSection.vue"),
+);
 const PwaSettingsSection = lazySettingsSection(
   () => import("../components/settings/PwaSettingsSection.vue"),
 );
 
 const router = useRouter();
 const route = useRoute();
+// Sections are paths: /settings/<area>/<section> (UX-AUDIT-APP §3.4).
+const sectionParam = computed(() => {
+  const value = route.params?.section;
+  return typeof value === "string" && value ? value : undefined;
+});
+const areaParam = computed(() => {
+  const value = route.params?.area;
+  return isSettingsArea(value) ? value : undefined;
+});
 watch(
-  () => route.query.section,
+  sectionParam,
   (section) => {
     if (section === "upload") void router.replace("/upload");
   },
@@ -217,7 +233,7 @@ function resolveSection(id: string | undefined): {
     typeof route.query.tab === "string" ? route.query.tab : undefined,
   );
 }
-const initial = resolveSection(route.query.section as string | undefined);
+const initial = resolveSection(sectionParam.value);
 const activeSection = ref(initial.section);
 const initialTab = ref<string | undefined>(
   (route.query.tab as string | undefined) ?? initial.tab,
@@ -229,49 +245,49 @@ function openSection(id: string) {
   const r = resolveSection(id);
   if (r.section === activeSection.value && r.tab === initialTab.value) return;
   // a section's own state (a tab, the plugin manager's view) stays behind
-  void router.push({
-    path: "/settings",
-    query: {
-      section: r.section,
+  void router.push(
+    settingsLocation(r.section, {
       tab: r.tab,
-      host: showHostSettings.value ? "1" : undefined,
-    },
-  });
+      query: { host: showHostSettings.value ? "1" : undefined },
+    }),
+  );
 }
 
-watch(
-  () => route.query.section,
-  (section) => {
-    const next = resolveSection(
-      typeof section === "string" ? section : undefined,
-    );
-    initialTab.value = (route.query.tab as string | undefined) ?? next.tab;
-    if (activeSection.value !== next.section)
-      activeSection.value = next.section;
-  },
-);
+watch(sectionParam, (section) => {
+  const next = resolveSection(section);
+  initialTab.value = (route.query.tab as string | undefined) ?? next.tab;
+  if (activeSection.value !== next.section) activeSection.value = next.section;
+});
 
 // Admin-only locations (for example a plugin update notification link) fall back
 // to the default page for everyone else, identically for known and unknown ids.
 watch(
-  [activeSection, () => currentUser.value, () => route.query.area],
+  [activeSection, () => currentUser.value, areaParam],
   ([section, user, queryArea]) => {
     if (!user) return;
     if (
       settingsLinkNeedsFallback(!!user.is_admin, section as string, queryArea)
     ) {
       activeSection.value = "profile";
-      void router.replace({ path: route.path, query: { section: "profile" } });
+      void router.replace(settingsLocation("profile"));
     }
   },
   { immediate: true },
 );
 
-watch(activeSection, (section) => {
-  const current =
-    typeof route.query.section === "string" ? route.query.section : "";
-  if (current === section) return;
-  void router.replace({ query: { ...route.query, section } });
+// Keep the address on the section shown: an alias or legacy id, or a section
+// under the wrong area, is replaced by its canonical path.
+watch([activeSection, () => settingsGroups.value], ([section]) => {
+  if (!section || !settingsAreaOf(section)) return;
+  if (!route.path?.startsWith("/settings")) return;
+  const { path } = settingsLocation(section);
+  if (route.path === path) return;
+  // an old id that is now a tab of a merged section keeps that tab
+  const tab = route.query.tab ?? initialTab.value;
+  void router.replace({
+    path,
+    query: { ...route.query, ...(tab ? { tab } : {}) },
+  });
 });
 
 const card = ref<HTMLElement | null>(null);
@@ -294,8 +310,8 @@ const selectedSection = computed(() =>
 );
 const area = computed(() => {
   if (selectedGroup.value) return selectedGroup.value.area;
-  if (route.query.area === "account") return "account";
-  if (route.query.area === "administration" && currentUser.value?.is_admin)
+  if (areaParam.value === "account") return "account";
+  if (areaParam.value === "administration" && currentUser.value?.is_admin)
     return "administration";
   return "preferences";
 });
@@ -323,9 +339,10 @@ const sectionTitle = computed(
 );
 usePageTitle(() => sectionTitle.value);
 function openArea(next: string) {
+  if (!isSettingsArea(next)) return;
   void router.push({
-    path: "/settings",
-    query: { area: next, ...(showHostSettings.value ? { host: "1" } : {}) },
+    path: settingsAreaLocation(next),
+    query: showHostSettings.value ? { host: "1" } : {},
   });
 }
 function backToArea() {
@@ -334,9 +351,13 @@ function backToArea() {
 // Update the URL first so the route watchers resolve the same section and
 // containing tab, then move focus into the opened section.
 async function openSearchResult(entry: SettingsSearchEntry) {
-  const { query } = settingsSearchLocation(entry);
+  const location = settingsSearchLocation(entry);
   await router.push({
-    query: { ...route.query, area: undefined, tab: undefined, ...query },
+    path: location.path,
+    query: {
+      ...location.query,
+      ...(showHostSettings.value ? { host: "1" } : {}),
+    },
   });
   initialTab.value = entry.tab;
   activeSection.value = entry.section;
@@ -429,17 +450,20 @@ async function openSearchResult(entry: SettingsSearchEntry) {
           >
             <h2>{{ group.label }}</h2>
             <div class="settings-links">
-              <button
+              <RouterLink
                 v-for="section in group.sections"
                 :key="section.id"
-                type="button"
+                :to="
+                  settingsLocation(section.id, {
+                    query: { host: showHostSettings ? '1' : undefined },
+                  })
+                "
                 @pointerenter="prefetchSection(section.id)"
                 @focus="prefetchSection(section.id)"
-                @click="openSection(section.id)"
               >
                 <span>{{ section.label }}</span
                 ><AppIcon name="chevron" :size="18" />
-              </button>
+              </RouterLink>
             </div>
           </section>
         </div>
@@ -451,6 +475,7 @@ async function openSearchResult(entry: SettingsSearchEntry) {
           :aria-label="sectionTitle"
         >
           <ProfileSection v-if="activeSection === 'profile'" />
+          <ImportSyncSection v-else-if="activeSection === 'import-sync'" />
           <GamePageSection v-else-if="activeSection === 'game-page'" />
           <AppearanceSection v-else-if="activeSection === 'appearance'" />
           <PwaSettingsSection
@@ -703,7 +728,7 @@ async function openSearchResult(entry: SettingsSearchEntry) {
   border-radius: var(--ui-radius-card);
   padding: 4px 18px;
 }
-.settings-links button {
+.settings-links a {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -718,15 +743,16 @@ async function openSearchResult(entry: SettingsSearchEntry) {
   font: inherit;
   font-size: var(--ui-font-body);
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
 }
-.settings-links button:last-child {
+.settings-links a:last-child {
   border-bottom: 0;
 }
-.settings-links button:hover {
+.settings-links a:hover {
   color: var(--ui-accent-text);
 }
-.settings-links button svg {
+.settings-links a svg {
   color: var(--ui-faint);
   flex-shrink: 0;
 }
@@ -792,7 +818,7 @@ async function openSearchResult(entry: SettingsSearchEntry) {
   .settings-links {
     padding: 3px 20px;
   }
-  .settings-links button {
+  .settings-links a {
     min-height: 64px;
   }
   .desktop-settings-nav {
