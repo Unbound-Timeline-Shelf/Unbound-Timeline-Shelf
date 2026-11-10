@@ -12,7 +12,10 @@ import {
   matchedEdition,
   providerEditionTitle,
 } from "../utils/bookMetadata";
-import type { MetadataCandidate } from "../services/metadata";
+import type {
+  MetadataBookEdition,
+  MetadataCandidate,
+} from "../services/metadata";
 import type { Book } from "../types/book";
 
 function candidate(over: Partial<MetadataCandidate> = {}): MetadataCandidate {
@@ -186,5 +189,27 @@ describe("a book result", () => {
     expect(editionInLibrary(owned, result.editions[1]!)).toBe(true);
     expect(editionInLibrary(owned, result.editions[0]!)).toBe(false);
     expect(editionInLibrary(owned, { key: "ED3" })).toBe(false);
+  });
+
+  it("treats an ISBN-less edition already added from the provider as held", () => {
+    const edition: MetadataBookEdition = {
+      key: "ED9",
+      format: "paperback",
+      publisher: "Synth Press",
+      page_count: 210,
+    };
+    const input = editionInput(edition);
+    const none = { editions: [] } as unknown as Book;
+    expect(editionInLibrary(none, edition)).toBe(false);
+    const added = {
+      editions: [{ ...input, isbn13: null, isbn10: null }],
+    } as unknown as Book;
+    expect(editionInLibrary(added, edition)).toBe(true);
+    const other = {
+      editions: [
+        { ...input, isbn13: null, isbn10: null, publisher: "Other House" },
+      ],
+    } as unknown as Book;
+    expect(editionInLibrary(other, edition)).toBe(false);
   });
 });
