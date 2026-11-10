@@ -19,28 +19,31 @@ from src.plugin_api.metadata_contracts import MetadataCandidate, ProviderRespons
 
 
 class StandIn:
-    """A stand-in for the Atlas plugin: knows one book by ISBN and one by title."""
+    """A stand-in for the Atlas plugin as it is today: no batched ``resolve`` (metadata-atlas does
+    not declare it yet), so the host searches it row by row. It knows one book by ISBN and one by
+    title."""
 
     name = "Atlas"
-    declaration = SimpleNamespace(operations=SimpleNamespace(resolve="resolve", search="search"))
+    declaration = SimpleNamespace(
+        operations=SimpleNamespace(resolve=None, search="search"),
+        provider_id="atlas.books",
+        identifier_namespace="atlas",
+    )
 
-    def __init__(self):
-        self.calls = 0
-
-    async def resolve(self, request):
-        self.calls += 1
+    async def invoke(self, operation, request, candidate=None):
+        assert operation == "search"
         known = {
-            "9781111111113": ("identifier", "The Glass Orchard", ["Ada Quill"]),
-            "Salt and Ember": ("title", "Salt and Ember", ["Cora Vale"]),
+            "9781111111113": ("The Glass Orchard", ["Ada Quill"], "9781111111113"),
+            "Salt and Ember Cora Vale": ("Salt and Ember", ["Cora Vale"], None),
         }
-        answers = []
-        for item in request.items:
-            hit = known.get(item.isbn_13 or item.title or "")
-            if hit:
-                answers.append({"key": item.key, "matched_by": hit[0], "candidate": MetadataCandidate(
-                    external_id="atlas:" + hit[1].replace(" ", ""), title=hit[1], provider="atlas",
-                    media_type="book", authors=tuple(hit[2]), provider_ids={"atlas": "atlas:x"})})
-        return ProviderResponse.model_validate({"resolved": answers})
+        hit = known.get(request.options.get("isbn") or request.query)
+        if not hit:
+            return ProviderResponse()
+        return ProviderResponse(candidates=(MetadataCandidate(
+            external_id="atlas:" + hit[0].replace(" ", ""), title=hit[0], provider="atlas",
+            media_type="book", authors=tuple(hit[1]), isbn_13=hit[2],
+            provider_ids={"atlas": "atlas:x"}),))
+
 
 here = Path(sys.argv[1])
 parsed = parse_book_import((here / "goodreads-synthetic.csv").read_bytes(), "goodreads")
@@ -57,6 +60,7 @@ rows = [
             (r.finished_on.isoformat() for r in reversed(row.reads) if r.finished_on), None
         ),
         "already_here": row.title in ALREADY_HERE,
+        "repeated": False,
     }
     for row in parsed.rows
 ]
@@ -70,7 +74,7 @@ preview = {
     "with_isbn": sum(1 for r in rows if r["isbn_13"]),
     "invalid_isbn": sum(1 for r in rows if r["invalid_isbn"]),
     "invalid_entries": [],
-    "providers": [{"name": "Atlas", "batched": True}],
+    "providers": [{"name": "Atlas", "batched": False}],
     "rows": rows,
 }
 stand_in = StandIn()
@@ -87,7 +91,7 @@ result = {
     "matched_by_title": by.count("title"),
     "manual": new - len(by),
     "resolve_calls": report.resolve_calls,
-    "row_lookups": 0,
+    "row_lookups": report.row_lookups,
     "not_looked_up": 0,
     "failed_providers": [],
     "invalid_isbn": preview["invalid_isbn"],
