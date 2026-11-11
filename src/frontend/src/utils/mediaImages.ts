@@ -29,12 +29,13 @@ export function localMediaImage(
 
 // A book's cover, chosen from a metadata provider, is stored as that provider's
 // address; the server keeps its own copy so viewing the library never sends the
-// browser to the provider's image host.
+// browser to the provider's image host. Anything that is not a web address (a
+// data: URI, a relative path someone typed or imported) shows no cover at all:
+// only the server's own route, with its address checks, ever supplies one.
 export function localBookCover(
   id: string,
   remote: string | null | undefined,
 ): string | null {
-  if (!remote) return null;
-  if (!/^https?:\/\//i.test(remote)) return remote;
+  if (!remote || !/^https?:\/\//i.test(remote)) return null;
   return `/api/media-image/book/${id}/cover?v=${stamp(remote)}`;
 }

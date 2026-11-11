@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, get_args
 from uuid import uuid4
@@ -187,9 +187,13 @@ def test_the_media_types_bound_follows_the_enum():
 @dataclass
 class _Runtime:
     document: dict[str, Any]
+    state: dict[str, Any] = field(default_factory=dict)
 
     async def plugin_ui(self, _plugin_id: str) -> dict[str, Any]:
         return self.document
+
+    async def plugin_state(self, _plugin_id: str) -> dict[str, Any]:
+        return self.state
 
 
 class _Database:
@@ -235,6 +239,26 @@ async def test_registration_upsert_refuses_book_from_an_older_plugin(monkeypatch
         database, plugin_id, uuid4(), _registration(["book", "movie"])
     )
     assert database.added[0].declaration["media_types"] == ["book", "movie"]
+
+
+async def test_registration_is_gated_on_the_negotiated_contract(monkeypatch):
+    """The same contract ``invoke`` and discovery use (C16 22.6), not only the declared one."""
+    plugin_id = "official.metadata-books"
+    # Declared 1.1.19 but negotiated up to 1.1.20 through api_contract_max: book registers.
+    runtime = _Runtime(_ui("1.1.19"), {"negotiated_api_contract": "1.1.20"})
+    monkeypatch.setattr(metadata_providers, "PluginRuntimeClient", lambda: runtime)
+    database = _Database()
+    await metadata_providers.register_provider(
+        database, plugin_id, uuid4(), _registration(["book"])
+    )
+    assert database.added[0].declaration["media_types"] == ["book"]
+    # A runtime that reports no negotiated contract falls back to the declared one.
+    runtime = _Runtime(_ui("1.1.19"), {"negotiated_api_contract": None})
+    monkeypatch.setattr(metadata_providers, "PluginRuntimeClient", lambda: runtime)
+    with pytest.raises(ValidationError, match="require Plugin API 1.1.20"):
+        await metadata_providers.register_provider(
+            _Database(), plugin_id, uuid4(), _registration(["book"])
+        )
 
 
 # --- the book contract itself ----------------------------------------------------------------
