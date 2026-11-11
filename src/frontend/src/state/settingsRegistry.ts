@@ -583,11 +583,17 @@ export function settingsAreaOf(
 
 export function settingsLocation(
   section: string,
-  options: { tab?: string; query?: Record<string, string | undefined> } = {},
+  options: {
+    tab?: string;
+    query?: Record<string, string | undefined>;
+    /** The area to use while the section's own area is still unknown. */
+    fallbackArea?: SettingsArea;
+  } = {},
 ): { path: string; query: Record<string, string> } {
   const resolved = resolveSettingsSection(section, options.tab);
   const tab = section === "admin" ? undefined : (options.tab ?? resolved.tab);
-  const area = settingsAreaOf(resolved.section) ?? "preferences";
+  const area =
+    settingsAreaOf(resolved.section) ?? options.fallbackArea ?? "preferences";
   const query: Record<string, string> = {};
   for (const [key, value] of Object.entries(options.query ?? {}))
     if (value !== undefined && key !== "tab") query[key] = value;
@@ -620,6 +626,9 @@ export function legacySettingsRedirect(to: {
     return settingsLocation(section, {
       tab: typeof tab === "string" && tab ? tab : undefined,
       query: others,
+      // A plugin section is unknown until plugins load, so the old link's own
+      // area keeps (for example) a non-admin's administration fallback working.
+      fallbackArea: isSettingsArea(area) ? area : undefined,
     });
   }
   if (isSettingsArea(area))
