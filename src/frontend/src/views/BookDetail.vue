@@ -321,7 +321,7 @@ function saved(next: Book) {
     <section class="book-hero">
       <div class="book-cover" :class="{ empty: !book.coverUrl }">
         <img
-          v-if="book.coverUrl"
+          v-if="localBookCover(book.id, book.coverUrl)"
           :src="localBookCover(book.id, book.coverUrl) ?? undefined"
           :alt="`Cover of ${book.title}`"
           referrerpolicy="no-referrer"
