@@ -387,12 +387,39 @@ async def import_books(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> BookImportResult:
+    user_id = current_user.id
+    # One import per account at a time: each one may fan out to the book providers, and two
+    # copies of one file sent together would both see the books as new and create them twice.
+    # The app runs as one process, so an in-process set is enough.
+    if user_id in _IMPORTING:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A book import is already running for this account. Try again when it finishes.",
+        )
+    _IMPORTING.add(user_id)
+    try:
+        return await _import(db, user_id, file, source, match)
+    finally:
+        _IMPORTING.discard(user_id)
+
+
+_IMPORTING: set[UUID] = set()
+
+
+async def _import(
+    db: AsyncSession, user_id: UUID, file: UploadFile, source: SourceField, match: bool
+) -> BookImportResult:
     chosen, parsed = await _parse(file, source)
-    new, here, repeats = await _split(db, current_user.id, parsed.rows)
+    new, here, repeats = await _split(db, user_id, parsed.rows)
+    providers = await _providers(db, user_id) if match and new else []
+    # End the read transaction before matching: matching can take MATCH_SECONDS of provider
+    # calls (which open their own sessions), and must not pin this pooled connection idle in
+    # a transaction meanwhile. Nothing has been written yet, so this commit changes nothing.
+    await db.commit()
     report = MatchReport()
     if match and new:
-        report = await match_books(new, await _providers(db, current_user.id), current_user.id)
-    created, errors = await _create_all(db, new, report, current_user.id)
+        report = await match_books(new, providers, user_id)
+    created, errors = await _create_all(db, new, report, user_id)
     await db.commit()
     by = [found.matched_by for found in report.matches.values()]
     return BookImportResult(
