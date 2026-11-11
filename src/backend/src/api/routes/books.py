@@ -418,10 +418,17 @@ async def update_reading(
         payload.model_dump(exclude_unset=True),
         {column.key for column in BookReading.__table__.columns if not column.nullable},
     )
+    outcome_before = reading.outcome
     for field, value in updates.items():
         setattr(reading, field, value)
     await _checked_reading(db, book, reading)
-    _sync_status(book, reading)
+    # only a changed outcome speaks for the work: editing an older read's dates or progress
+    # must not overwrite a status the person set (say, In progress during a reread)
+    if reading.outcome != outcome_before:
+        _sync_status(book, reading)
+    elif "edition_id" in updates and reading.outcome == ReadOutcome.READING:
+        if reading.edition_id is not None:
+            book.active_edition_id = reading.edition_id
     await _commit(db, "This read is not valid.")
     return await _book(db, book.id, current_user.id)
 

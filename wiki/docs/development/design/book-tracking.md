@@ -269,6 +269,16 @@ regression coverage and migration/contract review.
   its edition's page count, percent over 100, a finish before its start) is dropped with an error
   naming the work; the work, its editions and its other reads are still restored. The read routes
   and the restore share one check (`reading_problem`).
+- **Restore keeps the response limits and reports every loss.** A restored work is checked against the
+  limits the book responses validate (authors, genres and tags, rating, text lengths, provider ids);
+  one that breaks them is skipped with an error, so a hand-edited export cannot break the Books
+  library, the export or the daily backup. An edition over a limit, or repeating another edition's
+  ISBN, is dropped on its own with an error; an invalid ISBN is left out with an error; editions past
+  50 and reads past 200 are cut with an error.
+- **Status follows a read's outcome only when it changes.** Adding a read, or changing a read's
+  outcome, applies the rule above; editing an older read's dates or progress leaves the work's status
+  as the person set it. A reread of a work already Read keeps it Read until the person changes it.
+- **Backups:** the daily JSON backup includes a library that holds only books.
 - **Tags:** book tags are part of the tag catalogue (counts, discovery and alias suggestions).
 - **Not in phase 1:** the activity log, the media-image proxy (covers load from the typed `cover_url`
   with `referrerpolicy=no-referrer`, on the book page and on the List/Shelf/Board library tiles), the
