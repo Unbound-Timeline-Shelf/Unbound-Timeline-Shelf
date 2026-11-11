@@ -6,6 +6,7 @@ Synthetic books only: invented titles and authors, ISBNs computed to be valid.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
@@ -20,7 +21,7 @@ from src.core.auth import create_api_key
 from src.database.models.auth import UserApiKey
 from src.database.models.book import Book, BookStatus
 from src.database.models.user import User
-from src.database.session import SessionLocal
+from src.database.session import SessionLocal, get_db
 from src.features.imports.book_matching import BookMatch
 from src.features.imports.books import ImportedBook
 from src.main import app
@@ -353,3 +354,64 @@ async def test_volumes_of_a_series_all_import_and_a_true_repeat_is_shown(http, p
         await db.commit()
     again = (await _post(http, reader, "/api/import/books", SERIES)).json()
     assert again["created"] == 1 and again["kept"] == 1
+
+
+# ------------------------------------------- one import at a time, no transaction held open
+
+
+@dataclass
+class _HeldCatalogue(_Catalogue):
+    """A provider that waits until released, and records whether the request's session was
+    inside a transaction while matching ran."""
+
+    started: asyncio.Event = field(default_factory=asyncio.Event)
+    release: asyncio.Event = field(default_factory=asyncio.Event)
+    sessions: list[Any] = field(default_factory=list)
+    in_transaction: list[bool] = field(default_factory=list)
+
+    async def resolve(self, request: MetadataResolveRequest) -> ProviderResponse:
+        self.in_transaction.extend(session.in_transaction() for session in self.sessions)
+        self.started.set()
+        await self.release.wait()
+        return await super().resolve(request)
+
+
+async def test_a_second_import_while_one_runs_is_refused_and_no_transaction_is_held(
+    http, people, monkeypatch
+):
+    reader, other = people
+    catalogue = _HeldCatalogue(by_isbn={GLASS_13: _found("The Glass Orchard", GLASS_13, "W1")})
+    _use(monkeypatch, catalogue)
+
+    async def watched_db():
+        async with SessionLocal() as session:
+            catalogue.sessions.append(session)
+            yield session
+
+    app.dependency_overrides[get_db] = watched_db
+    try:
+        first = asyncio.create_task(
+            _post(http, reader, "/api/import/books", GLASS_13, source="isbn_list")
+        )
+        await asyncio.wait_for(catalogue.started.wait(), 10)
+        # the same account cannot start a second import (it would create the book twice) ...
+        again = await _post(http, reader, "/api/import/books", GLASS_13, source="isbn_list")
+        assert again.status_code == 409, again.text
+        # ... the preview stays available, and another account can import (below)
+        preview = await _post(http, reader, "/api/import/books/preview", GLASS_13)
+        assert preview.status_code == 200, preview.text
+        catalogue.release.set()
+        done = await asyncio.wait_for(first, 10)
+        assert done.status_code == 200, done.text
+        assert done.json()["created"] == 1
+        elsewhere = await _post(http, other, "/api/import/books", GLASS_13, source="isbn_list")
+        assert elsewhere.status_code == 200, elsewhere.text
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    # the request's session was not inside a transaction while the provider was called
+    assert catalogue.in_transaction and not catalogue.in_transaction[0]
+    assert len(await _books(reader.id)) == 1
+    # and the account is free to import again afterwards
+    later = await _post(http, reader, "/api/import/books", GLASS_13, source="isbn_list")
+    assert later.status_code == 200 and later.json()["kept"] == 1
