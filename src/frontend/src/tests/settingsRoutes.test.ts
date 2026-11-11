@@ -99,6 +99,33 @@ describe("settings sections are paths", () => {
         query: { section: "upload" },
       }),
     ).toEqual({ path: "/upload", query: {} });
+    // a plugin section not loaded yet keeps the old link's area
+    expect(
+      legacySettingsRedirect({
+        path: "/settings",
+        query: { area: "administration", section: "example.plugin-admin" },
+      }),
+    ).toEqual({
+      path: "/settings/administration/example.plugin-admin",
+      query: {},
+    });
+    // a known section's own area wins over a wrong legacy area
+    expect(
+      legacySettingsRedirect({
+        path: "/settings",
+        query: { area: "account", section: "library" },
+      }),
+    ).toEqual({ path: "/settings/preferences/library", query: {} });
+    // an unknown section with no valid legacy area still lands in preferences
+    expect(
+      legacySettingsRedirect({
+        path: "/settings",
+        query: { area: "bogus", section: "example.plugin-settings" },
+      }),
+    ).toEqual({
+      path: "/settings/preferences/example.plugin-settings",
+      query: {},
+    });
     // already a path, or nothing to move
     expect(
       legacySettingsRedirect({ path: "/settings/account/profile", query: {} }),
