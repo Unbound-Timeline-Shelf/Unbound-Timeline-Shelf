@@ -103,11 +103,18 @@ async def register_provider(
     declaration = MetadataProviderRegistration.model_validate(payload)
     if not declaration.provider_id.startswith(plugin_id + "."):
         raise PermissionError("metadata provider ID must belong to this plugin")
-    document = await bounded(PluginRuntimeClient().plugin_ui(plugin_id), 3)
-    # The declaration is held to the contract the plugin declared (C15 6.3): ``book`` needs
-    # Plugin API 1.1.20. The UI document's version is the manifest's (the runtime enforces it).
+    runtime = PluginRuntimeClient()
+    document = await bounded(runtime.plugin_ui(plugin_id), 3)
+    # The declaration is held to the contract the plugin runs at (C15 6.3, C16 22.6): ``book``
+    # needs Plugin API 1.1.20. That is the runtime's negotiated contract, the same one
+    # ``invoke`` and discovery use; the UI document's declared version (always the manifest's,
+    # the runtime enforces it) stands in only when the runtime reports none.
+    state = await bounded(runtime.plugin_state(plugin_id), 2)
+    negotiated = state.get("negotiated_api_contract") if isinstance(state, dict) else None
+    declared = str(document.get("api_contract_version") or "1.0.0")
     declaration = MetadataProviderRegistration.model_validate(
-        payload, context=contract_context(str(document.get("api_contract_version") or "1.0.0"))
+        payload,
+        context=contract_context(negotiated if isinstance(negotiated, str) else declared),
     )
     actions = {action["id"]: action for action in document.get("actions", [])}
     for operation, action_id in declaration.operations.model_dump().items():
