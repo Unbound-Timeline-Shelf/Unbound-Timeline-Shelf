@@ -41,7 +41,8 @@ case "${LANE_MODE:-tests}" in
     cd "$WORK"
     python -m pytest tools/tests/test_plugin_acceptance_acquisition.py \
       tools/tests/test_environment_reference.py \
-      tools/tests/test_backend_test_shards.py 2>&1 | tee /out/repository-pytest-output.txt
+      tools/tests/test_backend_test_shards.py \
+      tools/tests/test_backend_linux_lane_args.py 2>&1 | tee /out/repository-pytest-output.txt
     exit "${PIPESTATUS[0]}" ;;
   plugin-runtime)
     cd "$WORK/src/plugin-runtime"
@@ -49,8 +50,12 @@ case "${LANE_MODE:-tests}" in
     exit "${PIPESTATUS[0]}" ;;
 esac
 
-# shellcheck disable=SC2206
-extra=(${LANE_PYTEST_ARGS:-})
+# The wrapper writes the pytest arguments NUL-separated, so each keeps its boundaries.
+read_pytest_args() {
+  extra=()
+  if [ -f "$1" ]; then mapfile -d '' -t extra < "$1"; fi
+}
+read_pytest_args /out/lane-pytest-args
 files=()
 if [ -n "${LANE_SHARD:-}" ]; then
   mapfile -t files < <(python3 "$WORK/tools/backend_test_shards.py" files --shard "$LANE_SHARD" --shards "${LANE_SHARDS:?LANE_SHARDS required with LANE_SHARD}")

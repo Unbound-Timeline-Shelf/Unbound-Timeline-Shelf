@@ -35,7 +35,6 @@ services:
       LANE_MODE: ${LANE_MODE:-tests}
       LANE_SHARD: ${LANE_SHARD:-}
       LANE_SHARDS: ${LANE_SHARDS:-}
-      LANE_PYTEST_ARGS: ${LANE_PYTEST_ARGS:-}
     volumes:
       # Read-only view of the working tree; the entrypoint copies it so the host tree is never
       # written to and no Windows file modes or line endings leak into the run.

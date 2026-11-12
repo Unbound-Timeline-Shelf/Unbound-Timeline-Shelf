@@ -30,7 +30,10 @@ done
 
 out="${LANE_OUT:-$root/.lane-out}"
 mkdir -p "$out"
-rm -f "$out"/pytest-* "$out"/migrations-output.txt "$out"/repository-pytest-output.txt "$out"/plugin-runtime-output.txt
+rm -f "$out"/pytest-* "$out"/lane-pytest-args "$out"/migrations-output.txt "$out"/repository-pytest-output.txt "$out"/plugin-runtime-output.txt
+# pytest arguments go to the container NUL-separated, so a quoted argument such as
+# -k 'trash and restore' stays one argument (an environment string would be re-split).
+if [ "${#pytest_args[@]}" -gt 0 ]; then printf '%s\0' "${pytest_args[@]}" > "$out/lane-pytest-args"; fi
 # Release tags for the migration upgrade matrix; a worktree's .git cannot be mounted as is.
 git -C "$root" bundle create "$out/repo.bundle" --tags >/dev/null 2>&1 || rm -f "$out/repo.bundle"
 
@@ -38,7 +41,6 @@ git -C "$root" bundle create "$out/repo.bundle" --tags >/dev/null 2>&1 || rm -f 
 if command -v cygpath >/dev/null 2>&1; then out="$(cygpath -m "$out")"; fi
 
 export LANE_OUT="$out" LANE_MODE="$mode" LANE_SHARD="$shard" LANE_SHARDS="$shards"
-export LANE_PYTEST_ARGS="${pytest_args[*]:-}"
 export MSYS_NO_PATHCONV=1
 
 compose_file="$root/tools/backend-linux-lane/compose.yaml"

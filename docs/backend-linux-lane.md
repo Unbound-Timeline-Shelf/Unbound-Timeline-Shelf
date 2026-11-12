@@ -15,6 +15,7 @@ any POSIX shell.
 ```bash
 tools/backend_linux_lane.sh                    # whole backend suite
 tools/backend_linux_lane.sh -k identity        # extra arguments go to pytest
+tools/backend_linux_lane.sh -k 'trash and restore'  # quoted arguments keep their boundaries
 tools/backend_linux_lane.sh --shard 2/6        # one CI shard (tools/backend_test_shards.py)
 tools/backend_linux_lane.sh --tools            # repository-level tool tests (CI: repository-tool-tests)
 tools/backend_linux_lane.sh --plugin-runtime   # plugin runtime tests (CI: plugin-runtime-tests)
