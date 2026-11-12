@@ -86,25 +86,30 @@ export function useMediaQuickSave<T extends { id: string }>(
     const fields = (Object.keys(next) as (keyof T)[]).filter(
       (key) => !Object.is(next[key], target[key]),
     );
-    const changes: Partial<T> = {};
     for (const key of fields) {
-      changes[key] = next[key];
       target[key] = next[key];
       current.fields.add(key);
       current.wanted.set(key, next[key]);
     }
+    // A field belongs to this save until another writer replaces it. The
+    // counters are read now, not when the request starts: a save queued behind
+    // an earlier one must not send a value the editor has since replaced.
+    const askedAt = new Map(
+      fields.map((key) => [key, current.replaced.get(key) ?? 0]),
+    );
+    const own = () =>
+      fields.filter(
+        (key) => (current.replaced.get(key) ?? 0) === askedAt.get(key),
+      );
     current.pending += 1;
     saveError.value = null;
     let saved = false;
     current.tail = current.tail.then(async () => {
-      // Only the fields no other writer has replaced since this request was sent.
-      const sentAt = new Map(
-        fields.map((key) => [key, current.replaced.get(key) ?? 0]),
-      );
-      const own = () =>
-        fields.filter(
-          (key) => (current.replaced.get(key) ?? 0) === sentAt.get(key),
-        );
+      const sending = own();
+      // Every field was replaced while this save waited: nothing is left to send.
+      if (sending.length === 0) return;
+      const changes: Partial<T> = {};
+      for (const key of sending) changes[key] = next[key];
       try {
         const result = await persist(id, changes);
         for (const key of own()) {

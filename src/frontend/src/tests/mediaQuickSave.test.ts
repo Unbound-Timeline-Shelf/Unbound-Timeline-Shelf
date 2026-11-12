@@ -215,3 +215,106 @@ it("clears an older status failure once a newer save of it succeeds", async () =
   expect(record.value).toMatchObject({ rating: 2 });
   expect(saveError.value).toBeNull();
 });
+
+it("does not send a queued quick save of a field the editor has since replaced", async () => {
+  const record = ref<Row | null>(row());
+  const first = deferred<Row>();
+  const sent: Partial<Row>[] = [];
+  let server = row();
+  const persist = vi.fn(async (_id: string, changes: Partial<Row>) => {
+    sent.push(changes);
+    if (sent.length === 1) await first.promise;
+    server = { ...server, ...changes };
+    return { ...server };
+  });
+  const { quickSave, saveError } = useMediaQuickSave(record, persist);
+  const favorite = quickSave((r) => (r.favorite = true), "fav failed");
+  const rating = quickSave((r) => (r.rating = 3), "rating failed");
+  await flushPromises();
+  // The full editor saves rating 5 while the rating quick save is queued.
+  server = { ...server, rating: 5 };
+  record.value = { ...server, favorite: true };
+  first.resolve(row());
+  expect(await favorite).toBe(true);
+  expect(await rating).toBe(false);
+  expect(sent).toEqual([{ favorite: true }]);
+  expect(server).toMatchObject({ favorite: true, rating: 5 });
+  expect(record.value).toMatchObject({ favorite: true, rating: 5 });
+  expect(saveError.value).toBeNull();
+});
+
+it("sends only the fields of a queued quick save the editor left alone", async () => {
+  type Wide = Row & { title: string };
+  const record = ref<Wide | null>({ ...row(), title: "Original" });
+  const first = deferred<Wide>();
+  const sent: Partial<Wide>[] = [];
+  let server: Wide = { ...row(), title: "Original" };
+  const persist = vi.fn(async (_id: string, changes: Partial<Wide>) => {
+    sent.push(changes);
+    if (sent.length === 1) await first.promise;
+    server = { ...server, ...changes };
+    return { ...server };
+  });
+  const { quickSave } = useMediaQuickSave(record, persist);
+  const favorite = quickSave((r) => (r.favorite = true), "fav failed");
+  const both = quickSave((r) => {
+    r.rating = 3;
+    r.note = "quick";
+  }, "both failed");
+  await flushPromises();
+  server = { ...server, rating: 5 };
+  // The editor response carries the server note, so the quick note stays ours.
+  record.value = { ...server, favorite: true };
+  first.resolve({ ...row(), title: "Original" });
+  await favorite;
+  expect(await both).toBe(true);
+  expect(sent[1]).toEqual({ note: "quick" });
+  expect(record.value).toMatchObject({ rating: 5, note: "quick" });
+});
+
+it("skips and does not report a quick save superseded before its request left", async () => {
+  const record = ref<Row | null>(row());
+  const persist = vi.fn(() => Promise.reject(new Error("Down")));
+  const { quickSave, saveError } = useMediaQuickSave(record, persist);
+  const rating = quickSave((r) => (r.rating = 3), "rating failed");
+  record.value = row({ rating: 5 });
+  expect(await rating).toBe(false);
+  expect(persist).not.toHaveBeenCalled();
+  expect(record.value).toMatchObject({ rating: 5 });
+  expect(saveError.value).toBeNull();
+});
+
+it("does not report a superseded failure while the request is in flight", async () => {
+  const record = ref<Row | null>(row());
+  const slow = deferred<Row>();
+  const { quickSave, saveError } = useMediaQuickSave(
+    record,
+    () => slow.promise,
+  );
+  const note = quickSave((r) => (r.note = "x"), "note failed");
+  await flushPromises();
+  record.value = row({ note: "editor" });
+  slow.reject(new Error("Down"));
+  expect(await note).toBe(false);
+  expect(record.value).toMatchObject({ note: "editor" });
+  expect(saveError.value).toBeNull();
+});
+
+it("keeps the newest draft when serialized answers resolve out of order", async () => {
+  const record = ref<Row | null>(row());
+  const p1 = deferred<Row>();
+  const p2 = deferred<Row>();
+  let calls = 0;
+  const { quickSave } = useMediaQuickSave(record, () =>
+    ++calls === 1 ? p1.promise : p2.promise,
+  );
+  const s1 = quickSave((r) => (r.rating = 1), "e");
+  const s2 = quickSave((r) => (r.rating = 2), "e");
+  expect(record.value!.rating).toBe(2);
+  p2.resolve(row({ rating: 2 }));
+  p1.resolve(row({ rating: 1 }));
+  await s1;
+  expect(record.value!.rating).toBe(2);
+  await s2;
+  expect(record.value!.rating).toBe(2);
+});
