@@ -13,7 +13,6 @@ import json
 import socket
 import stat
 import struct
-import warnings
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -110,9 +109,8 @@ def package_bytes(
         if broken == "traversal":
             archive.writestr("payload/../../escape", b"escape")
         if broken == "duplicate":
-            # The duplicate entry is the point of this package, so zipfile's warning is expected.
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
+            # The duplicate entry is the point of this package, so zipfile's warning is asserted.
+            with pytest.warns(UserWarning, match="Duplicate name"):
                 archive.writestr("payload/plugin.py", b"duplicate")
         if broken == "symlink":
             link = zipfile.ZipInfo("payload/link")
