@@ -588,6 +588,54 @@ def test_a_symlinked_root_is_never_followed(roots, tmp_path):
     _assert_untouched({path: data for path, data in kept.items() if str(real) in path})
 
 
+def test_a_symlinked_game_root_never_has_its_trash_cleaned_through_it(roots, tmp_path):
+    """A manifest game id under a redirected game root must not reach the link's target."""
+    profile_root, game_root = roots
+    doomed, game_id = uuid4(), uuid4()
+    real = tmp_path / "elsewhere"
+    real.mkdir()
+    kept = _populate(doomed, profile_root, real, game_ids=[game_id])
+    game_root.rmdir()
+    _symlink_or_skip(game_root, real)
+
+    result = account_storage.cleanup_account_storage_sync(doomed, [game_id])
+
+    assert not result.complete
+    assert "games" in result.failed and f"game-trash:{game_id}" in result.failed
+    assert f"game-trash:{game_id}" not in result.removed
+    assert (real / "_trash" / str(game_id) / "folder" / "kept.txt").exists()
+    _assert_untouched({path: data for path, data in kept.items() if str(real) in path})
+
+
+def test_a_symlinked_trash_root_is_never_followed(roots, tmp_path):
+    profile_root, game_root = roots
+    doomed, game_id = uuid4(), uuid4()
+    real = tmp_path / "elsewhere"
+    real.mkdir()
+    kept = _populate(doomed, profile_root, real, game_ids=[game_id])
+    _symlink_or_skip(game_root / "_trash", real / "_trash")
+
+    result = account_storage.cleanup_account_storage_sync(doomed, [game_id])
+
+    assert f"game-trash:{game_id}" in result.failed
+    assert (real / "_trash" / str(game_id) / "folder" / "kept.txt").exists()
+    _assert_untouched({path: data for path, data in kept.items() if str(real) in path})
+
+
+def test_a_retry_under_a_symlinked_game_root_keeps_reporting_incomplete(roots, tmp_path):
+    _, game_root = roots
+    doomed, game_id = uuid4(), uuid4()
+    real = tmp_path / "elsewhere"
+    (real / "_trash" / str(game_id)).mkdir(parents=True)
+    game_root.rmdir()
+    _symlink_or_skip(game_root, real)
+
+    for _ in range(2):
+        result = account_storage.cleanup_account_storage_sync(doomed, [game_id])
+        assert f"game-trash:{game_id}" in result.failed
+    assert (real / "_trash" / str(game_id)).is_dir()
+
+
 def test_only_a_parsed_uuid_can_name_a_directory(roots):
     _, game_root = roots
     with pytest.raises(ValueError):
