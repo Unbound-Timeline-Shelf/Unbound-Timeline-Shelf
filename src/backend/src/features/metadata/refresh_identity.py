@@ -7,30 +7,16 @@ These helpers compute, and then apply, which providers actually confirmed the ga
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, cast
 
-from src.plugin_api.metadata_contracts import MetadataPatch
-
-
-class _Candidate(Protocol):  # pylint: disable=too-few-public-methods
-    provider: str
-    provider_ids: Mapping[str, str]
-
-
-class _Source(Protocol):  # pylint: disable=too-few-public-methods
-    candidate: _Candidate
-    metadata: dict[str, MetadataPatch]
-
-
-class _Provider(Protocol):  # pylint: disable=too-few-public-methods
-    id: str
-    declaration: Any
+if TYPE_CHECKING:
+    from .handler import Provider, Source
 
 
 def provider_id_claims(
-    sources: Mapping[str, _Source], group: Iterable[str], providers: Iterable[_Provider]
+    sources: Mapping[str, Source], group: Iterable[str], providers: Iterable[Provider]
 ) -> dict[str, dict[str, list[str]]]:
     """The ids each registered provider itself reported for this result.
 
@@ -71,13 +57,13 @@ def provider_id_claims(
 
 
 def unverified_providers(
-    sources: Mapping[str, _Source],
+    sources: Mapping[str, Source],
     group: Iterable[str],
-    providers: Iterable[_Provider],
+    providers: Iterable[Provider],
     held: Mapping[str, str],
     claims: Mapping[str, Mapping[str, list[str]]],
     *,
-    asset_providers: Mapping[tuple[str, str], Iterable[str]] = (),
+    asset_providers: Mapping[tuple[str, str], Iterable[str]] | None = None,
     assets: Iterable[Mapping[str, Any]] = (),
 ) -> set[str]:
     """Identity-bearing providers that reached this result without confirming the game.
@@ -90,6 +76,7 @@ def unverified_providers(
     ids and cannot report an identity either way, so it is not counted here."""
     namespaces = {provider.id: provider.declaration.identifier_namespace for provider in providers}
     group = tuple(group)
+    asset_providers = asset_providers or {}
     contributed = set(claims)
     contributed.update(provider_id for key in group for provider_id in sources[key].metadata)
     for asset in assets:
@@ -106,18 +93,19 @@ def unverified_providers(
 
 
 def verified_record(
-    sources: Mapping[str, _Source],
+    sources: Mapping[str, Source],
     group: Iterable[str],
     unverified: set[str],
     *,
-    metadata_of: Callable[[Iterable[Any]], dict[str, Any]],
-    asset_providers: Mapping[tuple[str, str], Iterable[str]] = (),
+    metadata_of: Callable[[Sequence[Any]], dict[str, Any]],
+    asset_providers: Mapping[tuple[str, str], Iterable[str]] | None = None,
     assets: Iterable[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """The result's metadata and artwork without what the unverified providers supplied."""
+    asset_providers = asset_providers or {}
     members = [
         replace(
-            sources[key],
+            cast(Any, sources[key]),
             metadata={
                 provider_id: patch
                 for provider_id, patch in sources[key].metadata.items()
