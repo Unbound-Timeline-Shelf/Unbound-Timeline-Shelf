@@ -21,7 +21,7 @@ from src.database.models.game_metadata_rejection import GameMetadataRejection
 from src.database.models.user import User
 from src.database.session import SessionLocal
 from src.features.game_identity import decisions, graph
-from src.features.game_identity.refresh_match import classify
+from src.features.game_identity.refresh_match import classify, vouched_ids
 from src.features.imports.library_games import get_or_create_game
 from src.features.metadata import service
 from src.main import app
@@ -222,9 +222,28 @@ async def test_a_placeholder_title_refreshes_by_its_steam_id(owner, providers, c
     }
     assert (await stored(game_id)).title == "Steam app 12345"
 
+    # Atlas confirmed none of the game's ids, so its id and fields wait for a confirmation
+    assert preview["unverified_sources"] == {"official.metadata-atlas.atlas": {"atlas": [ATLAS_ID]}}
+    assert "developer" not in preview["changed_fields"]
+
     applied = await refresh(client, game_id)
     assert (applied["status"], applied["match"]) == ("updated", "id")
-    assert {"title", "description", "developer"} <= set(applied["changed_fields"])
+    assert {"title", "description"} <= set(applied["changed_fields"])
+    assert "developer" not in applied["changed_fields"]
+    game = await stored(game_id)
+    assert (game.title, game.description, game.developer) == (
+        "Portal 2",
+        "Portal 2 is a puzzle game.",
+        None,
+    )
+    assert game.provider_ids == {"steam": "12345"}
+
+    confirmed = await refresh(
+        client, game_id, confirm_candidate=preview["candidate"]["provider_ids"]
+    )
+    assert (confirmed["status"], confirmed["match"]) == ("updated", "id")
+    assert confirmed["unverified_sources"] == {}
+    assert "developer" in confirmed["changed_fields"]
 
     game = await stored(game_id)
     assert game.title == "Portal 2"
@@ -274,11 +293,117 @@ async def test_two_sources_reporting_the_same_id_agree(owner, providers, client)
         atlas(provider_id="community.atlas-mirror", description="From the mirror"),
     )
     game_id = await add_game(user_id, provider_ids={"steam": "12345"})
+    candidate = {"steam": "12345", "atlas": ATLAS_ID}
+
+    result = await refresh(client, game_id, confirm_candidate=candidate)
+
+    assert (result["status"], result["match"]) == ("updated", "id")
+    assert result["candidate"]["provider_ids"] == candidate
+    assert (await stored(game_id)).provider_ids == candidate
+
+
+# --- an id match applies only what a confirming source reported (#492 review) ----------------
+
+
+def title_fallback(
+    provider_id: str, namespace: str, value: str, priority: int = 5, **fields
+) -> StandInProvider:
+    """A provider that cannot use the held ids and answers its own same-title game instead."""
+
+    def respond(candidate):
+        if candidate is None:
+            return None
+        return MetadataPatch(provider_ids={namespace: value}, **fields)
+
+    return StandInProvider(provider_id, namespace, respond, priority=priority)
+
+
+async def test_an_unconfirmed_provider_is_not_applied_with_an_id_match(owner, providers, client):
+    """Steam confirms 12345; IGDB falls back to a different same-title game, igdb:73."""
+    user_id, _ = owner
+    providers(
+        steam(),
+        title_fallback("core.igdb", "igdb", "73", description="A different game entirely."),
+    )
+    game_id = await add_game(user_id, provider_ids={"steam": "12345"})
+
+    preview = await refresh(client, game_id, dry_run=True)
+    assert (preview["status"], preview["match"]) == ("preview", "id")
+    assert preview["unverified_sources"] == {"core.igdb": {"igdb": ["73"]}}
+    assert "description" not in preview["changed_fields"]
 
     result = await refresh(client, game_id)
 
     assert (result["status"], result["match"]) == ("updated", "id")
-    assert (await stored(game_id)).provider_ids == {"steam": "12345", "atlas": ATLAS_ID}
+    assert result["unverified_sources"] == {"core.igdb": {"igdb": ["73"]}}
+    assert "description" not in result["changed_fields"]
+    game = await stored(game_id)
+    assert (game.title, game.description) == ("Portal 2", None)
+    assert game.provider_ids == {"steam": "12345"}
+
+
+async def test_mixed_providers_apply_only_the_confirming_sources(owner, providers, client):
+    """IGDB confirms its held id, a plugin without an identity verdict does not."""
+    user_id, _ = owner
+
+    def igdb_by_id(candidate):
+        if candidate is None or candidate.provider_ids.get("igdb") != "72":
+            return None
+        return MetadataPatch(provider_ids={"igdb": "72"}, developer="Valve")
+
+    providers(
+        steam(),
+        StandInProvider("core.igdb", "igdb", igdb_by_id, priority=20),
+        title_fallback(
+            "community.rawg", "rawg", "portal-2-fan-remake", publisher="Someone Else", priority=1
+        ),
+    )
+    game_id = await add_game(user_id, provider_ids={"steam": "12345", "igdb": "72"})
+
+    result = await refresh(client, game_id)
+
+    assert (result["status"], result["match"]) == ("updated", "id")
+    assert set(result["unverified_sources"]) == {"community.rawg"}
+    game = await stored(game_id)
+    assert (game.title, game.developer, game.publisher) == ("Portal 2", "Valve", None)
+    assert game.provider_ids == {"steam": "12345", "igdb": "72"}
+
+
+async def test_a_confirmed_candidate_applies_the_unconfirmed_sources_too(owner, providers, client):
+    user_id, _ = owner
+    providers(steam(), title_fallback("core.igdb", "igdb", "73", description="IGDB text"))
+    game_id = await add_game(user_id, provider_ids={"steam": "12345"})
+    preview = await refresh(client, game_id, dry_run=True)
+    assert preview["candidate"]["provider_ids"] == {"steam": "12345", "igdb": "73"}
+
+    # a confirmation of other ids is not a confirmation of this candidate
+    partial = await refresh(client, game_id, confirm_candidate={"steam": "12345"})
+    assert set(partial["unverified_sources"]) == {"core.igdb"}
+    assert (await stored(game_id)).provider_ids == {"steam": "12345"}
+
+    confirmed = await refresh(
+        client, game_id, confirm_candidate=preview["candidate"]["provider_ids"]
+    )
+
+    assert (confirmed["status"], confirmed["unverified_sources"]) == ("updated", {})
+    game = await stored(game_id)
+    assert game.description == "IGDB text"
+    assert game.provider_ids == {"steam": "12345", "igdb": "73"}
+
+
+async def test_a_title_fallback_that_reports_no_id_is_not_applied(owner, providers, client):
+    user_id, _ = owner
+
+    def no_ids(candidate):
+        return None if candidate is None else MetadataPatch(series="Wrong Series")
+
+    providers(steam(), StandInProvider("community.rawg", "rawg", no_ids, priority=1))
+    game_id = await add_game(user_id, provider_ids={"steam": "12345"})
+
+    result = await refresh(client, game_id)
+
+    assert result["unverified_sources"] == {"community.rawg": {}}
+    assert (await stored(game_id)).series is None
 
 
 # --- rule 4 (host side): conflicting ids are refused, nothing is applied ----------------------
@@ -350,7 +475,14 @@ async def test_a_different_atlas_id_is_not_adopted(owner, providers, client):
     providers(steam(), atlas(OTHER_ATLAS_ID, developer="Valve"))
     game_id = await add_game(user_id, provider_ids={"steam": "12345", "atlas": ATLAS_ID})
 
-    result = await refresh(client, game_id)
+    automatic = await refresh(client, game_id)
+    assert (automatic["status"], automatic["match"]) == ("updated", "id")
+    assert set(automatic["unverified_sources"]) == {"official.metadata-atlas.atlas"}
+    assert (await stored(game_id)).developer is None
+
+    result = await refresh(
+        client, game_id, confirm_candidate=automatic["candidate"]["provider_ids"]
+    )
 
     assert (result["status"], result["match"]) == ("updated", "id")
     assert any("different atlas ID" in error for error in result["provider_errors"])
@@ -365,7 +497,9 @@ async def test_an_id_another_game_holds_is_never_adopted(owner, providers, clien
     placeholder = await add_game(user_id, provider_ids={"steam": "12345"})
     holder = await add_game(user_id, title="Portal 2", provider_ids={"atlas": ATLAS_ID})
 
-    result = await refresh(client, placeholder)
+    result = await refresh(
+        client, placeholder, confirm_candidate={"steam": "12345", "atlas": ATLAS_ID}
+    )
 
     assert result["status"] == "updated"
     assert any("already linked to another game" in e for e in result["provider_errors"])
@@ -562,7 +696,7 @@ async def test_a_rejected_candidate_is_refused_until_the_rejection_is_forgotten(
         )
     assert remaining == 0
 
-    applied = await refresh(client, game_id)
+    applied = await refresh(client, game_id, confirm_candidate=preview["candidate"]["provider_ids"])
     assert applied["status"] == "updated"
     assert (await stored(game_id)).provider_ids == {"steam": "12345", "atlas": ATLAS_ID}
 
@@ -756,6 +890,16 @@ def test_classify(saved, claims, reported, tier):
     assert classify(saved, claims, game_title="Same", reported_title=reported).tier == tier
 
 
+def test_vouched_ids_keep_only_ids_a_confirming_source_reported():
+    claims = {"core.steam": {"steam": "1"}, "core.igdb": {"igdb": ["73"]}, "a": {"atlas": "x"}}
+    offered = {"steam": "1", "igdb": "73", "atlas": "x"}
+    assert vouched_ids(offered, claims, {"core.igdb", "a"}) == {"steam": "1"}
+    assert vouched_ids(offered, claims, ()) == offered
+    # a namespace another, confirming source also reported stays
+    claims["core.steam"]["atlas"] = "x"
+    assert vouched_ids(offered, claims, {"a"}) == offered
+
+
 def test_classify_rejection_ignores_ids_the_game_holds():
     claims = {"core.steam": {"steam": "1"}, "atlas": {"atlas": "a"}}
     assert (
@@ -778,3 +922,64 @@ def test_classify_rejection_ignores_ids_the_game_holds():
         {"steam": "1"}, claims, game_title="G", reported_title=None, rejected=[("atlas", "a")]
     )
     assert (rejected.tier, rejected.rejected) == ("rejected", {"atlas": "a"})
+
+
+# --- id match: only corroborated sources apply automatically (#492 review) -------------------
+
+
+def igdb_title_fallback(igdb_id: str = "73", **fields) -> StandInProvider:
+    """Answers any lookup, as a provider that falls back to a title search does."""
+
+    def respond(candidate):
+        if candidate is None:
+            return None
+        return MetadataPatch(title="Portal 2", provider_ids={"igdb": igdb_id}, **fields)
+
+    return StandInProvider("core.igdb", "igdb", respond, priority=5)
+
+
+async def test_an_uncorroborated_provider_is_not_applied_on_an_id_match(owner, providers, client):
+    """Steam confirms 12345; IGDB, looked up by title, returns a different same-title game."""
+    user_id, _ = owner
+    providers(steam(developer="Valve"), igdb_title_fallback(description="Another game entirely."))
+    game_id = await add_game(user_id, provider_ids={"steam": "12345"})
+
+    preview = await refresh(client, game_id, dry_run=True)
+    assert (preview["status"], preview["match"]) == ("preview", "id")
+    assert preview["unverified_sources"] == {"core.igdb": {"igdb": ["73"]}}
+    assert "description" not in preview["changed_fields"]
+
+    applied = await refresh(client, game_id)
+    assert (applied["status"], applied["match"]) == ("updated", "id")
+    assert applied["unverified_sources"] == {"core.igdb": {"igdb": ["73"]}}
+    game = await stored(game_id)
+    assert game.provider_ids == {"steam": "12345"}
+    assert game.description is None
+    assert (game.title, game.developer) == ("Portal 2", "Valve")
+
+
+async def test_confirming_the_candidate_applies_the_uncorroborated_provider(
+    owner, providers, client
+):
+    user_id, _ = owner
+    providers(steam(), igdb_title_fallback(description="The IGDB description."))
+    game_id = await add_game(user_id, provider_ids={"steam": "12345"})
+
+    preview = await refresh(client, game_id, dry_run=True)
+    applied = await refresh(client, game_id, confirm_candidate=preview["candidate"]["provider_ids"])
+
+    assert applied["status"] == "updated" and applied["unverified_sources"] == {}
+    game = await stored(game_id)
+    assert game.provider_ids == {"steam": "12345", "igdb": "73"}
+    assert game.description == "The IGDB description."
+
+
+async def test_a_provider_confirming_a_held_id_is_applied(owner, providers, client):
+    user_id, _ = owner
+    providers(steam(), igdb_title_fallback(description="Confirmed by its own id."))
+    game_id = await add_game(user_id, provider_ids={"steam": "12345", "igdb": "73"})
+
+    applied = await refresh(client, game_id)
+
+    assert applied["status"] == "updated" and applied["unverified_sources"] == {}
+    assert (await stored(game_id)).description == "Confirmed by its own id."
