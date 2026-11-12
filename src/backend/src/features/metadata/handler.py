@@ -8,7 +8,7 @@ import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Iterable, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
@@ -29,6 +29,7 @@ from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
 from .providers import Operation, PluginMetadataProvider
+from .refresh_identity import provider_id_claims, unverified_providers, verified_record
 
 logger = logging.getLogger(__name__)
 PRELOAD_CONCURRENCY = 5
@@ -587,107 +588,6 @@ class MetadataHandler:
             used.update(session.asset_providers.get((asset["kind"], asset["url"]), ()))
         return sorted(used & {provider.id for provider in session.providers})
 
-    @staticmethod
-    def provider_id_claims(
-        session: SearchSession, group_id: str | None
-    ) -> dict[str, dict[str, list[str]]]:
-        """The ids each registered provider itself reported for this result.
-
-        A record's `provider_ids` also carries the ids the caller supplied, so it cannot tell
-        a provider's confirmation from an echo of the request. A provider's claims are the
-        ids in its own search candidate and metadata patches, already confined to the
-        namespaces it owns. Every distinct value is kept, so a provider that names two ids for
-        one namespace (a candidate and a patch disagreeing) reaches the refresh as a conflict."""
-        namespaces = {
-            provider.id: provider.declaration.identifier_namespace for provider in session.providers
-        }
-        claims: dict[str, dict[str, list[str]]] = {}
-
-        def claim(provider_id: str, ids: dict[str, str]) -> None:
-            for namespace, value in ids.items():
-                values = claims.setdefault(provider_id, {}).setdefault(namespace, [])
-                if value and value not in values:
-                    values.append(value)
-
-        for key in session.groups.get(group_id or "", ()):
-            source = session.sources[key]
-            owner = source.candidate.provider
-            if owner in namespaces:
-                # A focused search result also carries its provider's own id under the
-                # provider id (`identities`); the declared namespace already holds it.
-                reported = {
-                    namespace: value
-                    for namespace, value in source.candidate.provider_ids.items()
-                    if namespace != owner or namespaces[owner] in (None, owner)
-                }
-                if reported:
-                    claim(owner, reported)
-            for provider_id, patch in source.metadata.items():
-                if provider_id in namespaces and patch.provider_ids:
-                    claim(provider_id, patch.provider_ids)
-        return {
-            provider_id: {namespace: values for namespace, values in ids.items() if values}
-            for provider_id, ids in claims.items()
-        }
-
-    @staticmethod
-    def unverified_providers(
-        session: SearchSession,
-        group_id: str | None,
-        held: dict[str, str],
-        claims: dict[str, dict[str, list[str]]],
-    ) -> set[str]:
-        """Identity-bearing providers that reached this result without confirming the game.
-
-        A provider confirms the game when an id it reported itself is one the lookup held. A
-        provider with an identifier namespace that reported only ids the game does not hold, or
-        none at all, may have fallen back to a title lookup and found another game, so a
-        refresh must not apply its fields or ids without the person's confirmation (#492
-        review). A provider without a namespace (artwork-only sources) is looked up by the held
-        ids and cannot report an identity either way, so it is not counted here."""
-        namespaces = {
-            provider.id: provider.declaration.identifier_namespace for provider in session.providers
-        }
-        group = session.groups.get(group_id or "", ())
-        contributed = set(claims)
-        contributed.update(
-            provider_id for key in group for provider_id in session.sources[key].metadata
-        )
-        for asset in session.candidates.get(group_id or "", {}).get("assets", []):
-            contributed.update(session.asset_providers.get((asset["kind"], asset["url"]), ()))
-        return {
-            provider_id
-            for provider_id in contributed
-            if namespaces.get(provider_id)
-            and not any(
-                held.get(namespace) in values
-                for namespace, values in claims.get(provider_id, {}).items()
-            )
-        }
-
-    def verified_record(
-        self, session: SearchSession, group_id: str | None, unverified: set[str]
-    ) -> dict[str, Any]:
-        """The result's metadata and artwork without what the unverified providers supplied."""
-        group = session.groups.get(group_id or "", ())
-        members = [
-            replace(
-                session.sources[key],
-                metadata={
-                    provider_id: patch
-                    for provider_id, patch in session.sources[key].metadata.items()
-                    if provider_id not in unverified
-                },
-            )
-            for key in group
-        ]
-        assets = []
-        for asset in session.candidates.get(group_id or "", {}).get("assets", []):
-            sources = set(session.asset_providers.get((asset["kind"], asset["url"]), ()))
-            if not sources or sources - unverified:
-                assets.append(asset)
-        return {"verified_metadata": self._metadata(session, members), "verified_assets": assets}
-
     def _rank(self, session: SearchSession) -> None:
         previous, previous_groups = session.candidates, session.groups
         session.candidates, session.groups = {}, {}
@@ -969,9 +869,17 @@ class MetadataHandler:
             session.emit("provider_failed", message="Metadata providers are unavailable")
         record = session.candidates.get(session.selected or "", {})
         if record:
-            claims = self.provider_id_claims(session, session.selected)
-            unverified = self.unverified_providers(
-                session, session.selected, dict(candidate.provider_ids), claims
+            group = session.groups.get(session.selected or "", ())
+            assets = session.candidates.get(session.selected or "", {}).get("assets", [])
+            claims = provider_id_claims(session.sources, group, session.providers)
+            unverified = unverified_providers(
+                session.sources,
+                group,
+                session.providers,
+                dict(candidate.provider_ids),
+                claims,
+                asset_providers=session.asset_providers,
+                assets=assets,
             )
             record = {
                 **record,
@@ -980,7 +888,16 @@ class MetadataHandler:
                 "unverified_providers": sorted(unverified),
             }
             if unverified:
-                record.update(self.verified_record(session, session.selected, unverified))
+                record.update(
+                    verified_record(
+                        session.sources,
+                        group,
+                        unverified,
+                        metadata_of=lambda members: self._metadata(session, members),
+                        asset_providers=session.asset_providers,
+                        assets=assets,
+                    )
+                )
         failures = list(
             dict.fromkeys(
                 event["message"] for event in session.events if event["event"] == "provider_failed"
