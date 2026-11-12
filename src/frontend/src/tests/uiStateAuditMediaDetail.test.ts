@@ -380,4 +380,35 @@ describe("concurrent detail edits", () => {
     });
     wrapper.unmount();
   });
+
+  it.each([
+    ["succeeds", true],
+    ["fails", false],
+  ] as const)(
+    "applies a favorite that %s after an unrelated editor save",
+    async (_outcome, succeeds) => {
+      vi.mocked(movies.getMovie).mockResolvedValue(movie("a"));
+      const slow = deferred<Movie>();
+      vi.mocked(movies.patchMovie).mockReturnValueOnce(slow.promise);
+      const wrapper = mountView(MovieDetail);
+      await flushPromises();
+      const vm = state(wrapper);
+      const favorite = (vm.toggleFavorite as () => Promise<void>)();
+      await flushPromises();
+      // The editor's response renames the title and still has the old favorite.
+      (vm.onSaved as (saved: Movie) => void)(
+        movie("a", { title: "Renamed", favorite: false }),
+      );
+      if (succeeds)
+        slow.resolve(movie("a", { title: "Renamed", favorite: true }));
+      else slow.reject(new Error("Down"));
+      await favorite;
+      await flushPromises();
+      expect(vm.movie).toMatchObject({ title: "Renamed", favorite: succeeds });
+      expect(vm.saveError).toEqual(
+        succeeds ? null : expect.stringContaining("favourite"),
+      );
+      wrapper.unmount();
+    },
+  );
 });
