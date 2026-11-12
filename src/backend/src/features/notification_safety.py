@@ -149,7 +149,9 @@ def _is_own_api_url(url: str) -> bool:
         return False
     path = unquote(target.path) or "/"
     # The API at the root, and under the deployment's own path prefix when it has one.
-    return any(path == api or path.startswith(api + "/") for api in {"/api", own.path.rstrip("/") + "/api"})
+    return any(
+        path == api or path.startswith(api + "/") for api in {"/api", own.path.rstrip("/") + "/api"}
+    )
 
 
 def _has_secret_query(url: str) -> bool:

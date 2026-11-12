@@ -426,6 +426,23 @@ def test_links_into_the_hosts_own_api_are_refused(monkeypatch, url, safe):
     assert notification_safety.url_is_safe(url) is safe
 
 
+@pytest.mark.parametrize(
+    "url, safe",
+    (
+        ("https://app.example.com/tracker/api/plugins/demo/", False),
+        ("https://app.example.com/api/plugins/demo/", False),
+        ("https://app.example.com/tracker/games/1", True),
+    ),
+)
+def test_own_api_links_are_refused_under_a_path_prefix(monkeypatch, url, safe):
+    from src.features import notification_safety
+
+    monkeypatch.setattr(
+        notification_safety.settings, "PUBLIC_APP_URL", "https://app.example.com/tracker/"
+    )
+    assert notification_safety.url_is_safe(url) is safe
+
+
 async def test_saved_public_url_is_used_for_acceptance_and_server_rendering(monkeypatch):
     from uuid import uuid4
 
