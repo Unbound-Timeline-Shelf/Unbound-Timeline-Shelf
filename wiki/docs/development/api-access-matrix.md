@@ -288,10 +288,12 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/game-identity/games/{game_id}/achievements` | user | Own manual tracking; foreign identifiers are refused. |
 | GET | `/api/game-identity/games/{game_id}/completion` | user | Own manual tracking; foreign identifiers are refused. |
 | GET | `/api/game-identity/games/{game_id}/completion/history` | user | Own manual tracking; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/plays` | user | Own logged plays; foreign identifiers are refused. |
 | GET | `/api/game-identity/games/{game_id}/tracking` | user | Own manual tracking; foreign identifiers are refused. |
 | GET | `/api/game-identity/manual-achievements/{achievement_id}/icon` | user | Own manual tracking; foreign identifiers are refused. |
 | PATCH | `/api/game-identity/manual-achievements/{achievement_id}` | user | Own manual tracking; foreign identifiers are refused. |
 | POST | `/api/game-identity/games/{game_id}/manual-achievements` | user | Own manual tracking; foreign identifiers are refused. |
+| POST | `/api/game-identity/games/{game_id}/plays` | user | Own logged plays; foreign identifiers are refused. |
 | PUT | `/api/game-identity/games/{game_id}/completion` | user | Own manual tracking; foreign identifiers are refused. |
 | PUT | `/api/game-identity/manual-achievements/{achievement_id}/earned` | user | Own manual tracking; foreign identifiers are refused. |
 
@@ -339,6 +341,7 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/game-ownership/separate` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/achievements-summary` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | PATCH | `/api/game/bulk-update` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| POST | `/api/game/bulk-delete` | user | Each game queried with `user_id == caller`; another account's IDs are reported as not found and left untouched. |
 | POST | `/api/game/create` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `library.sync`. |
 | GET | `/api/game/collection-index` | user-or-app | Compact projection of the caller's own nondeleted games. App grants need `library.sync`. |
 | GET | `/api/lists/{list_id}/cover` | user | The caller's own media collection and owned poster sources only. |
@@ -390,6 +393,9 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/game/{game_id}/files/{kind}/{filename}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/files/{kind}/{filename}/restore` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/metadata/refresh` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| DELETE | `/api/game/{game_id}/metadata/rejections` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| GET | `/api/game/{game_id}/metadata/rejections` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| POST | `/api/game/{game_id}/metadata/rejections` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/notes` | user-or-app | Own game notes only; app grants need `notes.read`. |
 | GET | `/api/game/{game_id}/notes-summary` | user-or-app | Own game notes only; app grants need `notes.read`. |
 | DELETE | `/api/game/{game_id}/notes/{note_name}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
@@ -457,6 +463,21 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/anime/{show_id}/seasons/{season_id}/episodes` | user | Show owned by caller; season/episode must belong to that show. |
 | PATCH | `/api/anime/{show_id}/seasons/{season_id}/episodes/bulk-watched` | user | Show owned by caller; season/episode must belong to that show. |
 | PATCH | `/api/anime/{show_id}/seasons/{season_id}/episodes/{episode_id}` | user | Show owned by caller; season/episode must belong to that show. |
+| POST | `/api/book/create` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| DELETE | `/api/book/delete/{book_id}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/book/get/{book_id}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/book/list` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/book/trash` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| POST | `/api/book/trash/empty` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| PATCH | `/api/book/update/{book_id}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| POST | `/api/book/{book_id}/editions` | user | Book owned by caller; edition/read must belong to that book. |
+| DELETE | `/api/book/{book_id}/editions/{edition_id}` | user | Book owned by caller; edition/read must belong to that book. |
+| PATCH | `/api/book/{book_id}/editions/{edition_id}` | user | Book owned by caller; edition/read must belong to that book. |
+| DELETE | `/api/book/{book_id}/purge` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| POST | `/api/book/{book_id}/reads` | user | Book owned by caller; edition/read must belong to that book. |
+| DELETE | `/api/book/{book_id}/reads/{read_id}` | user | Book owned by caller; edition/read must belong to that book. |
+| PATCH | `/api/book/{book_id}/reads/{read_id}` | user | Book owned by caller; edition/read must belong to that book. |
+| POST | `/api/book/{book_id}/restore` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/calendar` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/calendar/events` | user | Entry filtered by `user_id == caller`; referenced media must be the caller's. |
 | POST | `/api/calendar/events` | user | Entry filtered by `user_id == caller`; referenced media must be the caller's. |
@@ -479,6 +500,8 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/export/backup-status` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | GET | `/api/export/library` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | GET | `/api/export/media.csv` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
+| POST | `/api/import/books` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
+| POST | `/api/import/books/preview` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | POST | `/api/import/library` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | POST | `/api/import/list` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | POST | `/api/import/list/preview` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
@@ -504,8 +527,9 @@ are redacted. Validation errors never echo submitted values.
 | DELETE | `/api/lists/{list_id}/items/{item_id}` | user | List owned by caller; added media must also be the caller's. |
 | PUT | `/api/lists/{list_id}/order` | user | List owned by caller; added media must also be the caller's. |
 | GET | `/api/media` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/media-image/book/{book_id}/cover` | user | Book queried with `user_id == caller`; fetched through the public-address image cache. |
+| GET | `/api/media-image/{media_type}/episodes/{episode_id}/still` | user | Episode joined to a show owned by the caller; fetched through the public-address image cache. |
 | GET | `/api/media-image/{media_type}/{item_id}/{which}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
-| GET | `/api/media-image/{media_type}/episode/{episode_id}/still` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-stats` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-stats/activity/day` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media/inbox` | user | Inbox file belongs to the caller's storage and row. |

@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { formatInstant } from "../utils/dates";
 import {
   computed,
   ref,
   watch,
   defineAsyncComponent,
   onActivated,
+  onBeforeUnmount,
   onDeactivated,
 } from "vue";
 import PageHeader from "../components/PageHeader.vue";
@@ -32,7 +34,9 @@ import {
 import { queuePreferences } from "../services/preferences";
 import {
   CORE_HOME_WIDGETS,
+  homeWidgetIds,
   selectedHomeWidgets,
+  showsSuggestedHome,
 } from "../services/homeWidgets";
 import { fetchGames, deleteGame, gameLibraryRevision } from "../services/games";
 import { fetchWeeklyDigest, type WeeklyDigest } from "../services/stats";
@@ -73,6 +77,10 @@ const gamesLoading = ref(false);
 const digestLoading = ref(false);
 const gamesError = ref<string | null>(null);
 const digestError = ref<string | null>(null);
+const gamesUpdatedAt = ref<number | null>(null);
+const digestUpdatedAt = ref<number | null>(null);
+const refreshing = ref(false);
+const refreshFeedback = ref<string | null>(null);
 let gamesLoaded = false;
 let digestLoaded = false;
 let dataGeneration = 0;
@@ -100,8 +108,25 @@ const choices = computed(() => [
     description: item.widget?.description || `From ${item.pluginId}`,
   })),
 ]);
+// The person's widgets, or the suggestion until they choose (A22).
+const gamesReady = ref(false);
+const suggested = computed(() => showsSuggestedHome(preferences.value));
+const widgetIds = computed(
+  () =>
+    homeWidgetIds(preferences.value, {
+      loaded: gamesReady.value,
+      size: games.value.length,
+    }) ?? [],
+);
+const deciding = computed(
+  () =>
+    suggested.value &&
+    !gamesReady.value &&
+    !gamesError.value &&
+    preferencesLoaded.value,
+);
 const selected = computed(() =>
-  selectedHomeWidgets(preferences.value.home_widgets, choices.value),
+  selectedHomeWidgets(widgetIds.value, choices.value),
 );
 const showPicker = ref(false);
 const saving = ref(false);
@@ -135,7 +160,7 @@ const deletingGame = ref<Game | null>(null);
 const deleting = ref(false);
 const deleteError = ref<string | null>(null);
 
-async function loadGames() {
+async function loadGames(): Promise<boolean | null> {
   const generation = dataGeneration;
   const request = ++gamesRequest;
   const revision = gameLibraryRevision();
@@ -143,37 +168,48 @@ async function loadGames() {
   gamesError.value = null;
   try {
     const result = await fetchGames();
-    if (generation !== dataGeneration || request !== gamesRequest) return;
+    if (generation !== dataGeneration || request !== gamesRequest) return null;
     games.value = gameOwnershipGroups(result).entries;
     gamesLoaded = true;
+    gamesReady.value = true;
     lastGamesLoadedAt = Date.now();
+    gamesUpdatedAt.value = lastGamesLoadedAt;
     lastGamesRevision = revision;
+    return true;
   } catch (reason) {
-    if (generation === dataGeneration && request === gamesRequest)
+    if (generation === dataGeneration && request === gamesRequest) {
       gamesError.value =
         reason instanceof Error ? reason.message : "Could not load your games.";
+      return false;
+    }
+    return null;
   } finally {
     if (generation === dataGeneration && request === gamesRequest)
       gamesLoading.value = false;
   }
 }
-async function loadDigest() {
+async function loadDigest(): Promise<boolean | null> {
   const generation = dataGeneration;
   const request = ++digestRequest;
   digestLoading.value = true;
   digestError.value = null;
   try {
     const result = await fetchWeeklyDigest();
-    if (generation !== dataGeneration || request !== digestRequest) return;
+    if (generation !== dataGeneration || request !== digestRequest) return null;
     digest.value = result;
     digestLoaded = true;
     lastDigestLoadedAt = Date.now();
+    digestUpdatedAt.value = lastDigestLoadedAt;
+    return true;
   } catch (reason) {
-    if (generation === dataGeneration && request === digestRequest)
+    if (generation === dataGeneration && request === digestRequest) {
       digestError.value =
         reason instanceof Error
           ? reason.message
           : "Could not load this week's activity.";
+      return false;
+    }
+    return null;
   } finally {
     if (generation === dataGeneration && request === digestRequest)
       digestLoading.value = false;
@@ -181,6 +217,70 @@ async function loadDigest() {
 }
 function usesGames(id: string) {
   return !id.startsWith("plugin:") && !["goals", "weekly-digest"].includes(id);
+}
+const refreshTargets = computed(() => {
+  const ids = selected.value
+    .filter((widget) => widget.available !== false)
+    .map((widget) => widget.id);
+  return [
+    ...(ids.some(usesGames) ? (["games"] as const) : []),
+    ...(ids.includes("weekly-digest") ? (["digest"] as const) : []),
+  ];
+});
+const lastUpdatedItems = computed(() =>
+  refreshTargets.value.flatMap((target) => {
+    const timestamp =
+      target === "games" ? gamesUpdatedAt.value : digestUpdatedAt.value;
+    if (timestamp === null) return [];
+    return [
+      {
+        label: target === "games" ? "Games" : "This week",
+        timestamp,
+      },
+    ];
+  }),
+);
+function formatUpdateTime(timestamp: number) {
+  // milliseconds
+  return formatInstant(new Date(timestamp));
+}
+async function refreshHome() {
+  if (refreshing.value || !refreshTargets.value.length) return;
+  const generation = dataGeneration;
+  const accountId = currentUser.value?.id;
+  const targets = [...refreshTargets.value];
+  refreshing.value = true;
+  refreshFeedback.value = null;
+  try {
+    const outcomes = await Promise.all(
+      targets.map(
+        async (target) =>
+          [
+            target,
+            await (target === "games" ? loadGames() : loadDigest()),
+          ] as const,
+      ),
+    );
+    if (generation !== dataGeneration || currentUser.value?.id !== accountId)
+      return;
+    const completed = outcomes.filter(([, result]) => result !== null);
+    if (!completed.length) return;
+    const successful = completed.filter(([, result]) => result === true);
+    const failed = completed.filter(([, result]) => result === false);
+    if (!failed.length) {
+      refreshFeedback.value = "Home data refreshed successfully.";
+      return;
+    }
+    const label = (target: "games" | "digest") =>
+      target === "games" ? "games" : "this week's activity";
+    const retained = successful.map(([target]) => label(target));
+    const needingRetry = failed.map(([target]) => label(target));
+    refreshFeedback.value = retained.length
+      ? `Updated ${retained.join(" and ")}. Could not update ${needingRetry.join(" and ")}; retry below. Existing content is kept where available.`
+      : `Could not refresh ${needingRetry.join(" and ")}. Existing content is kept where available; retry below.`;
+  } finally {
+    if (generation === dataGeneration) refreshing.value = false;
+  }
 }
 function ensureData() {
   if (
@@ -190,9 +290,9 @@ function ensureData() {
     (hasHomeOverride.value && !replacementFailed.value)
   )
     return;
-  const ids = preferences.value.home_widgets;
+  const ids = widgetIds.value;
   if (
-    (showPicker.value || ids.some(usesGames)) &&
+    (showPicker.value || suggested.value || ids.some(usesGames)) &&
     !gamesLoaded &&
     !gamesLoading.value &&
     !gamesError.value
@@ -209,6 +309,18 @@ function ensureData() {
 onActivated(() => {
   homeActive = true;
   ensureData();
+  refreshStale();
+});
+// Coming back to the tab refreshes what is more than a minute old, so Home
+// is current without pressing Refresh (A22).
+function onVisible() {
+  if (document.visibilityState === "visible" && homeActive) refreshStale();
+}
+document.addEventListener("visibilitychange", onVisible);
+onBeforeUnmount(() =>
+  document.removeEventListener("visibilitychange", onVisible),
+);
+function refreshStale() {
   if (
     !preferencesLoaded.value ||
     preferencesError.value ||
@@ -217,7 +329,7 @@ onActivated(() => {
     return;
   if (
     gamesLoaded &&
-    preferences.value.home_widgets.some(usesGames) &&
+    widgetIds.value.some(usesGames) &&
     (lastGamesRevision !== gameLibraryRevision() ||
       Date.now() - lastGamesLoadedAt > 60_000) &&
     !gamesLoading.value
@@ -225,12 +337,12 @@ onActivated(() => {
     void loadGames();
   if (
     digestLoaded &&
-    preferences.value.home_widgets.includes("weekly-digest") &&
+    widgetIds.value.includes("weekly-digest") &&
     Date.now() - lastDigestLoadedAt > 60_000 &&
     !digestLoading.value
   )
     void loadDigest();
-});
+}
 onDeactivated(() => {
   homeActive = false;
 });
@@ -241,17 +353,21 @@ watch(
     games.value = [];
     digest.value = null;
     gamesLoaded = digestLoaded = false;
+    gamesReady.value = false;
     lastGamesLoadedAt = lastDigestLoadedAt = 0;
+    gamesUpdatedAt.value = digestUpdatedAt.value = null;
     lastGamesRevision = -1;
     gamesLoading.value = digestLoading.value = false;
     gamesError.value = digestError.value = null;
+    refreshing.value = false;
+    refreshFeedback.value = null;
     showPicker.value = showForm.value = showRandom.value = false;
     editingGame.value = collectionGame.value = deletingGame.value = null;
   },
 );
 watch(
   [
-    () => preferences.value.home_widgets,
+    widgetIds,
     preferencesLoaded,
     preferencesError,
     showPicker,
@@ -270,6 +386,11 @@ function widgetLoading(id: string) {
   return (
     (usesGames(id) && !gamesLoaded && !gamesError.value) ||
     (id === "weekly-digest" && !digestLoaded && !digestError.value)
+  );
+}
+function widgetHasData(id: string) {
+  return (
+    (usesGames(id) && gamesLoaded) || (id === "weekly-digest" && digestLoaded)
   );
 }
 function retryWidget(id: string) {
@@ -319,11 +440,18 @@ async function saveHome(ids: string[]) {
   saveError.value = null;
   saved.value = false;
   try {
-    const result = await queuePreferences({ home_widgets: [...ids] });
+    const result = await queuePreferences({
+      home_widgets: [...ids],
+      home_widgets_customized: true,
+    });
     if (currentUser.value?.id !== accountId) return;
     preferences.value = result.latest
       ? result.prefs
-      : { ...preferences.value, home_widgets: result.prefs.home_widgets };
+      : {
+          ...preferences.value,
+          home_widgets: result.prefs.home_widgets,
+          home_widgets_customized: result.prefs.home_widgets_customized,
+        };
     showPicker.value = false;
     saved.value = true;
   } catch (reason) {
@@ -388,6 +516,16 @@ async function confirmDelete() {
           <button
             type="button"
             class="ui-btn ui-btn-ghost"
+            aria-label="Refresh Home"
+            :disabled="refreshing || !refreshTargets.length"
+            :aria-busy="refreshing"
+            @click="refreshHome"
+          >
+            {{ refreshing ? "Refreshing…" : "Refresh Home" }}
+          </button>
+          <button
+            type="button"
+            class="ui-btn ui-btn-ghost"
             :disabled="!preferencesLoaded || Boolean(preferencesError)"
             data-tour="customize-home"
             @click="
@@ -406,16 +544,33 @@ async function confirmDelete() {
           </button>
         </template>
       </PageHeader>
+      <div
+        v-if="preferencesLoaded && !preferencesError && refreshTargets.length"
+        class="home-refresh-status"
+        aria-label="Home update status"
+      >
+        <p v-if="lastUpdatedItems.length" class="home-updated-at">
+          Last successful updates:
+          <span v-for="(item, index) in lastUpdatedItems" :key="item.label">
+            <span v-if="index" aria-hidden="true"> · </span>
+            {{ item.label }} {{ formatUpdateTime(item.timestamp) }}
+          </span>
+        </p>
+        <p v-else class="home-updated-at">
+          Selected Home data has not loaded yet.
+        </p>
+        <p v-if="refreshFeedback" role="status" class="home-refresh-feedback">
+          {{ refreshFeedback }}
+        </p>
+        <p v-else-if="refreshing" role="status" class="home-refresh-feedback">
+          Refreshing selected Home data…
+        </p>
+      </div>
+      <!-- pages of this app, so no "opens elsewhere" arrow (A22) -->
       <nav class="home-shortcuts" aria-label="Library shortcuts">
-        <router-link to="/games"
-          >Games <span aria-hidden="true">↗</span></router-link
-        >
-        <router-link to="/movies"
-          >Movies <span aria-hidden="true">↗</span></router-link
-        >
-        <router-link to="/games/collections"
-          >Collections <span aria-hidden="true">↗</span></router-link
-        >
+        <router-link to="/games">Games</router-link>
+        <router-link to="/movies">Movies</router-link>
+        <router-link to="/games/collections">Collections</router-link>
       </nav>
       <p v-if="!preferencesLoaded" role="status">Loading your Home…</p>
       <div v-else-if="preferencesError" role="alert" class="ui-alert">
@@ -432,8 +587,9 @@ async function confirmDelete() {
         <p v-if="saved" role="status" class="save-feedback">
           Home saved to your account.
         </p>
+        <p v-if="deciding" role="status">Loading your Home…</p>
         <section
-          v-if="!selected.length"
+          v-else-if="!selected.length"
           class="home-empty"
           aria-labelledby="home-empty-title"
         >
@@ -454,7 +610,20 @@ async function confirmDelete() {
             Add widgets
           </button>
         </section>
-        <div v-else class="home-widgets">
+        <p v-if="suggested && selected.length" class="home-suggested">
+          Suggested for you.
+          <button
+            type="button"
+            class="ui-link-button"
+            @click="
+              saveError = null;
+              showPicker = true;
+            "
+          >
+            Choose your own widgets
+          </button>
+        </p>
+        <div v-if="!deciding && selected.length" class="home-widgets">
           <section
             v-for="widget in selected"
             :key="widget.id"
@@ -491,7 +660,7 @@ async function confirmDelete() {
               />
             </template>
             <div
-              v-else-if="widgetError(widget.id)"
+              v-else-if="widgetError(widget.id) && !widgetHasData(widget.id)"
               role="alert"
               class="ui-alert"
             >
@@ -511,16 +680,27 @@ async function confirmDelete() {
             >
               Loading {{ widget.title.toLowerCase() }}…
             </p>
-            <HomeCoreWidget
-              v-else
-              :widget-id="widget.id"
-              :games="games"
-              :digest="digest"
-              @edit="openEdit"
-              @collection="collectionGame = $event"
-              @random="showRandom = true"
-              @changed="loadGames"
-            />
+            <template v-else>
+              <div v-if="widgetError(widget.id)" role="alert" class="ui-alert">
+                {{ widgetError(widget.id) }}
+                <button
+                  type="button"
+                  class="ui-btn ui-btn-ghost"
+                  @click="retryWidget(widget.id)"
+                >
+                  Retry
+                </button>
+              </div>
+              <HomeCoreWidget
+                :widget-id="widget.id"
+                :games="games"
+                :digest="digest"
+                @edit="openEdit"
+                @collection="collectionGame = $event"
+                @random="showRandom = true"
+                @changed="loadGames"
+              />
+            </template>
           </section>
         </div>
       </template>
@@ -528,7 +708,7 @@ async function confirmDelete() {
     <HomeWidgetPicker
       v-if="showPicker"
       :choices="choices"
-      :selected="preferences.home_widgets"
+      :selected="widgetIds"
       :busy="saving"
       :error="saveError || gamesError"
       :loading="gamesLoading"
@@ -598,6 +778,25 @@ async function confirmDelete() {
 </template>
 
 <style scoped>
+.home-suggested {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0 0 14px;
+  color: var(--ui-dim);
+  font-size: var(--ui-font-small);
+}
+.home-suggested button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-accent-text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .home-page {
   box-sizing: border-box;
   padding: 80px var(--ui-edge-right) 32px var(--ui-edge-left);
@@ -614,6 +813,23 @@ async function confirmDelete() {
   flex-wrap: wrap;
   gap: 10px;
   margin: 0 0 32px;
+}
+.home-refresh-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 20px;
+  margin: -20px 0 24px;
+  color: var(--ui-dim);
+  font-size: var(--ui-font-small);
+}
+.home-refresh-status p {
+  margin: 0;
+  line-height: 1.5;
+}
+.home-refresh-feedback {
+  color: var(--ui-text);
 }
 .home-shortcuts a {
   display: flex;

@@ -261,19 +261,28 @@ it("only follows https or application-path links", () => {
   expect(safeHref("/settings?section=notifications")?.kind).toBe("route");
 });
 
-it("refuses absolute links into the app's own API", () => {
-  vi.stubGlobal("location", new URL("https://app.example.com/notifications"));
+it("never treats a link into this app's own API as external (#398)", () => {
+  const original = window.location.href;
+  (
+    window as unknown as { happyDOM: { setURL(url: string): void } }
+  ).happyDOM.setURL("https://tracker.example.com/games");
   try {
-    for (const own of [
-      "https://app.example.com/api/plugins/demo/frontend/index.html",
-      "https://app.example.com/%61pi/plugins/demo/frontend/",
-      "https://app.example.com/api",
-    ])
-      expect(safeHref(own)).toBeNull();
-    expect(safeHref("https://app.example.com/games/1")?.kind).toBe("external");
+    expect(
+      safeHref("https://tracker.example.com/api/plugins/x/frontend/index.html"),
+    ).toBeNull();
+    expect(safeHref("https://TRACKER.example.com/api")).toBeNull();
+    expect(
+      safeHref("https://tracker.example.com/%61pi/plugins/x/frontend/"),
+    ).toBeNull();
+    expect(safeHref("https://tracker.example.com:8443/api/x")).toBeNull();
+    expect(safeHref("https://tracker.example.com/games/1")?.kind).toBe(
+      "external",
+    );
     expect(safeHref("https://other.example.com/api/x")?.kind).toBe("external");
   } finally {
-    vi.unstubAllGlobals();
+    (
+      window as unknown as { happyDOM: { setURL(url: string): void } }
+    ).happyDOM.setURL(original);
   }
 });
 

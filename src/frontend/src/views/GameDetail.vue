@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
-import { formatDisplayDate } from "../utils/dates";
+import {
+  formatDisplayDate,
+  formatInstant,
+  toLocalDateInput,
+} from "../utils/dates";
+import { releaseRows } from "../utils/releaseDate";
 import { activePriority, priorityLabel, isFinished } from "../utils/priority";
 import { HERO_WIDTH, POSTER_WIDTH, sizedAssetUrl } from "../utils/gameImages";
 import type { TrashedGameFile } from "../services/media";
@@ -11,6 +16,7 @@ import type { Achievement, GameStatus } from "../types/game";
 import GameRatingPicker from "../components/GameRatingPicker.vue";
 import GameCollectionsButton from "../components/GameCollectionsButton.vue";
 import BackButton from "../components/BackButton.vue";
+import { onRovingKeydown, rovingTabIndex } from "../utils/rovingFocus";
 import GameTopBar from "../components/GameTopBar.vue";
 import GameUnavailable from "../components/game/GameUnavailable.vue";
 import HeartIcon from "../components/HeartIcon.vue";
@@ -20,16 +26,23 @@ import {
   formatPercent,
   unlockedOn,
   KIND_LABEL,
+  MEDAL_LABEL,
+  achievementLabel,
+  visibleMedal,
   iconOf,
+  platinumOf,
 } from "../utils/achievements";
 import type { AchFilter } from "../composables/useGameAchievements";
 import GameLaunchButton from "../components/game/GameLaunchButton.vue";
 import GameVersionsPanel from "../components/game/GameVersionsPanel.vue";
 import GameSourcesPanel from "../components/game/GameSourcesPanel.vue";
+import RelatedGamesPanel from "../components/game/RelatedGamesPanel.vue";
 import GameManualTrackingPanel from "../components/game/GameManualTrackingPanel.vue";
 import {
+  computed,
   provide,
   defineAsyncComponent,
+  nextTick,
   onBeforeUnmount,
   ref,
   watch,
@@ -108,6 +121,10 @@ const {
   saveResumeNote,
   loggingPlaytime,
   logPlaytime,
+  logPlayNow,
+  playLogMessage,
+  playLogError,
+  playedOn,
   similarGames,
   toggleFavorite,
   favoriteError,
@@ -137,6 +154,7 @@ const {
   moreTabs,
   showMoreTabs,
   openMoreTab,
+  selectTab,
   achievementsOn,
   tieAchievements,
   mediaItems,
@@ -218,6 +236,23 @@ const {
   formatPlaytime,
 } = model;
 
+// regional and edition releases, oldest first, in the date style the person chose
+const releases = computed(() => releaseRows(game.value?.releases));
+
+// Switching tabs never drops the page to the top (UX-AUDIT-APP A7). The
+// open panel always leaves room for a full screen below the tab bar (see
+// game-detail-layout.css), so a shorter panel cannot clamp the scroll
+// position, during a switch or when a reload restores it; if the tab bar had
+// scrolled out of view it comes back to the top of the screen.
+const tabbarWrap = ref<HTMLElement | null>(null);
+watch(activeTab, () => {
+  const barTop = tabbarWrap.value?.getBoundingClientRect().top ?? 0;
+  if (barTop < 0)
+    void nextTick(() =>
+      window.scrollTo({ top: window.scrollY + barTop, behavior: "instant" }),
+    );
+});
+
 const editingAchievement = ref<Achievement | null>(null);
 function openAchievementEditor(achievement: Achievement) {
   progressError.value = "";
@@ -242,8 +277,10 @@ async function onCopiesChanged() {
   await refreshCopies();
 }
 
-// Where each metadata value came from; a label shows beside a field only when
-// sources disagree. Loading it is best effort: the page works without it.
+// Where each metadata value came from; a label shows beside a field when
+// sources disagree, when the field is locked, or when a preferred source is
+// not the one shown (showsFieldSource). Loading it is best effort: the page
+// works without it.
 const fieldSources = ref<FieldSources>({});
 // a credit name can be the developer, the publisher or both
 function creditFields(name: string): string[] {
@@ -343,6 +380,7 @@ async function onFieldSourceChanged() {
     <GameFormModal
       v-if="showEditModal"
       :game="game"
+      history-key="edit"
       @close="showEditModal = false"
       @saved="onGameSaved"
       @delete="onDeleteFromModal"
@@ -490,7 +528,7 @@ async function onFieldSourceChanged() {
               type="button"
               class="badge achievement-progress-badge"
               title="Jump to Achievements"
-              @click="activeTab = 'Achievements'"
+              @click="selectTab('Achievements')"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -513,7 +551,7 @@ async function onFieldSourceChanged() {
             <span
               v-if="game.staleSince"
               class="badge stale-badge"
-              :title="`Last sync (${new Date(game.staleSince).toLocaleDateString()}) no longer saw this in your ${game.source} library.`"
+              :title="`Last sync (${formatInstant(game.staleSince, { time: false })}) no longer saw this in your ${game.source} library.`"
             >
               Not currently in your {{ game.source }} library
             </span>
@@ -566,18 +604,30 @@ async function onFieldSourceChanged() {
       </div>
     </section>
 
-    <div class="tabbar-wrap">
-      <nav class="tabbar">
-        <button
-          v-for="tab in visibleTabs"
-          :key="tab"
-          type="button"
-          class="tab-btn"
-          :class="{ active: activeTab === tab }"
-          @click="activeTab = tab"
+    <div ref="tabbarWrap" class="tabbar-wrap">
+      <!-- a tablist (critic C3): one Tab stop, arrows between the tabs -->
+      <nav class="tabbar" aria-label="Game page">
+        <div
+          class="tabbar-tabs"
+          role="tablist"
+          aria-label="Game page sections"
+          @keydown="onRovingKeydown($event)"
         >
-          {{ tab }}
-        </button>
+          <button
+            v-for="(tab, index) in visibleTabs"
+            :key="tab"
+            type="button"
+            role="tab"
+            class="tab-btn"
+            data-roving
+            :class="{ active: activeTab === tab }"
+            :aria-selected="activeTab === tab"
+            :tabindex="rovingTabIndex(index, visibleTabs.indexOf(activeTab))"
+            @click="selectTab(tab)"
+          >
+            {{ tab }}
+          </button>
+        </div>
         <div v-if="moreTabs.length" class="tab-more">
           <button
             type="button"
@@ -635,6 +685,10 @@ async function onFieldSourceChanged() {
         </button>
       </div>
 
+      <RelatedGamesPanel
+        :key="`related-${game.id}-${copiesRevision}`"
+        :game-id="game.id"
+      />
       <GameVersionsPanel
         :key="`versions-${game.id}`"
         :game-id="game.id"
@@ -667,7 +721,7 @@ async function onFieldSourceChanged() {
               class="meta-value meta-link"
               :class="{ accent: fact.accent, muted: fact.muted }"
               :title="`Open ${fact.tab}`"
-              @click="activeTab = fact.tab"
+              @click="selectTab(fact.tab)"
             >
               {{ fact.value }}
             </button>
@@ -675,8 +729,14 @@ async function onFieldSourceChanged() {
               v-else
               class="meta-value"
               :class="{ accent: fact.accent, muted: fact.muted }"
-              >{{ fact.value }}</span
-            >
+              >{{ fact.value
+              }}<GameFieldSource
+                v-if="fact.field"
+                :game-id="game.id"
+                :field="fact.field"
+                :entry="fieldSources[fact.field]"
+                @changed="onFieldSourceChanged"
+            /></span>
           </div>
         </div>
       </div>
@@ -851,20 +911,54 @@ async function onFieldSourceChanged() {
                 >
                 <span v-if="p.lastPlayedAt"
                   >last played
-                  {{ new Date(p.lastPlayedAt).toLocaleDateString() }}</span
+                  {{ formatInstant(p.lastPlayedAt, { time: false }) }}</span
                 >
               </div>
             </li>
           </ul>
-          <button
-            type="button"
-            class="read-more-btn"
-            :disabled="loggingPlaytime"
-            title="Log a session just played, without editing the total by hand"
-            @click="logPlaytime(30)"
-          >
-            + Log 30 min just played
-          </button>
+        </div>
+
+        <div class="more-block">
+          <h3 class="more-title">Log play</h3>
+          <div class="play-log" role="group" aria-label="Log play">
+            <button
+              type="button"
+              class="read-more-btn"
+              :disabled="loggingPlaytime"
+              title="Record that you played; the total playtime is not changed"
+              @click="logPlayNow"
+            >
+              Log play
+            </button>
+            <button
+              type="button"
+              class="read-more-btn"
+              :disabled="loggingPlaytime"
+              title="Record a play and add 30 minutes to the total"
+              @click="logPlaytime(30)"
+            >
+              + Log 30 min played
+            </button>
+            <label class="play-log-date">
+              <span>Played on</span>
+              <input
+                v-model="playedOn"
+                type="date"
+                :max="toLocalDateInput(new Date())"
+                aria-describedby="play-log-hint"
+              />
+            </label>
+            <p id="play-log-hint" class="play-log-hint">
+              Leave the date empty for today. Correcting the total playtime is
+              not a play and does not change Last played.
+            </p>
+            <p v-if="playLogMessage" role="status" class="play-log-hint">
+              {{ playLogMessage }}
+            </p>
+            <p v-if="playLogError" role="alert" class="play-log-error">
+              {{ playLogError }}
+            </p>
+          </div>
         </div>
 
         <div v-if="ratingParts.length" class="more-block">
@@ -875,6 +969,24 @@ async function onFieldSourceChanged() {
               <span class="kv-value accent">{{ part.value }}</span>
             </div>
           </div>
+        </div>
+
+        <div v-if="releases.length" class="more-block">
+          <!-- no source label: the backend records provenance for the first
+               release date (release_date), not for the release list -->
+          <h3 class="more-title">Releases</h3>
+          <ul class="release-list">
+            <li v-for="release in releases" :key="release.key">
+              <span class="release-date">{{ release.when }}</span>
+              <span class="release-where">{{ release.where }}</span>
+              <span v-if="release.edition" class="chip">{{
+                release.edition
+              }}</span>
+              <span v-if="release.category" class="chip">{{
+                release.category
+              }}</span>
+            </li>
+          </ul>
         </div>
 
         <div v-if="moreTags.length || game.features.length" class="more-block">
@@ -925,13 +1037,13 @@ async function onFieldSourceChanged() {
             <div v-if="game.dateAdded" class="kv-row">
               <span class="kv-label">Added</span>
               <span class="kv-value">{{
-                new Date(game.dateAdded).toLocaleDateString()
+                formatInstant(game.dateAdded, { time: false })
               }}</span>
             </div>
             <div v-if="recentActivity" class="kv-row">
               <span class="kv-label">Last played</span>
               <span class="kv-value">{{
-                new Date(recentActivity).toLocaleDateString()
+                formatInstant(recentActivity, { time: false })
               }}</span>
             </div>
             <div v-if="game.source" class="kv-row">
@@ -1030,6 +1142,18 @@ async function onFieldSourceChanged() {
         <h2 class="ach-title">Achievements</h2>
         <span class="ach-count"
           >{{ unlockedCount }} / {{ game.achievements.length }}</span
+        >
+        <span
+          v-if="platinumOf(game.achievements, isHiddenLocked)"
+          class="ach-tag ach-medal medal-platinum ach-platinum-summary"
+          :class="{
+            earned: isUnlocked(platinumOf(game.achievements, isHiddenLocked)!),
+          }"
+          >{{
+            isUnlocked(platinumOf(game.achievements, isHiddenLocked)!)
+              ? "Platinum earned"
+              : "Platinum to earn"
+          }}</span
         >
         <div class="ach-tools">
           <input
@@ -1194,6 +1318,12 @@ async function onFieldSourceChanged() {
                   :class="a.kind"
                   >{{ KIND_LABEL[a.kind] }}</span
                 >
+                <span
+                  v-if="visibleMedal(a, isHiddenLocked(a))"
+                  class="ach-tag ach-medal"
+                  :class="`medal-${visibleMedal(a, isHiddenLocked(a))}`"
+                  >{{ MEDAL_LABEL[visibleMedal(a, isHiddenLocked(a))!] }}</span
+                >
                 <span v-if="a.manualOverride" class="ach-tag">Manual</span>
                 <span v-if="a.points && !isHiddenLocked(a)" class="ach-tag"
                   >{{ a.points }} pts</span
@@ -1283,7 +1413,7 @@ async function onFieldSourceChanged() {
                 class="ach-btn"
                 :class="{ on: isPinned(a) }"
                 :aria-pressed="isPinned(a)"
-                :aria-label="`${isPinned(a) ? 'Unpin' : 'Pin'} ${a.name}`"
+                :aria-label="`${isPinned(a) ? 'Unpin' : 'Pin'} ${achievementLabel(a, isHiddenLocked(a))}`"
                 @click="togglePin(a)"
               >
                 {{ isPinned(a) ? "Unpin" : "Pin" }}
@@ -1292,7 +1422,7 @@ async function onFieldSourceChanged() {
                 type="button"
                 class="ach-btn"
                 :disabled="progressUpdating.has(a.id)"
-                :aria-label="`Edit ${a.name}`"
+                :aria-label="`Edit ${achievementLabel(a, isHiddenLocked(a))}`"
                 @click="openAchievementEditor(a)"
               >
                 Edit

@@ -12,8 +12,10 @@ it.each([
 ] as const)(
   "sends only supplied %s tracking fields, including explicit clears",
   async (kind, patch) => {
-    const fetch = vi.fn(
-      async (_url: string, _options: RequestInit) =>
+    const fetch = vi.fn<
+      (url: string, options: RequestInit) => Promise<Response>
+    >(
+      async () =>
         new Response(
           JSON.stringify({
             id: "a",

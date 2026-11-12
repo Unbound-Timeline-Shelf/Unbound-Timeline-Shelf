@@ -11,13 +11,16 @@ from src.database.base import Base
 # Import every model module here so its table gets registered on
 # Base.metadata before autogenerate compares it against the database.
 from src.database.models import (
+    account_storage_cleanup,  # noqa: F401
     achievement,  # noqa: F401
     achievement_override,  # noqa: F401
+    achievement_rekey_log,  # noqa: F401
     achievement_sync_queue,  # noqa: F401
     admin_user_audit,  # noqa: F401
     anime,  # noqa: F401
     app_integration_settings,  # noqa: F401
     auth,  # noqa: F401
+    book,  # noqa: F401
     calendar_event,  # noqa: F401
     calendar_source,  # noqa: F401
     delegation,  # noqa: F401
@@ -31,7 +34,9 @@ from src.database.models import (
     game_identity,  # noqa: F401
     game_identity_backfill,  # noqa: F401
     game_identity_tracking,  # noqa: F401
+    game_metadata_rejection,  # noqa: F401
     game_note_detail,  # noqa: F401
+    game_pending_relationship,  # noqa: F401
     game_profile,  # noqa: F401
     game_profile_stat_snapshot,  # noqa: F401
     inbox_item,  # noqa: F401

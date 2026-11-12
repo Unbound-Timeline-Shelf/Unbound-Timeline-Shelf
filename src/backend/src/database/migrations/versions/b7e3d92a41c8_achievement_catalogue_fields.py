@@ -22,7 +22,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def _columns() -> tuple[sa.Column, ...]:
-    # New Column objects on every call, since a Column can be attached to only one table.
+    # A fresh Column each time: one can belong to only one table, and Column.copy() is
+    # deprecated (#397).
     return (
         sa.Column("medal", sa.String(length=10), nullable=True),
         sa.Column("points", sa.Integer(), nullable=True),

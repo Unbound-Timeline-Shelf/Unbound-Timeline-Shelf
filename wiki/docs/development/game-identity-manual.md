@@ -1,8 +1,8 @@
 # Manual achievements and completion
 
 Phase 3 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#97](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/97). It builds on the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#97](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/97). It builds on the
 [data model](game-identity-model.md), [ingestion](game-ingestion.md),
 [decisions](game-identity-decisions.md) and [counters](game-identity-counters.md). Paths start
 `src/backend/src/`. No migration: `game_manual_achievements` and `game_field_values` were created by
@@ -61,6 +61,31 @@ widens the view, splitting narrows it; no row is rewritten.
 | `DELETE .../manual-achievements/{id}` | Archive (204) |
 | `GET .../manual-achievements/{id}/icon` | Local resized copy through the provider-icon fetcher (public hosts only) |
 | `GET/PUT/DELETE .../games/{id}/completion`, `GET .../completion/history` | Per-version status, set by hand, release, history |
+
+### Logged plays (#467)
+
+| Route | Purpose |
+| --- | --- |
+| `POST .../games/{id}/plays` | `{played_at?, request_id?}`; records one play (201) and returns `{event, last_played_at}` |
+| `GET .../games/{id}/plays` | The latest 20 logged plays, newest first |
+
+A logged play is activity; a playtime correction is not. The rules:
+
+- `played_at` defaults to now. A time more than five minutes ahead of the server is 422; a browser clock a
+  little ahead is clamped to now. A date-only choice in the UI is sent as local noon of that day, so no
+  timezone moves it to another calendar day.
+- Each log is a `game_play_events` row (migration `c4e7a1d2f905`) and moves the game's `last_played_at`
+  forward to `played_at`, never backwards. The game row is locked first, so concurrent logs serialise and
+  the latest time wins.
+- `request_id` (8-64 of `A-Z a-z 0-9 _ -`) makes a retry idempotent: the same id returns the first event;
+  reusing it for another game is 409.
+- `counters.adjust_total` (`PUT .../metrics/playtime`), `PATCH /api/game/update` of `playtime_seconds` or
+  `status`, and a provider reporting a larger lifetime total never touch `last_played_at`. A Steam sync
+  only moves it forward to Steam's own `rtime_last_played`, so it cannot erase a newer logged play.
+- Home Continue playing sorts by `last_played_at`, This week counts games whose `last_played_at` is in the
+  last seven days, and the group overview takes the latest member, so a log shows once in each.
+- The library export lists `play_events`; an import keeps each game's own `last_played_at` and does not
+  replay them.
 
 Icons must be public `http(s)` addresses without credentials, on ports 80/443; they are fetched, size-limited and
 resized on first display, like provider icons.

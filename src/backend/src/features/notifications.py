@@ -141,6 +141,8 @@ async def _exact_episode_notifications(
     )
     seen_numbers: set[tuple[Any, int]] = set()
     for show, season_number, episode_number, air_at in (await db.execute(ep_stmt)).all():
+        if not isinstance(show, (Anime, TVShow)) or air_at is None:
+            continue
         seen_numbers.add((show.id, episode_number))
         row = _episode_row(
             source.media_type, show, season_number, episode_number, air_at, prefs=prefs

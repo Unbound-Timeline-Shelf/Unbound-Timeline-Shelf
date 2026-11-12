@@ -666,6 +666,8 @@ def foreign_calls(w):
         ("put", f"{base}/games/{g}/completion", {"status": "BEATEN"}),
         ("delete", f"{base}/games/{g}/completion", None),
         ("get", f"{base}/games/{g}/completion/history", None),
+        ("get", f"{base}/games/{g}/plays", None),
+        ("post", f"{base}/games/{g}/plays", {"request_id": "stranger-01"}),
         ("get", f"{base}/names/games/{g}", None),
         ("patch", f"{base}/manual-achievements/{w['achievement']}", {"title": "stolen"}),
         ("delete", f"{base}/manual-achievements/{w['achievement']}", None),

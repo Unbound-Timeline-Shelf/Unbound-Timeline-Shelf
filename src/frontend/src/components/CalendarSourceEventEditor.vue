@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { deviceTimeZone } from "../utils/dates";
 import { computed, ref } from "vue";
 import UiModal from "./UiModal.vue";
 import {
@@ -47,7 +48,7 @@ function payload(): OverrideInput {
         : {
             kind: "zoned",
             value: `${date.value}T${time.value}:00`,
-            tzid: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+            tzid: deviceTimeZone(),
           };
   }
   return { ...occurrenceTarget(initial), scope: scope.value, fields };
@@ -131,7 +132,7 @@ async function work(action: () => Promise<unknown>) {
         {{
           initial.start.kind === "floating"
             ? "Floating time, shown as written."
-            : `Times shown in ${Intl.DateTimeFormat().resolvedOptions().timeZone}.`
+            : `Times shown in ${deviceTimeZone()}.`
         }}
       </p>
       <label

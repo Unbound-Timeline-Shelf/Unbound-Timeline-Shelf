@@ -32,15 +32,27 @@ def _patch(patch: MetadataPatch, allowed: Collection[str]) -> MetadataPatch:
     )
     if relations != patch.relations:
         updates["relations"] = relations
+    # A merge or redirect may only be followed in a namespace the provider owns (C4.4 rule 2).
+    identity = patch.identity
+    if identity is not None and any(key not in allowed for key in identity.previous_ids):
+        updates["identity"] = identity.model_copy(
+            update={"previous_ids": _own(identity.previous_ids, allowed)}
+        )
     return patch.model_copy(update=updates) if updates else patch
 
 
 def confine_to_namespaces(response: ProviderResponse, allowed: Collection[str]) -> ProviderResponse:
-    """Drop provider ids outside `allowed` from every candidate, relation and patch."""
+    """Drop provider ids outside `allowed` from every candidate, resolution, relation and patch."""
     updates: dict = {}
     candidates = tuple(_candidate(candidate, allowed) for candidate in response.candidates)
     if candidates != response.candidates:
         updates["candidates"] = candidates
+    resolved = tuple(
+        resolution.model_copy(update={"candidate": _candidate(resolution.candidate, allowed)})
+        for resolution in response.resolved
+    )
+    if resolved != response.resolved:
+        updates["resolved"] = resolved
     if response.metadata is not None:
         patch = _patch(response.metadata, allowed)
         if patch is not response.metadata:

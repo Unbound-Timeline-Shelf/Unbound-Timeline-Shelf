@@ -1,6 +1,6 @@
 # User-extensible tag catalogue without losing source tags
 
-Design proposal for [#267](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/267)
+Design proposal for [#267](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/267)
 (source: Rosefall #36). **Accepted design; implemented (phases 2 and 3 for games, statistics and the media filter).** Decisions
 confirmed on 19 October 2026. Paths start
 `src/backend/src/`.
@@ -17,7 +17,7 @@ confirmed on 19 October 2026. Paths start
   collapse whitespace, 40 characters, case-insensitive de-duplication).
 * Readers: top tags via `func.unnest(Game.tags)` in `api/routes/stats.py`; the media tag filter via
   `MediaItem.tags.any(tag)` in `api/routes/media.py`; export and import carry the arrays.
-* #140 / [#177](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/177): the Games filter compares tags
+* #140 / [#177](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/177): the Games filter compares tags
   through fixed client-side rules (`utils/genres.ts`: spelling, synonyms, broader genres). Stored tags are never
   rewritten, "Roguelike" and "Roguelite" stay separate, and rollback is removing a rule entry (see
   [Games user guide, Tag normalization](../../user-guide/games.md)). That work is not reopened here.
@@ -133,7 +133,7 @@ Populated-database test: every `tags` array is identical before upgrade, after u
 
 ## 11. Confirmed decisions and implementation boundary
 
-The maintainer's answers on [#267](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/267) approve both
+The maintainer's answers on [#267](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/267) approve both
 deployment defaults and private user catalogues, every taggable feature, confirmed suggestions and pure renaming.
 Follow-up confirmation on 19 October establishes user-over-deployment precedence while keeping original provider
 tags recoverable. There are no remaining product questions for this design.

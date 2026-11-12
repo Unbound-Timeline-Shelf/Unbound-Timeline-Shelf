@@ -81,11 +81,7 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Install backup tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends restic postgresql-client
-          restic version
-          pg_dump --version
+        uses: ./.github/actions/backup-tools
 
       # The key is synthetic, but the log must never carry a key in any case.
       - name: Mask the drill key
@@ -105,7 +101,7 @@ jobs:
 
       - name: Upload the drill report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: restore-drill-report-${{ github.run_id }}
           path: /tmp/restore-drill

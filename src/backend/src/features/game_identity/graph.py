@@ -147,8 +147,16 @@ async def merge_graph(db: AsyncSession, user_id: UUID, *, readonly: bool = False
         )
         found = rows.all()
         return MergeGraph(
-            parent={child: parent for _, child, parent, _ in found},
-            edge={child: EdgeView(edge_id, shown) for edge_id, child, _, shown in found},
+            parent={
+                child: parent
+                for _, child, parent, _ in found
+                if child is not None and parent is not None
+            },
+            edge={
+                child: EdgeView(edge_id, shown)
+                for edge_id, child, _, shown in found
+                if child is not None
+            },
         )
     edges = await active_edges(db, user_id, RelationshipKind.SAME_GAME.value)
     return MergeGraph(

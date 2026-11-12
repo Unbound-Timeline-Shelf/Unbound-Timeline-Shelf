@@ -95,11 +95,7 @@ jobs:
 
       # The automatic startup backup tests run the real Restic and PostgreSQL client tools.
       - name: Install backup tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends restic postgresql-client
-          restic version
-          pg_dump --version
+        uses: ./.github/actions/backup-tools
 
       - name: Prepare test database
         run: alembic upgrade head 2>&1 | tee migrations-output.txt
@@ -124,7 +120,7 @@ jobs:
       # The JUnit reports feed `tools/backend_test_shards.py update-timings`.
       - name: Upload test diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-diagnostics-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -163,14 +159,17 @@ jobs:
       - name: Run repository-level tool tests
         run: |
           set -o pipefail
-          python -m pytest tools/tests/test_plugin_acceptance_acquisition.py \
+          python -m pytest tools/tests/test_devcontrol_commands.py \
+            tools/tests/test_plugin_acceptance_acquisition.py \
             tools/tests/test_environment_reference.py \
-            tools/tests/test_backend_test_shards.py 2>&1 \
+            tools/tests/test_backend_test_shards.py \
+            tools/tests/test_plugin_integration_ref_policy.py \
+            tools/tests/test_vocab_check.py 2>&1 \
             | tee repository-pytest-output.txt
 
       - name: Upload test diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: repository-pytest-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: repository-pytest-output.txt
@@ -350,7 +349,7 @@ jobs:
           python3 ../../tools/ci_checks.py backend-typecheck 2>&1 | tee mypy-output.txt
       - name: Upload mypy diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: mypy-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/backend/mypy-output.txt
@@ -377,7 +376,7 @@ jobs:
         run: PYTHONPATH=. pytest -q tests 2>&1 | tee pytest-output.txt
       - name: Upload plugin runtime diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: plugin-runtime-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: src/plugin-runtime/pytest-output.txt

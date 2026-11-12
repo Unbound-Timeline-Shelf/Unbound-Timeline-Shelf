@@ -22,7 +22,7 @@ _VALUES = {
     "uta_http_database_query_seconds_total": "sql_seconds",
     "uta_database_named_pool_connections": "pools",
     "uta_database_named_pool_timeouts_total": "pool_timeouts",
-    "uta_cache_access_total": "cache_access",
+    "uta_cache_requests_total": "cache_requests",
     "process_cpu_seconds_total": "cpu_seconds",
     "process_resident_memory_bytes": "memory_bytes",
     "uta_metrics_payload_bytes": "scrape_bytes",
@@ -47,9 +47,9 @@ _ALLOWED_LABELS = frozenset(
 )
 _STARTED = time.time()
 _TTL = 5.0
-_value: dict[str, Any] | None = None
-_refreshed: float = 0.0
-_pending: asyncio.Task[dict[str, Any]] | None = None
+_value: dict[str, Any] | None = None  # pylint: disable=invalid-name
+_refreshed: float = 0.0  # pylint: disable=invalid-name
+_pending: asyncio.Task[dict[str, Any]] | None = None  # pylint: disable=invalid-name
 
 
 def _collect() -> dict[str, Any]:

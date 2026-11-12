@@ -48,7 +48,7 @@ router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 
 _PLUGIN_CATALOG_URL = os.getenv(
     "PLUGIN_CATALOG_URL",
-    "https://raw.githubusercontent.com/obsoletelabs/unnamed_tracking_app_plugins/main/list.json",
+    "https://raw.githubusercontent.com/Unbound-Timeline-Shelf/Plugins/main/list.json",
 )
 
 

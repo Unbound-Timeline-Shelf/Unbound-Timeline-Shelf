@@ -20,6 +20,7 @@ from src.api.routes.library_sync import (
     _enrich_steam_game_by_appid,
     _get_or_create_game,
     _replace_achievements,
+    record_sources,
 )
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
@@ -43,6 +44,9 @@ router = APIRouter(
 )
 
 _PLACEHOLDER = "Steam app "
+# Existing wishlist records retried per import (#465). The rest wait for the next import, so one
+# run never turns into a full-library refresh.
+_RECOVER_LIMIT = 100
 
 
 class EnrichRequest(BaseModel):
@@ -50,6 +54,9 @@ class EnrichRequest(BaseModel):
     # Retry mode: fetch only the pictures a game still lacks and leave its details untouched, so
     # running it again is safe after a person has edited or replaced anything (#256).
     artwork_only: bool = False
+    # Recovery mode (#465): finish a record an earlier import left unfinished. Only empty details
+    # and missing pictures are filled; anything already saved, edited or locked stays as it is.
+    recover: bool = False
 
 
 class AchievementsRequest(EnrichRequest):
@@ -164,7 +171,11 @@ async def import_wishlist(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Add the Steam wishlist as Wishlist games, when the setting is on. The
-    names come later, from the same enrich step as every other new game."""
+    names come later, from the same enrich step as every other new game.
+
+    A wishlist record an earlier import saved but never finished (it still carries the import's
+    own `Steam app <id>` placeholder) is returned in `recover_game_ids`, so a re-import that adds
+    no new games still repairs it (#465)."""
     if not (await load_preferences(db, current_user.id))["steam_import_wishlist"]:
         return {"enabled": False, "added": 0, "game_ids": []}
     try:
@@ -178,11 +189,15 @@ async def import_wishlist(
 
     index = await LibraryIndex.load(db, current_user.id, "Steam")
     game_ids: list[str] = []
+    unfinished: list[str] = []
     wishlist_observations: list[tuple[UUID, SourceObservationV1 | None]] = []
     for app_id in app_ids:
         placeholder = f"{_PLACEHOLDER}{app_id}"
-        if index.find(placeholder, str(app_id)) is not None:
+        existing = index.find(placeholder, str(app_id))
+        if existing is not None:
             # Already saved: a re-import must not rename it back to the placeholder.
+            if _unfinished_wishlist_record(existing, str(app_id)):
+                unfinished.append(str(existing.id))
             continue
         game, _created = await _get_or_create_game(
             db,
@@ -212,7 +227,23 @@ async def import_wishlist(
         "wishlisted": len(app_ids),
         "added": len(game_ids),
         "game_ids": game_ids,
+        "recover_game_ids": unfinished[:_RECOVER_LIMIT],
+        "recover_remaining": max(len(unfinished) - _RECOVER_LIMIT, 0),
     }
+
+
+def _unfinished_wishlist_record(game: Game, app_id: str) -> bool:
+    """Whether an import saved this record but its enrichment never completed.
+
+    A completed enrichment replaces the import's placeholder with the store name, so a record
+    still named like a placeholder for its own Steam ID was left unfinished. A title the person
+    locked, even a placeholder-looking one, was chosen deliberately and is left alone; a record
+    matched only by title has no Steam ID to enrich with."""
+    if game.external_id != app_id or "title" in (game.locked_fields or []):
+        return False
+    return names.is_weak(
+        names.classify_title(game.title, source=game.source, external_id=game.external_id)
+    )
 
 
 @router.post("/enrich")
@@ -250,9 +281,15 @@ async def enrich_games(
                     continue
                 app_id = int(game.external_id or "")
                 outcome = await _enrich_steam_game_by_appid(
-                    game, app_id, current_user, use_tags, artwork_only=body.artwork_only
+                    game,
+                    app_id,
+                    current_user,
+                    use_tags,
+                    artwork_only=body.artwork_only,
+                    fill_only=body.recover,
                 )
                 if not body.artwork_only:
+                    await record_sources(db, game, outcome)
                     await names.reconcile_games(db, current_user.id, [game])
             enriched += 1
             if outcome is not None and outcome.artwork_missing:

@@ -819,26 +819,27 @@ export function pluginExternalDestination(
  */
 export function requireUserActivation(action: UiAction): void {
   if (!action.external_navigation) return;
-  requireRecentClick(
-    "A plugin can only open another site after you click something.",
-  );
+  const activation =
+    typeof navigator === "undefined" ? undefined : navigator.userActivation;
+  if (activation && !activation.isActive)
+    throw new Error(
+      "A plugin can only open another site after you click something.",
+    );
 }
 
 /**
- * A plugin frame may replace its stored credentials or settings only while
- * the page has transient user activation, i.e. right after a click or key
- * press in the frame, never from a message it posts on its own.
+ * A plugin frame can also post "save my secret" or "save my settings" at any time. It may only
+ * change its own values, but with no gesture it could silently replace stored credentials, so
+ * those saves must follow a real click or key press in the page (#398). Browsers that cannot
+ * tell are given the benefit of the doubt, as for external navigation.
  */
-export function requirePluginSaveGesture(): void {
-  requireRecentClick(
-    "A plugin can only save its settings after you click something.",
-  );
-}
-
-function requireRecentClick(message: string): void {
+export function requireSaveActivation(): void {
   const activation =
     typeof navigator === "undefined" ? undefined : navigator.userActivation;
-  if (activation && !activation.isActive) throw new Error(message);
+  if (activation && !activation.isActive)
+    throw new Error(
+      "A plugin can only save its settings or secrets after you click or press a key.",
+    );
 }
 
 /**

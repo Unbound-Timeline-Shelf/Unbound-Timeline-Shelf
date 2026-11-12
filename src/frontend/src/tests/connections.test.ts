@@ -180,14 +180,15 @@ describe("retrying an unfinished Steam import (#256)", () => {
     expect(state.steamRetry.detailIds).toEqual(["a"]);
     expect(state.steamRetry.artworkIds).toEqual(["b", "c"]);
 
-    // details first (full pass), then only the missing pictures; one game still fails
+    // details first (filling only what is still empty), then only the missing
+    // pictures; one game still fails
     librarySync.enrichSteamGames
       .mockResolvedValueOnce({ failedIds: ["a"], artworkMissingIds: [] })
       .mockResolvedValueOnce({ failedIds: [], artworkMissingIds: ["c"] });
     await state.handleRetrySteamImport();
     expect(librarySync.enrichSteamGames.mock.calls).toEqual([
-      [["a"]],
-      [["b", "c"], true],
+      [["a"], "recover"],
+      [["b", "c"], "artwork"],
     ]);
     expect(librarySync.syncLibrary).toHaveBeenCalledTimes(1);
     expect(state.steamRetry.detailIds).toEqual(["a"]);

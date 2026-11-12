@@ -1,7 +1,7 @@
-[![CI](https://github.com/obsoletelabs/unnamed_tracking_app_2/actions/workflows/ci.yml/badge.svg)](https://github.com/obsoletelabs/unnamed_tracking_app_2/actions/workflows/ci.yml)
-[![Plugin checks](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/actions/workflows/ci.yml)
+[![CI](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/actions/workflows/ci.yml/badge.svg)](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/actions/workflows/ci.yml)
+[![Plugin checks](https://github.com/Unbound-Timeline-Shelf/Plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/Unbound-Timeline-Shelf/Plugins/actions/workflows/ci.yml)
 
-[![Build Playnite extension](https://github.com/obsoletelabs/unnamed_tracking_playnite/actions/workflows/build-pext.yml/badge.svg)](https://github.com/obsoletelabs/unnamed_tracking_playnite/actions/workflows/build-pext.yml)
+[![Build Playnite extension](https://github.com/Unbound-Timeline-Shelf/Playnite-Integration/actions/workflows/build-pext.yml/badge.svg)](https://github.com/Unbound-Timeline-Shelf/Playnite-Integration/actions/workflows/build-pext.yml)
 
 
 # Wiki page https://obsoletelabs.github.io/unnamed_tracking_app_2/

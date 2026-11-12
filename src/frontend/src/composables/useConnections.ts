@@ -1,3 +1,4 @@
+import { formatInstant } from "../utils/dates";
 import { reactive, ref } from "vue";
 
 import { fetchPsnStatus, connectPsn, disconnectPsn } from "../services/psn";
@@ -338,8 +339,10 @@ export function useConnections() {
       indeterminate: true,
     });
     try {
-      const details = await enrichSteamGames(steamRetry.detailIds);
-      const covers = await enrichSteamGames(steamRetry.artworkIds, true);
+      // a retry fills in only what is still empty, so an edit made since the
+      // import is never replaced (#465)
+      const details = await enrichSteamGames(steamRetry.detailIds, "recover");
+      const covers = await enrichSteamGames(steamRetry.artworkIds, "artwork");
       steamRetry.detailIds = details.failedIds;
       // a game whose details still failed cannot have its artwork judged yet
       steamRetry.artworkIds = [
@@ -390,9 +393,11 @@ export function useConnections() {
           (id) => !steamRetry.detailIds.includes(id),
         );
       }
-      const wishlisted = result.wishlist_added
-        ? `, ${result.wishlist_added} wishlisted`
-        : "";
+      const wishlisted =
+        (result.wishlist_added ? `, ${result.wishlist_added} wishlisted` : "") +
+        (result.wishlist_recovered
+          ? `, ${result.wishlist_recovered} unfinished wishlist games retried`
+          : "");
       completeTask(
         taskId,
         `${result.games_added} added, ${result.games_updated} updated${wishlisted}, ${result.achievements_synced} achievements${warnings.map((warning) => `; ${warning}`).join("")}`,
@@ -418,15 +423,7 @@ export function useConnections() {
     status: ProviderCredentialStatus | undefined,
   ): string | null {
     if (!status?.last_synced_at) return null;
-    const when = new Date(status.last_synced_at * 1000).toLocaleString(
-      undefined,
-      {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      },
-    );
+    const when = formatInstant(status.last_synced_at);
     const count = status.library_games ?? 0;
     return `${count} game${count === 1 ? "" : "s"} · synced ${when}`;
   }

@@ -44,6 +44,7 @@ from src.features.trash.inbox_trash import (
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.media import (
     MediaKind,
+    MediaValidationError,
     classify_media,
     list_media,
     media_subdir,
@@ -164,7 +165,7 @@ async def upload_to_inbox(
 
         try:
             await asyncio.to_thread(validate_media, data, upload.filename or "", kind)
-        except ValueError as exc:
+        except MediaValidationError as exc:
             results.append({"filename": upload.filename, "status": "rejected", "reason": str(exc)})
             continue
 

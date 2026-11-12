@@ -29,7 +29,7 @@ Plugins provide installable activation/configuration controls; the host owns
 credential generation, password policy/hash, atomic redemption and account mutation.
 There is no anonymous general-purpose plugin gateway and no destination/address
 enumeration API. The maintained consumer is `official.password-reset` in the
-[companion repository](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/tree/main/official/password-reset).
+[companion repository](https://github.com/Unbound-Timeline-Shelf/Plugins/tree/main/official/password-reset).
 
 ## Notification and token lifecycle
 

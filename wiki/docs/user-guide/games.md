@@ -83,6 +83,18 @@ review the canonical entry and propose missing store IDs through Atlas.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
+**Select → Remove** moves every selected game to Trash at once, exactly as deleting
+each from its page would: its notes, screenshots, saves and other files go with it,
+and **Settings → Library** restores it for 7 days. A game shown with several copies
+removes only the record you selected; its other copies show on their own until it
+is restored. The confirmation says how many games are affected; afterwards a summary
+reports how many moved to Trash, which were no longer in your library, and which
+could not be removed. Games that could not be removed stay selected with the reason,
+so **Remove** again retries just those. Selections larger than 100 games are sent in
+several requests (`POST /api/game/bulk-delete`, at most 100 IDs each; it reports
+`deleted`, `not_found`, `already_deleted` and `failed` per ID, and another account's
+IDs are reported as not found).
+
 ### Quick edit
 
 The Edit button on a game in the library opens a light editor for the status,
@@ -101,6 +113,21 @@ and the chosen cover still unsaved, so nothing typed is lost. Cancelling the
 full editor discards them. Offered search covers are in the full editor's
 Artwork tab. Opening a game from its own page or a collection still goes
 straight to the full editor.
+
+## Logging play
+
+Under **More details > Log play** on a game's page, **Log play** records that you
+played the game. **+ Log 30 min played** records a play and adds 30 minutes to the
+total. Leave **Played on** empty for today, or pick an earlier date to log a past
+session (a date is kept on that calendar day in your timezone). Each log moves
+**Last played** forward to that time and never back: logging an older session
+after a newer one keeps the newer one.
+
+Correcting the total playtime is different. Editing the total, a store reporting
+a larger lifetime total on its next sync, and changing the status to Playing are
+not plays: they do not change Last played, Continue playing on Home or the
+"games played" count in This week. A retried log (for example after a dropped
+connection) is recorded once.
 
 ## Completion estimates
 
@@ -210,6 +237,19 @@ seeing one Epic copy, the one marked **Preferred for playtime** is used and the 
 is kept. Use **Prefer this source** to switch. This is the same source priority as
 the Counters tab in the Advanced dialog, so the two always agree.
 
+A **Metadata** row names the source of each metadata field (for example
+**Developer IGDB**, **Release date RAWG**). A lock icon marks a locked field, and a
+field whose preferred source is not the one shown is highlighted with
+"*X* preferred, not shown". That happens when the field is locked or was edited by
+hand, or when the preferred source has not reported a value for it yet; the next
+refresh that reports one applies it. Beside the field itself, the same label appears
+when sources disagree, when the field is locked or when a preference is not in effect;
+selecting it opens a list of each source's value over the page. If you prefer a source
+and the value shown does not change, the list says why: it already matched, the field
+is locked, or the source has no value yet.
+
+![Where each metadata field comes from](../assets/ui-modernization/game-overview-desktop-light-after.png)
+
 ![Sources with Playnite preferred](../assets/game-identity-hub/sources-panel-playnite-preferred.png)
 
 ![The same game after preferring the Epic plugin](../assets/game-identity-hub/sources-panel-epic-preferred.png)
@@ -275,7 +315,9 @@ not suggested as a copy from a different store.
 
 DLC, mods, remakes and series are **related games**, not copies: they link to each
 other but never merge playtime or achievements. They remain under **Variants** and
-in the Advanced tools.
+in the Advanced tools. The Overview also lists them under **Related games**, from
+both ends: a DLC shows **DLC of** its base game, and the base game shows its
+**DLC**, **Remake** and **Other version** entries, each a link to that game's page.
 
 Filters and search match every copy of a game, so platform filters such as
 PlayStation find a game through its PS4 or PS5 copy. If the main copy is in Trash,
@@ -317,6 +359,16 @@ Settings defers achievements, it saves Steam's playtime first and waits for the
 game's achievement batch to choose between Played and Mastered. Optional store plugins
 using the public game-import operation share the host's ownership/playtime policy.
 
+Plugin connections synced with **Sync now** in Settings > Connections, or from
+**Sync / import** on the Games page, run on the server, so leaving the page does
+not stop them. One sync runs at most 25 saved steps. When a plugin still has saved
+work after that, the connection reads "More to sync" and the button becomes
+**Continue sync** (Games: **Continue syncing**), which runs the next 25 steps from
+the plugin's checkpoint. Continuing never turns autosync on; with autosync on, the
+schedule also picks up the rest. A service that is limiting requests is reported as
+such rather than as a failed sync, and a paused task or a removed permission is
+shown instead of a sync button that cannot run.
+
 Provider settings show each source's active library game count and the time of
 its last successful sync. Trashed games are excluded; restoring them returns
 them to the count.
@@ -341,12 +393,22 @@ never undoes games that were already saved. The summary tells the parts apart:
   offered or could not be downloaded.
 
 When anything is left, the Steam connection dialog shows **Retry N games**. A retry
-reads only the unfinished parts: missing details are filled in, and for games that
-only lack a cover it fetches just the missing pictures and never rewrites titles,
-notes, tags or pictures you have changed. Retrying again is safe and does not
-create duplicates. The same results are available from the batch endpoint
+reads only the unfinished parts: it fills in details that are still empty, replaces
+a `Steam app <id>` placeholder title with the store name, and fetches only pictures
+the game does not have. It never rewrites titles, descriptions, tags, locked fields
+or pictures you have set. Retrying again is safe and does not create duplicates.
+The same results are available from the batch endpoint
 (`POST /api/library-sync/steam/enrich` returns `failed_game_ids` and
-`artwork_missing_game_ids`; send `artwork_only` to retry only covers).
+`artwork_missing_game_ids`; send `recover` to fill in only what is empty, or
+`artwork_only` to retry only covers).
+
+A later import also finishes wishlist games an earlier import left unfinished,
+even when it adds no new games: a wishlist record still named `Steam app <id>`
+(for its own Steam ID) is filled in the same safe way, at most 100 per import, and
+the summary counts them as **unfinished wishlist games retried**. A title you
+locked is left alone, even when it looks like a placeholder. Owned games always
+arrive with their real store name, so an owned game whose details or cover are
+missing is finished with **Retry N games**, not by re-importing.
 
 Library imports match existing games by provider ID. Different provider IDs with
 the same title stay separate, while a matching record without a provider ID can
@@ -459,6 +521,7 @@ keep your palette, custom colors, light or dark mode and phone layout:
 | Playtime (hours) | Your own total, to one decimal place. Leave it empty for none. |
 | Where you left off | Up to 2,000 characters; also shown and editable on the Overview. |
 | Region, Language | Edition details, used by the library's Region and Language filters. |
+| Release date | Typed in your date format: a full day, a month (`04/2011`, `April 2011`) or a year (`2011`). The placeholder shows the expected order and a "Read as" line confirms how it was understood; a date that reads two ways (`03/04/2011`) asks which was meant before the game can be saved. |
 | Currency | Chosen from the currencies the server accepts. |
 
 Clearing a field and saving clears it. A blank sorting name sorts by the
@@ -575,6 +638,49 @@ The sort menu offers Name (A–Z and Z–A), Recently added, Rating, Most
 played, Recently played, Neglected (least recently played), Priority,
 Release date (newest) and Time to beat (shortest). Games missing the value
 being sorted on go last. The default sort is set under Settings › Appearance & interface.
+A release date known only to the year or the month sorts from the start of that
+period, so a game released on 19 April 2011 comes before one known only as "2011".
+
+### Release dates
+
+Some providers know only a game's release year or month. Such a date is shown as
+known: **2011** or **April 2011** (or `2011-04` with ISO), never "1 January
+2011" and never a numeric `04/2011`. Month names are in English. Every date in the app follows one setting, **Settings › Media
+Preferences › Date format**:
+
+| Format | A day | A month | A time |
+| --- | --- | --- | --- |
+| dd/mm/yyyy (default) | 14/03/2011 | March 2011 | 14:05 |
+| dd Month yyyy | 14 March 2011 | March 2011 | 14:05 |
+| mm/dd/yyyy | 03/14/2011 | March 2011 | 2:05 PM |
+| ISO | 2011-03-14 | 2011-03 | 14:05 |
+
+**Time format** chooses 24-hour or 12-hour clocks; **Automatic** uses 12-hour
+with mm/dd/yyyy and 24-hour otherwise. Dates are stored and sent as ISO whatever
+is chosen. On the first visit from a browser set to US English or a US time zone,
+the app asks once which format to use, after the welcome dialog and any quick
+tour; closing that dialog keeps dd/mm/yyyy and it is not shown again on any
+device. If the app cannot save that answer, the dialog still closes and is offered
+again on a later visit. Accounts that had chosen **As stored** under the
+old Release dates setting now use ISO.
+
+In the edit dialog the release date is typed in the chosen order, as a day, a
+month or only a year (see the field table above).
+
+The game page shows the date the same way as **Released** on the Overview. When a
+provider lists regional, platform or edition releases, **More details › Releases**
+lists them oldest first, each as precisely as it is known, with its platform,
+region, edition and kind (Port, Re-release, Early access and so on).
+
+![Releases under More details](../assets/ui-modernization/game-details-desktop-light-after.png)
+
+![Games known only by year and month, and one known to the day](../assets/release-dates/library-after.png)
+
+![The same list with dates shown as stored](../assets/release-dates/library-as-stored.png)
+
+![Settings › Media Preferences › Release dates](../assets/release-dates/settings-release-dates.png)
+
+![The edit dialog of a game known only by its year](../assets/release-dates/edit-after.png)
 
 ## Picking something to play
 
@@ -642,9 +748,12 @@ example a Steam import on one copy and Playnite on another, once they are merged
 **Open in GOG Galaxy** (opens the game's page in Galaxy; it does not start it) and **Open Steam store
 page**.
 
-The button's default is chosen in this order: the client you used last time on this browser, the
-library the copy was added from (for example a Steam import), then Playnite (it launches games from every
-library), then Steam, then GOG. A store page is the default only when nothing can be launched.
+The button's default is chosen in this order: the client you chose for your account under
+**Settings → Game page → Play button opens games in** (when the game can be opened with it), the
+client you used last time on this browser, the library the copy was added from (for example a Steam
+import), then Playnite (it launches games from every library), then Steam, then GOG. The account
+choice follows you to every browser you sign in to; **Automatic** (the default) skips it. A store
+page is the default only when nothing can be launched.
 
 A wishlisted game is not owned yet, so it only offers its store page, which opens in a new tab.
 
@@ -671,7 +780,10 @@ Choose **Edit** on the game page and open the **Play** tab. Tick **Playable with
 others** and save to mark multiplayer without supplying extra details. Exact
 player limits remain unknown. Enable **Set known player limits** to enter both
 minimum and maximum, or choose a common range. Session duration and confirmed
-crossplay are optional. These details are self-reported. They live in the Edit
+crossplay are optional. Crossplay is saved as yes, partial, no or unknown: a provider can
+report that only some platforms play together (partial), and leaving the box unticked means
+unknown rather than "no". Ticking or unticking the box keeps a provider's "partial" or "no"
+when it agrees with your choice. These details are self-reported. They live in the Edit
 form only; the Overview no longer carries a multiplayer panel.
 
 
@@ -698,6 +810,11 @@ game.
   the ones you have unlocked are read from your public Steam profile, which
   needs your game details set to public. Refresh the game's achievements, or
   run the library sync again, to fill them in.
+- **Medals.** A medal the provider supplies (bronze, silver, gold or platinum)
+  shows beside the name. Platinum is the trophy for completing the whole list;
+  when a game has one, the summary above the list says whether it is earned. A
+  locked hidden achievement shows no medal, and screen-reader labels name it only
+  as a hidden achievement.
 - **Of players** shows how many players have each achievement (Steam's global
   percentage, PlayStation's earned rate, or RetroAchievements' count).
 - Screenshots, clips and notes can be tied to an achievement, and the

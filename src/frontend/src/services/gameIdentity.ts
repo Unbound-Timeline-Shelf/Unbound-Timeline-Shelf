@@ -233,13 +233,47 @@ export async function fetchUmbrellaOverview(
   ).json();
 }
 
+// The game page mounts several panels that each read a game's sources (the
+// launch button, Related games, Sources) in the same render, and remounts two
+// of them together after a copy changes. Requests for one game started in the
+// same task share one response; a later call always asks the server again, so
+// nothing is served from before a change. Each caller parses its own copy and
+// can still stop waiting with its own signal.
+const sourcesInFlight = new Map<string, Promise<string>>();
+
+function sharedSourcesText(gameId: string): Promise<string> {
+  let pending = sourcesInFlight.get(gameId);
+  if (!pending) {
+    const forget = () => {
+      if (sourcesInFlight.get(gameId) === pending)
+        sourcesInFlight.delete(gameId);
+    };
+    pending = call(`/games/${gameId}/sources`).then((r) => r.text());
+    sourcesInFlight.set(gameId, pending);
+    setTimeout(forget, 0);
+    pending.then(forget, forget);
+  }
+  return pending;
+}
+
 export async function fetchIdentitySources(
   gameId: string,
   signal?: AbortSignal,
 ): Promise<IdentitySources> {
-  return (
-    await call(`/games/${gameId}/sources`, "GET", undefined, signal)
-  ).json();
+  const abortError = () =>
+    signal?.reason ??
+    new DOMException("The request was aborted.", "AbortError");
+  if (signal?.aborted) throw abortError();
+  const text = sharedSourcesText(gameId);
+  if (!signal) return JSON.parse(await text);
+  const aborted = new Promise<never>((_, reject) => {
+    signal.addEventListener("abort", () => reject(abortError()), {
+      once: true,
+    });
+  });
+  // an abort after the response arrived has nobody left to tell
+  aborted.catch(() => undefined);
+  return JSON.parse(await Promise.race([text, aborted]));
 }
 
 export type MainChoice = "target" | "source" | "auto";
@@ -346,6 +380,55 @@ export async function adjustPlaytime(
     seconds,
     counter_id: counterId ?? null,
   });
+}
+
+export interface PlayLogResult {
+  playedAt: number;
+  lastPlayedAt: number | null;
+}
+
+/** A fresh id per user action, so a retried request records the play once. */
+export function newPlayRequestId(): string {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  return random.replace(/[^A-Za-z0-9_-]/g, "");
+}
+
+/**
+ * Log that the game was played: now, or at an earlier time (unix seconds). This is activity
+ * and moves "last played" forward; it is not a playtime correction (#467).
+ */
+export async function logPlay(
+  gameId: string,
+  options: { playedAt?: number; requestId?: string } = {},
+): Promise<PlayLogResult> {
+  const response = await call(`/games/${gameId}/plays`, "POST", {
+    ...(options.playedAt === undefined ? {} : { played_at: options.playedAt }),
+    request_id: options.requestId ?? newPlayRequestId(),
+  });
+  const raw = await response.json();
+  return {
+    playedAt: raw.event.played_at,
+    lastPlayedAt:
+      typeof raw.last_played_at === "number" ? raw.last_played_at : null,
+  };
+}
+
+/** Local noon of a date-only "played on" choice, so no timezone moves it to another day. */
+export function playedOnDate(isoDate: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return null;
+  const when = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    12,
+  );
+  return Number.isNaN(when.getTime())
+    ? null
+    : Math.floor(when.getTime() / 1000);
 }
 
 export async function clearAdjustment(counterId: string): Promise<void> {

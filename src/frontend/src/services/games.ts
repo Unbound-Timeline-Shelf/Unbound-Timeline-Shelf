@@ -8,7 +8,7 @@ import {
   forgetGame,
   gameCache,
   gameLibraryRevision,
-  invalidateGameLibrary,
+  markGameListLoaded,
   rememberFetchedGame,
   rememberGameMutation,
 } from "./gameCache";
@@ -25,7 +25,8 @@ import {
   sizedAssetUrl,
 } from "../utils/gameImages";
 import type { ContentCounts, PageOverrides } from "../utils/gamePage";
-import type { BackendGame } from "./gameApiTypes";
+import { mapReleaseFields, type BackendGame } from "./gameApiTypes";
+import type { DatePrecision } from "../utils/dates";
 export type { BackendGame } from "./gameApiTypes";
 import type {
   Achievement,
@@ -44,7 +45,7 @@ function toNumberOrNull(value: number | string | null): number | null {
   return value === null ? null : Number(value);
 }
 
-function playCompatibilityPayload(
+export function playCompatibilityPayload(
   value: GamePlayCompatibility | null | undefined,
 ) {
   return value
@@ -97,8 +98,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     id: raw.id,
     title: raw.title,
     hasKeyArt: raw.has_key_art ?? null,
-    // placeholders, the backend has no artwork yet
-    coverColor: "#2a2a2a",
+    coverColor: "#2a2a2a", // a placeholder; no view reads it
     // every place a cover is shown is a card or a poster well under 400 px
     // wide, and the stored cover is a PNG of up to a megabyte
     coverImageUrl: sizedAssetUrl(
@@ -134,6 +134,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     completionDate: unixSecondsToDateInput(raw.completion_date),
     folderLocation: raw.folder_location,
     releaseDate: raw.release_date,
+    ...mapReleaseFields(raw),
     source: raw.source,
     providerIds: raw.provider_ids ?? {},
     playniteGuid: raw.playnite_guid ?? null,
@@ -198,17 +199,40 @@ export function mapBackendGame(raw: BackendGame): Game {
 
 // Bulk list consumers still page through the endpoint to completion. The
 // Games view uses fetchGamesForViewport below so its first paint stays bounded.
+//
+// One complete read costs about 0.4 s and 1.9 MB (64 KB gzipped) per 1000
+// games in-process, 1.7 s and 9.7 MB for 5000 (#469; measured with
+// tests/measure_full_library_reads.py in the backend). Callers that ask while
+// an identical read is still in flight share it instead of starting another.
+// "Identical" means same account and same library revision: a mutation, an
+// import or an account change since it started gives the next caller a fresh
+// read, so nothing older than an in-flight answer is ever reused, and a
+// failure is not remembered. Finished reads are never reused.
+let inFlightList: { revision: number; read: Promise<Game[]> } | null = null;
+
+async function readAllGames(started: number): Promise<Game[]> {
+  const all = await fetchAllGamePages<BackendGame>();
+  const games = all.map((raw) =>
+    rememberFetchedGame(mapBackendGame(raw), started),
+  );
+  markGameListLoaded(started);
+  return games;
+}
+
 export async function fetchGames(): Promise<Game[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames;
   }
   const started = gameLibraryRevision();
-  const all = await fetchAllGamePages<BackendGame>();
-  const games = all.map((raw) =>
-    rememberFetchedGame(mapBackendGame(raw), started),
-  );
-  gameCache.markListLoaded();
-  return games;
+  let shared = inFlightList;
+  if (shared?.revision !== started) {
+    const read = readAllGames(started).finally(() => {
+      if (inFlightList?.read === read) inFlightList = null;
+    });
+    shared = inFlightList = { revision: started, read };
+  }
+  // Each caller gets its own array, so sorting one result cannot reorder another.
+  return [...(await shared.read)];
 }
 
 export async function fetchGamesForViewport(
@@ -251,7 +275,7 @@ export async function fetchGamesForViewport(
     rememberFetchedGame(mapBackendGame(raw), started),
   );
   if (result.total !== null && skip + games.length >= result.total)
-    gameCache.markListLoaded();
+    markGameListLoaded(started);
   return { games, total: result.total, statusCounts: result.statusCounts };
 }
 
@@ -512,7 +536,27 @@ export function rankMetadataResults<T extends { title: string }>(
 }
 
 export type RefreshMetadataResult =
-  "updated" | "preview" | "no-match" | "error";
+  | "updated"
+  | "preview"
+  | "no-match"
+  // a provider contradicts a saved id, or two providers disagree: nothing applied
+  | "conflict"
+  // the candidate carries an id the user rejected for this game
+  | "rejected"
+  // a title-only match, applied only when its previewed candidate is confirmed
+  | "needs-confirmation"
+  | "error";
+
+// how the result was matched: "id" (a provider reported an id the game
+// holds) or "title" (title only, applied only once confirmed)
+export type RefreshMetadataMatch =
+  "id" | "title" | "conflict" | "rejected" | "none";
+
+// a title-only match is confirmed by sending its candidate's providerIds back
+export interface RefreshMetadataCandidate {
+  title: string | null;
+  providerIds: Record<string, string>;
+}
 
 export interface RefreshMetadataOutcome {
   status: RefreshMetadataResult;
@@ -539,6 +583,8 @@ export const DEFAULT_REFRESH_OPTIONS: RefreshMetadataOptions = {
 
 export interface RefreshMetadataPreview {
   status: RefreshMetadataResult;
+  match: RefreshMetadataMatch;
+  candidate: RefreshMetadataCandidate | null;
   provider: string | null;
   providerErrors: string[];
   changedFields: string[];
@@ -550,6 +596,11 @@ export interface RefreshMetadataPreview {
 
 interface BackendMetadataRefreshResponse {
   status: RefreshMetadataResult;
+  match?: RefreshMetadataMatch;
+  candidate?: {
+    title: string | null;
+    provider_ids: Record<string, string>;
+  } | null;
   provider: string | null;
   provider_errors: string[];
   changed_fields: string[];
@@ -563,6 +614,7 @@ async function requestGameMetadataRefresh(
   game: Game,
   options: RefreshMetadataOptions,
   dryRun: boolean,
+  confirmCandidate: Record<string, string> | null = null,
 ): Promise<BackendMetadataRefreshResponse> {
   const response = await fetch(`/api/game/${game.id}/metadata/refresh`, {
     method: "POST",
@@ -573,6 +625,7 @@ async function requestGameMetadataRefresh(
       update_text: options.updateText,
       fill_missing_art: options.fillMissingArt,
       overwrite_existing_art: options.overwriteExistingArt,
+      ...(confirmCandidate ? { confirm_candidate: confirmCandidate } : {}),
       ...(dryRun || game.updatedAt === undefined
         ? {}
         : { expected_updated_at: game.updatedAt }),
@@ -587,11 +640,18 @@ async function requestGameMetadataRefresh(
   return await response.json();
 }
 
+// confirmCandidate: the previewed title-only candidate's ids the user accepted
 export async function applyGameMetadataRefresh(
   game: Game,
   options: RefreshMetadataOptions = DEFAULT_REFRESH_OPTIONS,
+  confirmCandidate: Record<string, string> | null = null,
 ): Promise<RefreshMetadataOutcome> {
-  const raw = await requestGameMetadataRefresh(game, options, false);
+  const raw = await requestGameMetadataRefresh(
+    game,
+    options,
+    false,
+    confirmCandidate,
+  );
   return {
     status: raw.status,
     provider: raw.provider,
@@ -607,9 +667,10 @@ export async function applyGameMetadataRefresh(
 export async function refreshGameMetadata(
   game: Game,
   options: RefreshMetadataOptions = DEFAULT_REFRESH_OPTIONS,
+  confirmCandidate: Record<string, string> | null = null,
 ): Promise<RefreshMetadataOutcome> {
   try {
-    return await applyGameMetadataRefresh(game, options);
+    return await applyGameMetadataRefresh(game, options, confirmCandidate);
   } catch {
     return {
       status: "error",
@@ -632,6 +693,13 @@ export async function previewGameMetadataRefresh(
     const raw = await requestGameMetadataRefresh(game, options, true);
     return {
       status: raw.status,
+      match: raw.match ?? "none",
+      candidate: raw.candidate
+        ? {
+            title: raw.candidate.title,
+            providerIds: raw.candidate.provider_ids ?? {},
+          }
+        : null,
       provider: raw.provider,
       providerErrors: raw.provider_errors ?? [],
       changedFields: raw.changed_fields ?? [],
@@ -643,6 +711,8 @@ export async function previewGameMetadataRefresh(
   } catch {
     return {
       status: "error",
+      match: "none",
+      candidate: null,
       provider: null,
       providerErrors: [],
       changedFields: [],
@@ -675,6 +745,8 @@ export interface NewGameInput {
   parentGameId: string | null;
   relationshipType: GameRelationshipType | null;
   releaseDate: string | null;
+  // sent only with a release date: "year" or "month" when only that is known
+  releaseDatePrecision?: DatePrecision | null;
   dateAdded: string | null;
   completionDate: string | null;
   source: string | null;
@@ -715,6 +787,27 @@ function mockPlatforms(input: NewGameInput, saved: Game["platforms"]) {
   ];
 }
 
+// A release date's precision goes with the date it describes, never alone.
+function releasePrecisionField(input: {
+  releaseDate: string | null;
+  releaseDatePrecision?: DatePrecision | null;
+}): { release_date_precision?: DatePrecision } {
+  return input.releaseDate && input.releaseDatePrecision !== undefined
+    ? { release_date_precision: input.releaseDatePrecision ?? "day" }
+    : {};
+}
+
+function mockPrecision(input: {
+  releaseDate: string | null;
+  releaseDatePrecision?: DatePrecision | null;
+}): DatePrecision | null {
+  return input.releaseDate &&
+    input.releaseDatePrecision &&
+    input.releaseDatePrecision !== "day"
+    ? input.releaseDatePrecision
+    : null;
+}
+
 export async function createGame(input: NewGameInput): Promise<Game> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     const newGame: Game = {
@@ -749,6 +842,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       playCompatibility: input.playCompatibility,
       folderLocation: input.folderLocation || null,
       releaseDate: input.releaseDate,
+      releaseDatePrecision: mockPrecision(input),
       source: input.source,
       providerIds: input.providerIds,
       ageRating: input.ageRating,
@@ -769,6 +863,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
     return newGame;
   }
 
+  const started = gameLibraryRevision();
   const response = await fetch("/api/game/create", {
     method: "POST",
     credentials: "include",
@@ -791,6 +886,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       parent_game_id: input.parentGameId,
       relationship_type: input.relationshipType,
       release_date: input.releaseDate,
+      ...releasePrecisionField(input),
       source: input.source,
       provider_ids: input.providerIds,
       platform: input.platform ?? null,
@@ -823,7 +919,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
   if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 export async function updateGame(
   id: string,
@@ -861,6 +957,7 @@ export async function updateGame(
       tags: input.tags,
       folderLocation: input.folderLocation || null,
       releaseDate: input.releaseDate,
+      releaseDatePrecision: mockPrecision(input),
       source: input.source,
       ageRating: input.ageRating,
       timeToBeatHours: input.timeToBeatHours,
@@ -915,6 +1012,7 @@ export async function updateGame(
     parent_game_id: input.parentGameId,
     relationship_type: input.relationshipType,
     release_date: input.releaseDate,
+    ...releasePrecisionField(input),
     source: input.source,
     provider_ids: input.providerIds,
     region: input.region,
@@ -948,6 +1046,7 @@ export async function updateGame(
   if (input.priority !== undefined) body.priority = input.priority;
   if (input.createdAt != null) body.created_at = input.createdAt;
 
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${id}`, {
     method: "PATCH",
     credentials: "include",
@@ -958,7 +1057,7 @@ export async function updateGame(
   if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 export interface GameNoteListResponse {
@@ -1665,6 +1764,7 @@ export async function setFavorite(
     return mockGames[index];
   }
 
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${gameId}`, {
     method: "PATCH",
     credentials: "include",
@@ -1677,7 +1777,7 @@ export async function setFavorite(
   }
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 export async function setResumeNote(
@@ -1756,6 +1856,7 @@ export async function setStatus(
     return mockGames[index];
   }
 
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${gameId}`, {
     method: "PATCH",
     credentials: "include",
@@ -1768,78 +1869,12 @@ export async function setStatus(
   }
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 // Deliberately narrower than NewGameInput/GameUpdate, title, folder,
 // notes, playtime, purchase info, and ratings are per-game by nature and
 // excluded so a bulk edit can't stamp one game's specifics onto many others.
-export interface BulkEditFields {
-  playCompatibility?: GamePlayCompatibility | null;
-  status?: GameStatus;
-  favorite?: boolean;
-  developer?: string | null;
-  publisher?: string | null;
-  series?: string | null;
-  ageRating?: string | null;
-  platform?: string | null;
-  priority?: string | null;
-  tags?: string[];
-  features?: string[];
-}
-
-export async function bulkUpdateGames(
-  gameIds: string[],
-  fields: BulkEditFields,
-): Promise<number> {
-  const payload: Record<string, unknown> = { game_ids: gameIds };
-  if (fields.playCompatibility !== undefined)
-    payload.play_compatibility = playCompatibilityPayload(
-      fields.playCompatibility,
-    );
-  if (fields.status !== undefined)
-    payload.status = denormalizeStatus(fields.status);
-  if (fields.favorite !== undefined) payload.favorite = fields.favorite;
-  if (fields.developer !== undefined) payload.developer = fields.developer;
-  if (fields.publisher !== undefined) payload.publisher = fields.publisher;
-  if (fields.series !== undefined) payload.series = fields.series;
-  if (fields.ageRating !== undefined) payload.age_rating = fields.ageRating;
-  if (fields.platform !== undefined) payload.platform = fields.platform;
-  if (fields.priority !== undefined) payload.priority = fields.priority;
-  if (fields.tags !== undefined) payload.tags = fields.tags;
-  if (fields.features !== undefined) payload.features = fields.features;
-
-  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
-    let count = 0;
-    for (const game of mockGames) {
-      if (!gameIds.includes(game.id)) continue;
-      if (fields.playCompatibility !== undefined)
-        game.playCompatibility = fields.playCompatibility;
-      if (fields.status !== undefined) game.status = fields.status;
-      if (fields.favorite !== undefined) game.favorite = fields.favorite;
-      if (fields.developer !== undefined) game.developer = fields.developer;
-      if (fields.publisher !== undefined) game.publisher = fields.publisher;
-      if (fields.series !== undefined) game.series = fields.series;
-      if (fields.ageRating !== undefined) game.ageRating = fields.ageRating;
-      if (fields.tags !== undefined) game.tags = fields.tags;
-      if (fields.features !== undefined) game.features = fields.features;
-      count++;
-    }
-    return count;
-  }
-
-  const response = await fetch("/api/game/bulk-update", {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) throw await failedRequest(response);
-  const result: { updated: number } = await response.json();
-  invalidateGameLibrary();
-  return result.updated;
-}
-
 // PATCHes `collections` alone rather than the whole game through updateGame,
 // so adding/removing a collection can't overwrite an edit made elsewhere in
 // the meantime.
@@ -1847,6 +1882,7 @@ async function patchCollections(
   gameId: string,
   collections: string[],
 ): Promise<Game> {
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${gameId}`, {
     method: "PATCH",
     credentials: "include",
@@ -1855,7 +1891,7 @@ async function patchCollections(
   });
   if (!response.ok) throw await failedRequest(response);
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 export async function addGameToCollection(

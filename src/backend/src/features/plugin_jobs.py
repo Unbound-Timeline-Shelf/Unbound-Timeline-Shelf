@@ -176,18 +176,23 @@ async def _dispatch(
     return result
 
 
-async def _continues(spec: JobSpec, result: dict[str, Any], mode: str) -> bool:
-    """Whether a "complete" run should immediately take the next checkpoint step.
-
-    Only a saved, unfinished step that asked to continue qualifies; a provider rate limit, a
-    disabled schedule, a pause or a cancel request hands control back to the normal controls."""
-    if (
+def _asks_to_continue(result: dict[str, Any], mode: str) -> bool:
+    """A "complete" run's step saved its checkpoint and asked for the next one."""
+    return not (
         mode != "complete"
         or result.get("completed") is not False
         or "continue_after_seconds" not in result
         or "retry_after_seconds" in result
         or result.get("disable_schedule") is True
-    ):
+    )
+
+
+async def _continues(spec: JobSpec, result: dict[str, Any], mode: str) -> bool:
+    """Whether a "complete" run should immediately take the next checkpoint step.
+
+    Only a saved, unfinished step that asked to continue qualifies; a provider rate limit, a
+    disabled schedule, a pause or a cancel request hands control back to the normal controls."""
+    if not _asks_to_continue(result, mode):
         return False
     async with SessionLocal() as db:
         setting = await get_setting(db, spec)
@@ -212,6 +217,10 @@ async def _execute_task(spec: JobSpec, installation_id: UUID, task_id: str, mode
                 while steps < MAX_SYNC_STEPS and await _continues(spec, result, mode):
                     result = await _dispatch(spec, installation_id, task_id, mode)
                     steps += 1
+                if steps >= MAX_SYNC_STEPS and _asks_to_continue(result, mode):
+                    # The safety bound stopped a run that still had saved work (#466): say so,
+                    # so the person can continue on purpose instead of reading it as finished.
+                    result["step_limit_reached"] = True
             except (PluginRuntimeUnavailable, PluginRuntimeRequestError):
                 logger.warning("Plugin task dispatch failed: %s", spec.id)
             except (SQLAlchemyError, OSError, ValueError):

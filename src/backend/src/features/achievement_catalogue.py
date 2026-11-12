@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.achievement import Achievement
 from src.database.models.game import Game
 from src.features.achievement_folding import CATALOG
+from src.features.achievement_rekey import Rekey, incoming, match, rekey
 from src.features.metadata.providers import discover_providers
 from src.features.metadata.service import collect_record, game_candidate
 
@@ -48,6 +49,9 @@ def catalogue_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
                 "medal": item.get("tier"),
                 "points": item.get("points"),
                 "source_ids": dict(item.get("source_ids") or {}) or None,
+                # Plugin API 1.1.20: earlier ids of this achievement, for the sticky re-key step;
+                # not a stored field (``achievement_rekey.incoming`` takes them off)
+                "aliases": [alias[:_EXTERNAL_ID_LENGTH] for alias in item.get("aliases") or ()],
                 "unlocked": False,
             }
         )
@@ -92,34 +96,43 @@ async def has_catalogue(db: AsyncSession, game_id: UUID) -> bool:
 
 async def store_catalogue(
     db: AsyncSession, game_id: UUID, provider: str, rows: list[dict[str, Any]]
-) -> None:
+) -> Rekey:
     """Upsert by external id, so a media item linked to an achievement keeps its link.
 
     Definitions the provider no longer lists are removed, an empty answer changes nothing, and
-    synced rows and unlock state are never touched."""
+    synced rows and unlock state are never touched. A catalogue that carries the Atlas bridge
+    id (``source_ids["atlas.row"]``) is re-keyed in place first, moving manual progress with it
+    (see ``achievement_rekey``); the bridge itself is never stored."""
     if not rows:
-        return
+        return Rekey()
     existing = {
         a.external_id: a
         for a in (
             await db.scalars(
-                select(Achievement).where(
-                    Achievement.game_id == game_id, Achievement.provider == CATALOG
-                )
+                select(Achievement)
+                .where(Achievement.game_id == game_id, Achievement.provider == CATALOG)
+                .with_for_update()
             )
         ).all()
     }
-    now = int(time.time())
-    for row in rows:
-        values = {**row, "source_provider": provider}
-        current = existing.get(row["external_id"])
-        if current is None:
-            db.add(Achievement(game_id=game_id, provider=CATALOG, created_at=now, **values))
-            continue
-        for field, value in values.items():
-            if value is not None or field in ("hidden", "source_ids", "tier", "medal", "points"):
-                setattr(current, field, value)
-    wanted = {row["external_id"] for row in rows}
-    for external_id, achievement in existing.items():
-        if external_id not in wanted:
+    items = incoming(rows, provider)
+    rekeyed = match(items, existing)
+    result = Rekey()
+    if any(item.bridge for item in items):
+        result = await rekey(db, game_id, items, rekeyed)
+    wanted = {item.current.id for item in items if item.current is not None}
+    # delete first, so a definition that comes back under a freed id never meets the old row
+    for achievement in existing.values():
+        if achievement.id not in wanted:
             await db.delete(achievement)
+    await db.flush()
+    now = int(time.time())
+    for item in items:
+        if item.current is None:
+            db.add(Achievement(game_id=game_id, provider=CATALOG, created_at=now, **item.values))
+            continue
+        for field, value in item.values.items():
+            if value is not None or field in ("hidden", "source_ids", "tier", "medal", "points"):
+                setattr(item.current, field, value)
+    await db.flush()
+    return result

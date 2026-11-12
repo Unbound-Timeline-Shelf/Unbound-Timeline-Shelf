@@ -2,6 +2,7 @@
 // Edit a save or a world: its name, a note and tags, and its versions. Every
 // upload to a save is kept as a version, so this is where you download an
 // older one or remove one you no longer want, and add a new one.
+import { formatInstant } from "../utils/dates";
 import UiModal from "./UiModal.vue";
 import { ref, computed } from "vue";
 import type { ArchiveVersion, GameArchiveData } from "../services/gameArchives";
@@ -99,13 +100,6 @@ function onPicked(e: Event) {
   if (files.length) emit("add-version", props.archive, files);
 }
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 function size(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -203,9 +197,7 @@ function onKey(e: KeyboardEvent) {
         <ul class="aed-versions">
           <li v-for="(v, i) in archive.versions" :key="v.id">
             <div class="aed-v-main">
-              <strong>{{
-                dateFormat.format(new Date(v.uploaded_at * 1000))
-              }}</strong>
+              <strong>{{ formatInstant(v.uploaded_at) }}</strong>
               <span>{{ displayName(v.filename) }} · {{ size(v.size) }}</span>
             </div>
             <span v-if="i === 0" class="aed-latest">Latest</span>

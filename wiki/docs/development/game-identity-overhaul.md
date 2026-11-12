@@ -1,7 +1,7 @@
 # Game identity overhaul: coordination board
 
 Coordination page for the epic
-[#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91). It links the child
+[#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91). It links the child
 issues, pull requests, invariants, contracts, merge order and open risks. The detail lives in the
 per-phase pages listed in section 9; this page does not repeat it.
 
@@ -28,19 +28,19 @@ on #96. #101 needs all four. Each is stacked on the pull request before it.
 
 | Issue | Scope | Pull request | State | Based on | Page |
 | --- | --- | --- | --- | --- | --- |
-| [#92](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/92) | Audit | [#164](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/164) | **merged** (issue closed) | `main` | [Audit](game-library-identity-audit.md) |
-| [#93](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/93) | Canonical data model | [#180](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/180) | **merged** | `main` | [Model](game-identity-model.md) |
-| [#94](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/94) | Idempotent ingestion | [#196](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/196) | open, ready | `main` | [Ingestion](game-ingestion.md) |
-| [#95](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/95) | Reversible merges, decisions | [#202](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/202) | open, ready | #196 | [Decisions](game-identity-decisions.md) |
-| [#96](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/96) | Counter groups, adjustments | [#205](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/205) | open, ready | #202 | [Counters](game-identity-counters.md) |
-| [#97](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/97) | Manual achievements, completion | [#209](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/209) | open, ready | #205 | [Manual](game-identity-manual.md) |
-| [#98](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/98) | Name provenance, placeholders | [#210](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/210) | open, ready | #205 | [Names](game-identity-names.md) |
-| [#99](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/99) | Matching, review queue | [#213](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/213) | open, ready | #205 | [Matching](game-identity-matching.md) |
-| [#100](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/100) | Playnite host side | [#212](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/212) | open, ready | #205 | [Playnite](playnite-observations.md) |
-| #100 | Playnite extension (other repo) | [unnamed_tracking_playnite#2](https://github.com/obsoletelabs/unnamed_tracking_playnite/pull/2) | open, **draft** (C# not built here) | its `main` | - |
-| [#101](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/101) | Umbrella / versions / identity UI | [#214](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/214) | open, ready | #213 (carries #97, #98, #100) | [UI](game-identity-ui.md) |
-| [#102](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/102) | Safe existing-library backfill | [#216](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/216) | open, ready | #214 | [Migration](game-identity-migration.md) |
-| [#103](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/103) | Acceptance, performance, operations | [#222](https://github.com/obsoletelabs/unnamed_tracking_app_2/pull/222) | open, **draft** | #216 | [Acceptance](game-identity-acceptance.md) |
+| [#92](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/92) | Audit | [#164](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/164) | **merged** (issue closed) | `main` | [Audit](game-library-identity-audit.md) |
+| [#93](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/93) | Canonical data model | [#180](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/180) | **merged** | `main` | [Model](game-identity-model.md) |
+| [#94](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/94) | Idempotent ingestion | [#196](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/196) | open, ready | `main` | [Ingestion](game-ingestion.md) |
+| [#95](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/95) | Reversible merges, decisions | [#202](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/202) | open, ready | #196 | [Decisions](game-identity-decisions.md) |
+| [#96](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/96) | Counter groups, adjustments | [#205](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/205) | open, ready | #202 | [Counters](game-identity-counters.md) |
+| [#97](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/97) | Manual achievements, completion | [#209](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/209) | open, ready | #205 | [Manual](game-identity-manual.md) |
+| [#98](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/98) | Name provenance, placeholders | [#210](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/210) | open, ready | #205 | [Names](game-identity-names.md) |
+| [#99](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/99) | Matching, review queue | [#213](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/213) | open, ready | #205 | [Matching](game-identity-matching.md) |
+| [#100](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/100) | Playnite host side | [#212](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/212) | open, ready | #205 | [Playnite](playnite-observations.md) |
+| #100 | Playnite extension (other repo) | [unnamed_tracking_playnite#2](https://github.com/Unbound-Timeline-Shelf/Playnite-Integration/pull/2) | open, **draft** (C# not built here) | its `main` | - |
+| [#101](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/101) | Umbrella / versions / identity UI | [#214](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/214) | open, ready | #213 (carries #97, #98, #100) | [UI](game-identity-ui.md) |
+| [#102](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/102) | Safe existing-library backfill | [#216](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/216) | open, ready | #214 | [Migration](game-identity-migration.md) |
+| [#103](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/103) | Acceptance, performance, operations | [#222](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/pull/222) | open, **draft** | #216 | [Acceptance](game-identity-acceptance.md) |
 | #91 | This board | the pull request that adds this page | open, stacked on #222 | #222 | this page |
 
 #92 through #95 are on `main`. The table records the original review boundaries; some
@@ -51,9 +51,9 @@ Existing issues the epic told us to coordinate, checked on the same date:
 
 | Issue | State | Handling |
 | --- | --- | --- |
-| [#56](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/56) duplicates do not dedupe | closed | Owned-copy duplicate groups are kept and composed with umbrellas ([UI](game-identity-ui.md)); suggestions go through the durable review queue (#99). |
-| [#72](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/72) Steam linking, incomplete inventories | closed | Edge cases are encoded in ingestion: a Steam omission never marks anything unavailable; a partial inventory changes nothing ([Ingestion](game-ingestion.md), acceptance scenario 11). |
-| [#67](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/67) background library syncs | **open** | Not part of this epic. Its contract: it must call the ingestion service (idempotent) and never bypass decisions or locks. |
+| [#56](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/56) duplicates do not dedupe | closed | Owned-copy duplicate groups are kept and composed with umbrellas ([UI](game-identity-ui.md)); suggestions go through the durable review queue (#99). |
+| [#72](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/72) Steam linking, incomplete inventories | closed | Edge cases are encoded in ingestion: a Steam omission never marks anything unavailable; a partial inventory changes nothing ([Ingestion](game-ingestion.md), acceptance scenario 11). |
+| [#67](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/67) background library syncs | **open** | Not part of this epic. Its contract: it must call the ingestion service (idempotent) and never bypass decisions or locks. |
 
 ## 3. Invariants (non-negotiable)
 
@@ -88,8 +88,8 @@ Existing issues the epic told us to coordinate, checked on the same date:
 | --- | --- | --- | --- |
 | Playnite evidence API | `contract_version` 1 (`CURRENT_VERSION = 1`, `SUPPORTED_VERSIONS = (1,)`) | `features/game_ingestion/playnite.py`, `/api/playnite/contract`, `/observations`, `/inventory` | Unsupported version: HTTP 400 `unsupported_contract_version`, nothing stored. See [Playnite](playnite-observations.md). |
 | Original Playnite routes | unchanged | `/api/game/list`, `/create`, `/update/{id}`, assets, archives | Must stay; an extension that never negotiates keeps working. |
-| Playnite extension | probes `/api/playnite/contract`; falls back to the original routes on 404 or an unknown version | `obsoletelabs/unnamed_tracking_playnite` #2 | Host can ship first; the extension is optional-upgrade. |
-| Plugin API | `PLUGIN_API_CONTRACT_VERSION` | `obsoletelabs/unnamed_tracking_app_plugins` | Not changed by the epic. Store plugins feed observations through the ingestion service with their plugin ID and account scope. |
+| Playnite extension | probes `/api/playnite/contract`; falls back to the original routes on 404 or an unknown version | `Unbound-Timeline-Shelf/Playnite-Integration` #2 | Host can ship first; the extension is optional-upgrade. |
+| Plugin API | `PLUGIN_API_CONTRACT_VERSION` | `Unbound-Timeline-Shelf/Plugins` | Not changed by the epic. Store plugins feed observations through the ingestion service with their plugin ID and account scope. |
 
 Release order: the host pull requests first (they are backward compatible), then the extension.
 No plugin-repo change is required by any child.

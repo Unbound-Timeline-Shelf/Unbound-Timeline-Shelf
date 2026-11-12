@@ -1,10 +1,10 @@
 # Developing third-party plugins
 
 Build a standalone `.utp` package using the existing Plugin API v1 and SDK. The
-[official plugin repository](https://github.com/obsoletelabs/unnamed_tracking_app_plugins)
+[official plugin repository](https://github.com/Unbound-Timeline-Shelf/Plugins)
 contains the package builder, schema, protocol helpers and examples. Its
-[author guide](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/blob/main/docs/plugin-author-guide.md)
-and [catalogue specification](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/blob/main/docs/catalogue-specification.md)
+[author guide](https://github.com/Unbound-Timeline-Shelf/Plugins/blob/main/wiki/docs/plugin-author-guide.md)
+and [catalogue specification](https://github.com/Unbound-Timeline-Shelf/Plugins/blob/main/wiki/docs/catalogue-specification.md)
 describe publisher-side distribution.
 
 ## Define the public contract

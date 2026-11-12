@@ -1,5 +1,10 @@
+import { formatInstant } from "../utils/dates";
 import { useGameChecklist } from "./useGameChecklist";
+import { useGamePlayLog } from "./useGamePlayLog";
+import { releaseFacts } from "../utils/releaseDate";
 import { usePageTitle } from "../state/pageTitle";
+import { useScrollReady } from "../state/scrollMemory";
+import { useGameDetailHistory } from "./useGameDetailHistory";
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -10,7 +15,6 @@ import {
   fetchGameFieldChanges,
   fetchGames,
   setResumeNote,
-  setPlaytimeSeconds,
 } from "../services/games";
 import type { FieldChange } from "../services/games";
 import {
@@ -66,8 +70,7 @@ import { isGuess, unlockSeconds } from "../utils/mediaDate";
 import { normalizePlatformFamily } from "../utils/platforms";
 import { frameFromSource } from "../utils/videoThumbnail";
 import { preferences, preferencesLoaded } from "../state/preferences";
-import { OPTIONAL_TABS, resolvePage, planTabs } from "../utils/gamePage";
-import type { OptionalTab } from "../utils/gamePage";
+import { pickTab, resolvePage, planTabs } from "../utils/gamePage";
 import type { ContentCounts } from "../utils/gamePage";
 import {
   startTask,
@@ -79,6 +82,7 @@ import {
 } from "../state/taskProgress";
 import type { Achievement, Game, GameStatus } from "../types/game";
 import { computeScore } from "../utils/scoring";
+import { overflows } from "../utils/gameDetailDisplay";
 import DOMPurify from "dompurify";
 import { useConfirm, usePrompt } from "../state/dialog";
 import { useGameProfiles } from "./useGameProfiles";
@@ -102,14 +106,6 @@ export function useGameDetail() {
   const route = useRoute();
   const router = useRouter();
 
-  function goBackToLibrary() {
-    if (window.history.length > 1) {
-      router.back();
-    } else {
-      router.push("/games");
-    }
-  }
-
   const game = ref<Game | null>(null);
   // A merged game's page lists the saves, media and docs of every copy (#274).
   // Each item stays attached to its own copy, so changes go to that copy.
@@ -128,7 +124,10 @@ export function useGameDetail() {
   let loadRevision = 0;
   let activeRequest: AbortController | null = null;
   let libraryRequested = false;
-  const showEditModal = ref(false);
+  const { goBackToLibrary, showEditModal, writeTab } = useGameDetailHistory(
+    route,
+    router,
+  );
 
   const deleting = ref(false);
   const deleteError = ref<string | null>(null);
@@ -143,9 +142,7 @@ export function useGameDetail() {
   });
 
   const descriptionExpanded = ref(false);
-  const descriptionOverflows = computed(
-    () => descriptionHtml.value.replace(/<[^>]*>/g, "").length > 320,
-  );
+  const descriptionOverflows = computed(() => overflows(descriptionHtml.value));
 
   // resolved separately from game.value.parentGameId (which is only an id),
   // see loadGame()
@@ -469,31 +466,14 @@ export function useGameDetail() {
   const { quickEditError, changeStatus, onRatingsChange } =
     useGameQuickEdits(game);
 
-  // --- quick playtime logging --------------------------------------------
-  const loggingPlaytime = ref(false);
-  async function logPlaytime(minutes: number) {
-    const target = game.value;
-    if (!target || loggingPlaytime.value) return;
-    loggingPlaytime.value = true;
-    quickEditError.value = null;
-    try {
-      const currentSeconds = target.platforms.reduce(
-        (sum, p) => sum + p.playtimeMinutes * 60,
-        0,
-      );
-      const updated = await setPlaytimeSeconds(
-        target.id,
-        currentSeconds + minutes * 60,
-      );
-      target.platforms = updated.platforms;
-      target.lastPlayedAt = updated.lastPlayedAt;
-    } catch {
-      if (game.value === target)
-        quickEditError.value = "Could not log the playtime. Try again.";
-    } finally {
-      loggingPlaytime.value = false;
-    }
-  }
+  const {
+    loggingPlaytime,
+    playLogMessage,
+    playLogError,
+    playedOn,
+    logPlaytime,
+    logPlayNow,
+  } = useGamePlayLog(game);
 
   // --- similar games in the library, by shared tags -----------------------
   // fetched once per page visit (not per-game), cheap enough at this
@@ -576,6 +556,7 @@ export function useGameDetail() {
   // re-fetches automatically if you ever navigate from one game's page
   // straight to another, not just on the first load
   onMounted(() => void retryGame());
+  useScrollReady(() => !loading.value); // restores wait for the game
   watch(
     () => route.params.id,
     () => void retryGame(),
@@ -657,6 +638,7 @@ export function useGameDetail() {
       accent?: boolean;
       muted?: boolean;
       tab?: TabName;
+      field?: string;
     }[] = [];
     // your verdict first (score and where it ranks), then how you played it;
     // the individual ratings get their own row under these
@@ -672,17 +654,18 @@ export function useGameDetail() {
     }
     // playtime, achievements and platform are not repeated here: the hero shows the
     // achievements and platform, Copies & versions the reconciled playtime
+    facts.push(...releaseFacts(g));
     if (g.timeToBeatHours != null && g.timeToBeatHours > 0)
       facts.push({ label: "Main story", value: `~${g.timeToBeatHours}h` });
     if (g.dateAdded && !pageSettings.value.hide_date_badge)
       facts.push({
         label: "Added",
-        value: new Date(g.dateAdded).toLocaleDateString(),
+        value: formatInstant(g.dateAdded, { time: false }),
       });
     if (g.updatedAt)
       facts.push({
         label: "Last modified",
-        value: new Date(g.updatedAt * 1000).toLocaleDateString(),
+        value: formatInstant(g.updatedAt, { time: false }),
       });
     // the furthest you are through it on any platform
     const completions = g.platforms
@@ -791,7 +774,13 @@ export function useGameDetail() {
   onUnmounted(() => document.removeEventListener("click", closeMoreTabs));
   function openMoreTab(tab: (typeof tabs)[number]) {
     showMoreTabs.value = false;
+    selectTab(tab);
+  }
+  // A tab is a place on the page (UX-AUDIT-APP A6): see writeTab.
+  function selectTab(tab: (typeof tabs)[number]) {
+    if (tab === activeTab.value) return;
     activeTab.value = tab;
+    writeTab(tab, pageSettings.value.default_tab);
   }
   // With no Achievements tab there is nothing to tie things to or count, so
   // everything that depends on achievements steps aside too.
@@ -808,27 +797,27 @@ export function useGameDetail() {
   // Opens on the tab the page settings name (or the one a link asked for), once
   // for each game, when both the game and the settings have arrived.
   let openedFor: string | null = null;
+  const tabFor = (asked?: string) =>
+    pickTab(asked, tabs, baseTabs.value, pageSettings.value);
   watch(
     () => [game.value?.id, preferencesLoaded.value] as const,
     ([id, ready]) => {
       if (!id || !ready || openedFor === id) return;
       openedFor = id;
       void refreshCounts();
-      const asked = route.query.tab as string | undefined;
-      const wanted =
-        (asked === "World Map" ? "Worlds" : asked) ??
-        pageSettings.value.default_tab;
-      const hidden =
-        (OPTIONAL_TABS as readonly string[]).includes(wanted) &&
-        pageSettings.value.tabs[wanted as OptionalTab] === "hide";
-      if (
-        (tabs as readonly string[]).includes(wanted) &&
-        !(hidden && !asked) &&
-        baseTabs.value.includes(wanted as (typeof tabs)[number])
-      )
-        activeTab.value = wanted as (typeof tabs)[number];
+      const tab = tabFor(route.query.tab as string | undefined);
+      if (tab) activeTab.value = tab;
     },
     { immediate: true },
+  );
+  // Back and Forward between tabs of the same game
+  watch(
+    () => route.query.tab,
+    (asked) => {
+      const id = game.value?.id;
+      if (id && openedFor === id && route.params.id === id)
+        activeTab.value = tabFor(asked?.toString()) ?? "Overview";
+    },
   );
 
   // Screenshots/Clips/Soundtrack/Saves/Docs/Worlds all share the same
@@ -1467,12 +1456,7 @@ export function useGameDetail() {
   }
 
   function formatArchiveDate(unixSeconds: number): string {
-    return new Date(unixSeconds * 1000).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    return formatInstant(unixSeconds);
   }
 
   // --- Saves (named, versioned archives) --------------------------------------
@@ -1856,6 +1840,10 @@ export function useGameDetail() {
     saveResumeNote,
     loggingPlaytime,
     logPlaytime,
+    logPlayNow,
+    playLogMessage,
+    playLogError,
+    playedOn,
     similarGames,
     toggleFavorite,
     STATUS_OPTIONS,
@@ -1879,6 +1867,7 @@ export function useGameDetail() {
     moreTabs,
     showMoreTabs,
     openMoreTab,
+    selectTab,
     achievementsOn,
     tieAchievements,
     onDropError,

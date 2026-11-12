@@ -31,6 +31,16 @@ native UI, themes, shortcuts and built-in placement need a v1.1 update. Other ne
 v1.0 packages remain incompatible. Plugin release versions remain separate.
 See [the migration guide](plugin-v1.1-migration.md).
 
+`api_contract_version` is the lowest contract the plugin works with. From Plugin API 1.1.20 a
+manifest may also declare `api_contract_max`, the highest contract it supports (same major
+version, not below `api_contract_version`). The host then runs the plugin at
+`min(api_contract_max, host maximum)` and refuses it when that is below
+`api_contract_version`. A manifest without `api_contract_max`, or one whose
+`api_contract_version` is older than 1.1.20 (which is refused), keeps the earlier rule: the
+plugin runs at the contract it declared. The plugin inventory reports `api_contract_max`,
+`negotiated_api_contract` and the host's `plugin_api` range, and a worker receives the chosen
+contract in `PLUGIN_API_CONTRACT` (with `PLUGIN_API_HOST_MIN` and `PLUGIN_API_HOST_MAX`).
+
 SDK and application compatibility are independent. A plugin must satisfy both ranges before activation.
 
 Supported range forms are exact versions, comparisons, caret/tilde ranges, and bounded x/* minor/major wildcards. Invalid ranges are rejected.

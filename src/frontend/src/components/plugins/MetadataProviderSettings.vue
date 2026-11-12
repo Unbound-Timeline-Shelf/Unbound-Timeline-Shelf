@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { computed, onMounted, ref, watch } from "vue";
 import PasswordInput from "../PasswordInput.vue";
 import { currentUser } from "../../state/auth";
@@ -158,6 +159,7 @@ function description(provider: MetadataProviderStatus) {
     movie: "Movies",
     tv_show: "TV",
     anime: "Anime",
+    book: "Books",
   };
   return `${provider.media_types.map((type) => media[type]).join(", ")} · ${[
     provider.operations.metadata ? "metadata" : null,
@@ -218,7 +220,7 @@ onMounted(() => void refresh());
   <section class="provider-settings">
     <div class="provider-toolbar">
       <h3 class="group-heading">Metadata</h3>
-      <router-link v-if="!pluginId" to="/settings?section=plugins"
+      <router-link v-if="!pluginId" to="/settings/administration/plugins"
         >Optional plugins</router-link
       >
       <button
@@ -368,7 +370,7 @@ onMounted(() => void refresh());
         >
           <p v-if="provider.checked_at" class="tile-hint">
             Last checked
-            {{ new Date(provider.checked_at * 1000).toLocaleString() }}
+            {{ formatInstant(provider.checked_at) }}
           </p>
           <label class="automatic-search-setting">
             <input

@@ -5,13 +5,15 @@ from __future__ import annotations
 import secrets
 import time
 from dataclasses import dataclass
+from typing import Any, cast
 
 from fastapi import Request
-from sqlalchemy import delete, or_, select
+from sqlalchemy import CursorResult, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import SESSION_TTL_SECONDS, hash_token
 from src.core.client_address import request_ip
+from src.core.date_display import format_instant
 from src.core.geoip import geoip
 from src.database.models.auth import UserSession
 from src.database.models.user import User
@@ -49,6 +51,10 @@ def _set_anomaly(previous: UserSession | None, current: UserSession) -> None:
 async def _queue_anomaly_notification(db: AsyncSession, user: User, session: UserSession) -> None:
     if not session.anomaly_reason:
         return
+    # imported here: preferences pulls in settings modules that import this one
+    from src.core.preferences import load_preferences  # pylint: disable=import-outside-toplevel
+
+    prefs = await load_preferences(db, user.id)
     await emit_legacy_rows(
         db,
         user.id,
@@ -58,7 +64,7 @@ async def _queue_anomaly_notification(db: AsyncSession, user: User, session: Use
                 "title": "New sign-in location",
                 "body": (
                     f"A session was created from {session.geo_country or 'an unavailable location'} "
-                    f"at {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(session.created_at))}. "
+                    f"at {format_instant(session.created_at, prefs, seconds=True)}. "
                     "Location is approximate and may be inaccurate."
                 ),
                 "media_type": "system",
@@ -125,7 +131,7 @@ async def purge_old_sessions(db: AsyncSession, retention_seconds: int = 30 * 864
         )
     )
     await db.commit()
-    return result.rowcount
+    return cast(CursorResult[Any], result).rowcount
 
 
 def session_state(session: UserSession, now: int | None = None) -> str:

@@ -274,9 +274,7 @@ def _sync_show(
         season.episodes_watched = sum(e.watched for e in season.episodes)
         season.status = (
             status_type.WATCHED
-            if item.inventory_complete
-            and season.episode_count > 0
-            and season.episodes_watched == season.episode_count
+            if item.inventory_complete and 0 < season.episode_count == season.episodes_watched
             else status_type.IN_PROGRESS
             if season.episodes_watched
             else status_type.WATCHLIST

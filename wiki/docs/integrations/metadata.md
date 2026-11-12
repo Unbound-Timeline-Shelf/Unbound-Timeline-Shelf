@@ -14,7 +14,7 @@ without selecting results. All 29 results with a supplied release year displayed
 it, including entries beyond the initial five; all 30 results had zero artwork
 assets. `Toast & Toaster` supplied "Coming soon" without a year, so its year
 remained blank. That check kept each query unchanged. The query-change regression
-reported in [issue #6](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/6)
+reported in [issue #6](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/6)
 is covered by the retained metadata behavior above.
 
 ![Text-only rolling preloading updates years throughout the result list](../assets/plugin-metadata/rolling-five-text.jpg)
@@ -202,17 +202,33 @@ A provider outage, rate limit, malformed result, or no-match result does not mod
 
 Metadata changes are recorded in the existing game metadata history, so provider-applied field changes remain visible in the game's **History** tab.
 
+## How a refresh decides that a result is your game
+
+A refresh trusts provider ids, not titles. The ids that count are the ones a provider reported itself (Steam reporting the app id it looked up, for example), never the ids the refresh sent:
+
+1. **A provider reported an id the game already has:** the result is your game, whatever its title. A renamed game or one with a placeholder title such as "Steam app 12345" refreshes this way. An Atlas id that differs from the saved one counts neither way: Atlas reports its live id after two records were merged, and following such a merge needs a later Plugin API version. The saved Atlas id is kept and the refresh says so.
+2. **No reported id matches, but a provider reported the game's exact title:** the result can be previewed. It is applied only when you confirm that very result: in Library settings the preview marks these games "title only", and only the ones you tick are applied. Through the API, send the previewed `candidate.provider_ids` back as `confirm_candidate`. The apply looks the game up again; if it now finds a different result (two games with the same title, or a provider that ranks them differently), the answer is `needs-confirmation` with the new `candidate`, and nothing changes until you confirm that one. Without a confirmation the answer is also `needs-confirmation`.
+3. **A provider contradicts an id the game has, or two providers (or one provider, in its search result and its details) report different ids for the same service:** the answer is `conflict` with each side listed under `conflicts`, and nothing changes.
+4. **The result carries an id you rejected for this game:** the answer is `rejected` and nothing changes, even when another id confirms the game. The result combines every provider's fields, so the rejected provider's values cannot be applied separately from the rest; forget that one rejection to refresh the game again.
+
+An id another game in your library already has is never added to this game, and locked fields, preferred sources, play history and the game's place in your library are never changed by a refresh.
+
+To reject a result, send its `candidate.provider_ids` (from the preview) to `POST /api/game/{game_id}/metadata/rejections`. Only the ids the game does not already have are stored. `GET` on the same path lists them. `DELETE` forgets them all, or only one with `?namespace=<service>&identity=<id>`. There is no button for this yet, and rejections are not part of the per-user identity export (database backups do include them).
+
 ## Developer notes
 
 The editor uses `/api/game/{game_id}/metadata/refresh`, which resolves an existing
 library identity through `features.metadata.service` and the shared handler.
-The endpoint retains authorization, exact-match validation, field protection,
-history, artwork and stale-preview checks. Applying a refresh reloads the owned
-row under a lock, so a protection change during lookup is respected.
+The endpoint retains authorization, field protection, history, artwork and
+stale-preview checks. Applying a refresh reloads the owned row under a lock and
+decides the match on that row, so a protection or provider-id change during the
+lookup is respected. The match rules live in `features.game_identity.refresh_match`
+(CONTRACTS-v1 C4.4 rules 1, 3 and 4); the handler exposes each provider's own ids as
+the record's `provider_id_claims`.
 
 See [Progressive metadata and Plugin API 1.1.1](../development/metadata-providers.md)
 for the public contract, session endpoints and migration details. Provider
-optional implementations are maintained in [obsoletelabs/unnamed_tracking_app_plugins](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
+optional implementations are maintained in [Unbound-Timeline-Shelf/Plugins](https://github.com/Unbound-Timeline-Shelf/Plugins).
 
 ## Atlas (optional provider)
 
@@ -290,7 +306,7 @@ they do not imply that every authenticated provider has been configured or valid
 ## Epic Games plugin (experimental)
 
 Epic is not a core provider. The optional
-[Epic Games Library](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/blob/main/official/epic-games/README.md)
+[Epic Games Library](https://github.com/Unbound-Timeline-Shelf/Plugins/blob/main/official/epic-games/README.md)
 plugin (`official.epic-games`) is maintained in the companion plugin repository
 and requires Plugin API 1.1.11. Install it through **Settings → Plugins**, approve
 its permissions and enable it; **Epic Games** then appears in
@@ -335,11 +351,11 @@ To recover:
   is enabled and its permissions are approved.
 
 The plugin's
-[troubleshooting and support notes](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/blob/main/official/epic-games/README.md#troubleshooting-and-support)
+[troubleshooting and support notes](https://github.com/Unbound-Timeline-Shelf/Plugins/blob/main/official/epic-games/README.md#troubleshooting-and-support)
 are the maintained reference for the plugin's Epic messages, and the
 [Epic plugin guide](https://obsoletelabs.github.io/unnamed_tracking_app_plugins/examples/epic-games/)
 covers its design and validation. Report Epic sign-in or import failures in the
-[plugin repository's issues](https://github.com/obsoletelabs/unnamed_tracking_app_plugins/issues),
+[plugin repository's issues](https://github.com/Unbound-Timeline-Shelf/Plugins/issues),
 not to Epic. Never include the authorization code, the text of Epic's sign-in
 page, tokens or your Epic account ID.
 

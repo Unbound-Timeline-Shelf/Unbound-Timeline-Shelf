@@ -6,7 +6,10 @@ import * as plugins from "../services/plugins";
 import * as permissions from "../services/pluginPermissions";
 import * as ui from "../services/pluginUi";
 
-vi.mock("vue-router", () => ({ useRoute: () => ({ query: {} }) }));
+vi.mock("vue-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("vue-router")>()),
+  useRoute: () => ({ query: {} }),
+}));
 vi.mock("../services/plugins");
 vi.mock("../services/pluginPermissions");
 vi.mock("../services/pluginUi");
@@ -28,7 +31,7 @@ beforeEach(() => {
   vi.mocked(plugins.fetchPluginLogs).mockResolvedValue(
     {} as plugins.PluginDiagnostics,
   );
-  vi.mocked(plugins.fetchPluginDetails).mockResolvedValue({});
+  vi.mocked(plugins.fetchPluginDetails).mockResolvedValue({ readme: null });
   vi.mocked(permissions.fetchPluginPermissionGrants).mockResolvedValue([]);
   vi.mocked(permissions.fetchPluginPermissionRequests).mockResolvedValue([]);
   vi.mocked(ui.fetchPluginUi).mockResolvedValue({

@@ -43,6 +43,7 @@ from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.artwork_revisions import artwork_response, stored_file_revision
 from src.helpers.media import (
     MediaKind,
+    MediaValidationError,
     classify_media,
     media_subdir,
     original_filename,
@@ -449,7 +450,7 @@ async def upload_game_screenshots(
 
         try:
             await asyncio.to_thread(validate_media, data, upload.filename or "", kind)
-        except ValueError as exc:
+        except MediaValidationError as exc:
             results.append({"filename": upload.filename, "status": "rejected", "reason": str(exc)})
             continue
 

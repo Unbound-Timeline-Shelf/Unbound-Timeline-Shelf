@@ -178,9 +178,9 @@ async def register_client(payload: ClientWrite, db: AsyncSession = _DB) -> dict:
 
 @router.get("/requests/{request_id}")
 async def request_summary(
-    request_id: UUID, _user: User = _BROWSER_USER, db: AsyncSession = _DB
+    request_id: UUID, user: User = _BROWSER_USER, db: AsyncSession = _DB
 ) -> dict:
-    return await delegation.request_summary(db, request_id)
+    return await delegation.request_summary(db, request_id, user)
 
 
 @router.post("/requests/{request_id}/decision")
@@ -210,7 +210,10 @@ async def grants(user: User = _BROWSER_USER, db: AsyncSession = _DB) -> list[dic
             select(DelegatedGrant, IntegrationClient, DelegationRequest.external_account)
             .join(IntegrationClient, DelegatedGrant.client_id == IntegrationClient.id)
             .join(DelegationRequest, DelegatedGrant.request_id == DelegationRequest.id)
-            .where(DelegatedGrant.user_id == user.id)
+            .where(
+                DelegatedGrant.user_id == user.id,
+                DelegatedGrant.revoked_at.is_(None),
+            )
             .order_by(DelegatedGrant.created_at.desc())
             .limit(200)
         )

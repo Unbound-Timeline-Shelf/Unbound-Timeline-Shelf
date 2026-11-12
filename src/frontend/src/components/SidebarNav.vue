@@ -31,6 +31,7 @@ import ProfileAvatar from "./ProfileAvatar.vue";
 import { branding } from "../state/branding";
 import { containModalTab } from "../services/focus";
 import { useConfirm } from "../state/dialog";
+import { skipToContent } from "../state/routeFocus";
 import { shortcutAriaKeys, shortcutHint } from "../state/shortcuts";
 import {
   navigationShortcutForPath,
@@ -63,6 +64,7 @@ const groups = [
     id: "games",
     label: "Games",
     icon: "games",
+    landing: "/games",
     paths: ["/games", "/games/collections"],
     entries: [
       { path: "/games", label: "All games", icon: "games" },
@@ -73,12 +75,21 @@ const groups = [
     id: "media",
     label: "Media",
     icon: "media",
-    paths: ["/movies", "/tv", "/anime", "/media/collections", "/media/search"],
+    landing: "/movies",
+    paths: [
+      "/movies",
+      "/tv",
+      "/anime",
+      "/books",
+      "/media/collections",
+      "/media/search",
+    ],
     entries: [
       { path: "/media/search", label: "Add media", icon: "media" },
       { path: "/movies", label: "Movies", icon: "media" },
       { path: "/tv", label: "TV shows", icon: "tv" },
       { path: "/anime", label: "Anime", icon: "anime" },
+      { path: "/books", label: "Books", icon: "book" },
       { path: "/media/collections", label: "Collections", icon: "lists" },
     ],
   },
@@ -104,6 +115,12 @@ function toggleGroup(id: string) {
   if (next.has(id)) next.delete(id);
   else next.add(id);
   expandedGroups.value = next;
+}
+// opening a folder's library also shows the pages inside it
+function openFolder(id: string) {
+  if (!expandedGroups.value.has(id))
+    expandedGroups.value = new Set([...expandedGroups.value, id]);
+  close();
 }
 const tools = [
   { path: "/calendar", label: "Calendar", icon: "calendar" },
@@ -307,7 +324,9 @@ onUnmounted(() => {
 
 <template>
   <div class="nav-shell">
-    <a href="#main-content" class="skip-link">Skip to content</a>
+    <a href="#main-content" class="skip-link" @click="skipToContent"
+      >Skip to content</a
+    >
     <button
       v-if="isModal && !isPhone"
       type="button"
@@ -408,27 +427,36 @@ onUnmounted(() => {
           >
           <p class="nav-group-label nav-label">Your library</p>
           <div v-for="group in groups" :key="group.id" class="nav-group">
-            <button
-              type="button"
-              class="nav-item"
-              :class="{ 'group-active': groupActive(group) }"
-              :aria-label="group.label"
-              :data-tour="`nav-${group.id}`"
-              :title="`${group.label} · ${navigationTooltip(`Open ${group.entries[0]!.label}`, group.entries[0]!.path)}`"
-              :aria-expanded="!collapsed && expandedGroups.has(group.id)"
-              :aria-controls="`nav-${group.id}`"
-              @click="toggleGroup(group.id)"
-            >
-              <AppIcon :name="group.icon" /><span class="nav-label">{{
-                group.label
-              }}</span
-              ><AppIcon
-                class="nav-chevron nav-label"
-                :class="{ expanded: expandedGroups.has(group.id) }"
-                name="chevron"
-                :size="14"
-              />
-            </button>
+            <!-- the folder name opens its first library and the chevron
+                 shows or hides the pages inside (UX-AUDIT-APP A27) -->
+            <div class="nav-folder">
+              <RouterLink
+                :to="group.landing"
+                class="nav-item nav-folder-link"
+                :class="{ 'group-active': groupActive(group) }"
+                :data-tour="`nav-${group.id}`"
+                :title="navigationTooltip(group.label, group.landing)"
+                @click="openFolder(group.id)"
+                ><AppIcon :name="group.icon" /><span class="nav-label">{{
+                  group.label
+                }}</span></RouterLink
+              >
+              <button
+                type="button"
+                class="nav-folder-toggle nav-label"
+                :aria-label="`${group.label} pages`"
+                :aria-expanded="!collapsed && expandedGroups.has(group.id)"
+                :aria-controls="`nav-${group.id}`"
+                @click="toggleGroup(group.id)"
+              >
+                <AppIcon
+                  class="nav-chevron"
+                  :class="{ expanded: expandedGroups.has(group.id) }"
+                  name="chevron"
+                  :size="14"
+                />
+              </button>
+            </div>
             <div
               v-if="!collapsed && expandedGroups.has(group.id)"
               :id="`nav-${group.id}`"
@@ -515,7 +543,7 @@ onUnmounted(() => {
         </nav>
         <footer class="nav-footer">
           <RouterLink
-            to="/settings?section=appearance"
+            to="/settings/preferences"
             class="nav-item"
             :class="{
               active:
@@ -532,7 +560,7 @@ onUnmounted(() => {
           >
           <RouterLink
             v-if="currentUser?.is_admin"
-            to="/settings?section=admin"
+            to="/settings/administration"
             class="nav-item"
             :class="{
               active:
@@ -551,7 +579,7 @@ onUnmounted(() => {
           </div>
           <div class="nav-account">
             <RouterLink
-              to="/settings?section=profile"
+              to="/settings/account"
               class="nav-account-link"
               :title="accountDisplayName(currentUser)"
               aria-label="Your account"
@@ -635,6 +663,7 @@ onUnmounted(() => {
               '/movies',
               '/tv',
               '/anime',
+              '/books',
               '/media/collections',
               '/media/search',
             ].some(isActive),
@@ -655,6 +684,20 @@ onUnmounted(() => {
         >
           <AppIcon name="settings" /><span>Settings</span>
         </RouterLink>
+        <!-- Calendar, Statistics, Notifications and Upload live in the menu;
+             More opens it from the thumb's reach (UX-AUDIT-APP A12) -->
+        <!-- hidden (not removed) while the menu is open so aria-expanded
+             reflects the real state for assistive technology -->
+        <button
+          v-show="!open"
+          type="button"
+          class="mobile-more"
+          aria-controls="app-navigation"
+          :aria-expanded="open ? 'true' : 'false'"
+          @click="openMenu()"
+        >
+          <AppIcon name="menu" /><span>More</span>
+        </button>
       </nav>
     </Teleport>
   </div>
@@ -839,6 +882,35 @@ dialog.navigation {
   color: var(--ui-faint);
   padding: 0 12px;
   margin: 24px 0 10px;
+}
+.nav-folder {
+  position: relative;
+}
+.nav-folder-link {
+  padding-right: 44px;
+}
+.nav-folder-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-control);
+  background: transparent;
+  color: var(--ui-dim);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.nav-folder-toggle:hover {
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+}
+.collapsed .nav-folder-toggle {
+  display: none;
 }
 .nav-chevron {
   margin-left: auto;
@@ -1109,7 +1181,8 @@ dialog.navigation {
   }
   .mobile-tabs {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     position: fixed;
     bottom: calc(12px + env(safe-area-inset-bottom));
     left: 16px;

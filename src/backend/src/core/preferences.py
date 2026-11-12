@@ -19,6 +19,7 @@ from src.core.page_settings import DEFAULT_PAGE_SETTINGS, validate_page_settings
 from src.core.public_url import normalize_public_url
 from src.database.models.user_preferences import UserPreferences
 from src.helpers.shortcut_keys import validate_shortcut_overrides
+from src.plugin_api.vocab import RELATION_TYPES
 
 DEFAULTS: dict[str, Any] = {
     "ui_theme": "system",
@@ -33,7 +34,13 @@ DEFAULTS: dict[str, Any] = {
     "keyboard_shortcuts_enabled": True,
     "keyboard_shortcut_overrides": {},
     "home_widgets": [],
+    # the person chose their Home widgets (even none); until then a library with games
+    # shows the suggested widgets instead of an empty Home (UX-AUDIT-APP A22)
+    "home_widgets_customized": False,
     "home_widget_config": {},
+    # one-time tips this account has dismissed, so they stay gone on every browser
+    # and device (UX-AUDIT-APP A24)
+    "dismissed_tips": [],
     "calendar_game_releases": True,
     "calendar_game_history": True,
     "calendar_default_view": "month",
@@ -69,6 +76,16 @@ DEFAULTS: dict[str, Any] = {
     "library_version_display": "grouped",
     "library_relationship_display": {},
     "title_language": "english",
+    # how every date is shown (SPEC-UI-POLISH-PASS section 6): 17/09/2020 (dmy, the default),
+    # 17 September 2020 (long), 09/17/2020 (mdy) or 2020-09-17 (iso). Storage and the API stay
+    # ISO. A month known without its day is always "September 2020" ("2020-09" in iso).
+    "date_format": "dmy",
+    # None is 24h, except mdy which reads as 12h
+    "time_format": None,
+    # the person picked a date format (settings or the first-visit offer)
+    "date_format_chosen": False,
+    # the one-time first-visit date-format offer was shown and answered
+    "date_format_offered": False,
     "lists_default_sort": "custom",
     "stats_include_plan": True,
     "anilist_import_username": "",
@@ -83,6 +100,9 @@ DEFAULTS: dict[str, Any] = {
     "metadata_providers_enabled": {},
     # what every game page shows (tabs, buttons); a game can override it
     "game_page": DEFAULT_PAGE_SETTINGS,
+    # the client a game's Play button uses on every device (#319); "" keeps the automatic
+    # choice: the client last used in this browser, then the one the game came from
+    "launch_default_client": "",
 }
 
 _CHOICES: dict[str, tuple[Any, ...]] = {
@@ -97,6 +117,9 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "library_version_display": ("grouped", "separate"),
     "lists_default_sort": ("custom", "name", "count", "recent"),
     "title_language": ("english", "romaji", "native"),
+    "date_format": ("dmy", "long", "mdy", "iso"),
+    "time_format": (None, "24h", "12h"),
+    "launch_default_client": ("", "playnite", "steam", "gog"),
 }
 
 # Days a trashed movie/show/anime stays before the scheduled sweep deletes it.
@@ -146,24 +169,8 @@ def _validate_anilist_username(value: Any) -> str:
     return value.strip()
 
 
-_RELATIONSHIP_RULE_KINDS = frozenset(
-    {
-        "version_of",
-        "remake_of",
-        "remaster_of",
-        "port_of",
-        "dlc_of",
-        "expansion_of",
-        "standalone_expansion_of",
-        "mod_of",
-        "modpack_of",
-        "total_conversion_of",
-        "series_member",
-        "collection_member",
-        "related_to",
-        "custom",
-    }
-)
+# the shared relation vocabulary, plus the two kinds only a person creates
+_RELATIONSHIP_RULE_KINDS = frozenset({*RELATION_TYPES, "related_to", "custom"})
 
 
 def _validate_relationship_display(value: Any) -> dict[str, str]:
@@ -196,6 +203,35 @@ def _validate_theme_package(value: Any) -> str:
     if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", value):
         raise ValueError("ui_theme_package must be a bounded theme identifier")
     return value
+
+
+# Retired C5.5 keys. A browser still running an older build may send them for a while after an
+# upgrade, so they are accepted on write, translated, and never stored or returned.
+_LEGACY_DATE_CHOICES: dict[str, tuple[str, ...]] = {
+    "date_display": ("locale", "iso"),
+    "partial_date_style": ("short", "long"),
+}
+
+
+def translate_legacy_date_preferences(values: dict[str, Any]) -> dict[str, Any]:
+    """`values` without the retired date keys: `date_display: "iso"` becomes an explicit
+    `date_format: "iso"` (unless the same values already carry a `date_format`); `"locale"`
+    and `partial_date_style` are dropped, so the default (and the first-visit offer) applies."""
+    if not _LEGACY_DATE_CHOICES.keys() & values.keys():
+        return values
+    out = {k: v for k, v in values.items() if k not in _LEGACY_DATE_CHOICES}
+    if values.get("date_display") == "iso" and "date_format" not in values:
+        out["date_format"] = "iso"
+        out.setdefault("date_format_chosen", True)
+    return out
+
+
+def _check_legacy_date_values(changes: dict[str, Any]) -> None:
+    for key, choices in _LEGACY_DATE_CHOICES.items():
+        if key in changes:
+            value = changes[key]
+            if isinstance(value, bool) or value not in choices:
+                raise ValueError(f"{key} must be one of {list(choices)}")
 
 
 def validate_preference(key: str, value: Any) -> Any:
@@ -356,6 +392,21 @@ def _validate_notification_routes(value: Any) -> dict[str, dict[str, dict[str, A
     return clean
 
 
+_TIP_ID = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
+_MAX_DISMISSED_TIPS = 64
+
+
+def _validate_dismissed_tips(value: Any) -> list[str]:
+    """Bounded, unique tip identifiers; the frontend owns what each one means."""
+    if not isinstance(value, list) or len(value) > _MAX_DISMISSED_TIPS:
+        raise ValueError(f"dismissed_tips must be a list of at most {_MAX_DISMISSED_TIPS} tips")
+    if any(not isinstance(item, str) or not _TIP_ID.fullmatch(item) for item in value):
+        raise ValueError("dismissed_tips must contain short lowercase tip identifiers")
+    if len(set(value)) != len(value):
+        raise ValueError("dismissed_tips must not repeat a tip")
+    return list(value)
+
+
 _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "notification_url": normalize_public_url,
     "notification_types": _validate_notification_mapping,
@@ -364,6 +415,7 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "notification_timing": normalize_timing,
     "ui_theme_package": _validate_theme_package,
     "home_widgets": _validate_home_widgets,
+    "dismissed_tips": _validate_dismissed_tips,
     "home_widget_config": _validate_widget_config,
     "ui_custom_palette": _validate_custom_palette,
     "keyboard_shortcut_overrides": validate_shortcut_overrides,
@@ -382,7 +434,7 @@ async def load_preferences(
     row = await db.scalar(
         query.with_for_update().execution_options(populate_existing=True) if lock else query
     )
-    data = row.data if row else {}
+    data = translate_legacy_date_preferences(row.data if row else {})
     # Existing stored choices remain overrides; new accounts inherit the server default.
     if "notification_retention_days" in data and "notification_retention_inherit" not in data:
         data = {**data, "notification_retention_inherit": False}
@@ -392,7 +444,10 @@ async def load_preferences(
 async def save_preferences(
     db: AsyncSession, user_id: UUID, changes: dict[str, Any], *, commit: bool = True
 ) -> dict[str, Any]:
-    clean = {k: validate_preference(k, v) for k, v in changes.items()}
+    _check_legacy_date_values(changes)
+    clean = {
+        k: validate_preference(k, v) for k, v in translate_legacy_date_preferences(changes).items()
+    }
     if "notification_retention_days" in clean:
         clean.setdefault("notification_retention_inherit", False)
     row = await db.scalar(
@@ -404,7 +459,7 @@ async def save_preferences(
     if row is None:
         row = UserPreferences(user_id=user_id, data={})
         db.add(row)
-    row.data = {**row.data, **clean}
+    row.data = {**translate_legacy_date_preferences(row.data), **clean}
     if commit:
         await db.commit()
     else:

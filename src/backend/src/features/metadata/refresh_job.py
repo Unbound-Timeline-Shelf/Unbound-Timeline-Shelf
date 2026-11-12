@@ -72,7 +72,7 @@ class Progress:
 finish_hooks: list[Callable[[dict[str, Any]], None]] = []
 
 _progress = Progress()
-_task: asyncio.Task[dict[str, Any]] | None = None
+_task: asyncio.Task[dict[str, Any]] | None = None  # pylint: disable=invalid-name
 
 
 def snapshot() -> dict[str, Any]:

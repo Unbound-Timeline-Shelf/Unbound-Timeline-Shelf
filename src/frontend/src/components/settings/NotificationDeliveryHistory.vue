@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { onMounted, ref } from "vue";
 import {
   fetchDeliveries,
@@ -40,7 +41,7 @@ async function retry(item: DeliveryRecord) {
 }
 
 function when(timestamp: number | null): string {
-  return timestamp ? new Date(timestamp * 1000).toLocaleString() : "";
+  return timestamp ? formatInstant(timestamp) : "";
 }
 onMounted(load);
 </script>

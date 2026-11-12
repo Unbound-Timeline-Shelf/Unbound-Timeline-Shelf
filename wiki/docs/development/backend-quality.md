@@ -1,6 +1,6 @@
 # Backend quality checks
 
-The rework of [PR250](https://github.com/Rosefall-a/unnamed_tracking_app/pull/250) includes [PR432](https://github.com/Rosefall-a/unnamed_tracking_app/pull/432), which was retargeted and merged into the maintenance branch first. Continued cleanup is published on the [ObsoleteLabs fork branch](https://github.com/obsoletelabs/unnamed_tracking_app_2/tree/fix/pylint-ci-rework).
+The rework of [PR250](https://github.com/Rosefall-a/unnamed_tracking_app/pull/250) includes [PR432](https://github.com/Rosefall-a/unnamed_tracking_app/pull/432), which was retargeted and merged into the maintenance branch first. Continued cleanup is published on the [ObsoleteLabs fork branch](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/tree/fix/pylint-ci-rework).
 
 ## CI behavior
 

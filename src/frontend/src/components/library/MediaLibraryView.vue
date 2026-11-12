@@ -15,6 +15,7 @@ import { useRoute, useRouter } from "vue-router";
 import CheckIcon from "../CheckIcon.vue";
 import MediaTopBar from "../MediaTopBar.vue";
 import UiModal from "../UiModal.vue";
+import { useConfirm } from "../../state/dialog";
 import SegmentedTabs from "../SegmentedTabs.vue";
 import type { SegmentOption } from "../SegmentedTabs.vue";
 import { preferences } from "../../state/preferences";
@@ -25,11 +26,11 @@ import { PHONE_CARD_COLUMNS } from "../../utils/libraryLayout";
 import { numberOrNull, requiredNumber } from "../../utils/numberInput";
 import { quickTourActive } from "../../state/quickTour";
 import {
-  STATUS_BUCKETS,
-  statusBucket,
-  statusBucketLabel,
-  bucketToReal,
-  resolveStatus,
+  statusBuckets,
+  statusBucket as bucketOf,
+  statusBucketLabel as bucketLabelOf,
+  bucketToReal as realOf,
+  resolveStatus as resolveFor,
   mediaBucketCounts,
 } from "../../utils/mediaStatus";
 
@@ -44,13 +45,8 @@ import type {
 } from "../../types/mediaLibrary";
 export type { LibraryCardVM, EditForm } from "../../types/mediaLibrary";
 
-// The pill/tab labels shown everywhere in this view come from the shared
-// 5-value bucket set in utils/mediaStatus.ts — the pill's CSS modifier
-// class is just the bucket key itself (see .pill.watching etc below).
-const STATUSES = STATUS_BUCKETS;
-
 const props = defineProps<{
-  kind: "movie" | "tv" | "anime";
+  kind: "movie" | "tv" | "anime" | "book";
   addLabel: string;
   items: LibraryCardVM[];
   total: number;
@@ -61,16 +57,31 @@ const props = defineProps<{
   loading: boolean;
   error: string | null;
   detailRoute: (id: string) => string;
+  onBulkDelete?: (
+    ids: string[],
+  ) => Promise<{ failedIds: string[]; error: string | null }>;
 }>();
 
+// The pill/tab labels shown everywhere in this view come from the shared
+// 5-value bucket set in utils/mediaStatus.ts (books read them as reading
+// statuses) — the pill's CSS modifier class is just the bucket key itself
+// (see .pill.watching etc below).
+const STATUSES = statusBuckets(props.kind);
+const statusBucket = (real: string) => bucketOf(real, props.kind);
+const statusBucketLabel = (real: string) => bucketLabelOf(real, props.kind);
+const bucketToReal = (bucket: string) => realOf(bucket, props.kind);
+const resolveStatus = (bucket: string, current?: string) =>
+  resolveFor(bucket, current, props.kind);
+
 const emit = defineEmits<{
+  // books are added with their own form, not the provider search
+  (e: "add"): void;
   (e: "toggle-favorite", id: string): void;
   (e: "advance-episode", id: string): void;
   (e: "save-note", id: string, note: string | null): void;
   (e: "save-edit", id: string, form: EditForm): void;
   (e: "bulk-set-status", ids: string[], status: string): void;
   (e: "bulk-favorite", ids: string[]): void;
-  (e: "bulk-delete", ids: string[]): void;
   (e: "search", query: string): void;
   (
     e: "filters-change",
@@ -115,6 +126,7 @@ watch(
 const typeLabel = computed(() => {
   if (props.kind === "movie") return "Movie";
   if (props.kind === "tv") return "TV Series";
+  if (props.kind === "book") return "Book";
   return "Anime";
 });
 
@@ -305,6 +317,7 @@ const BASE_PATH: Record<string, string> = {
   movie: "/movies",
   tv: "/tv",
   anime: "/anime",
+  book: "/books",
 };
 function applyLinkedFilter() {
   if (route.path !== BASE_PATH[props.kind]) return;
@@ -398,7 +411,9 @@ function computedRank(it: LibraryCardVM): number | null {
   return rankByItemId.value.get(it.id) ?? null;
 }
 
-const statusCounts = computed(() => mediaBucketCounts(props.statusCounts));
+const statusCounts = computed(() =>
+  mediaBucketCounts(props.statusCounts, props.kind),
+);
 
 function progressPct(it: LibraryCardVM): number {
   if (!it.isEpisodic) return it.watched > 0 ? 100 : 0;
@@ -541,18 +556,33 @@ function toggleGenre(g: string) {
 const selectMode = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
 const bulkStatusValue = ref("");
+const bulkDeleteBusy = ref(false);
+const bulkDeleteError = ref("");
+const confirm = useConfirm();
+function selectShown() {
+  const shown =
+    layout.value === "board"
+      ? boardGroups.value.flatMap((group) => group.visibleItems)
+      : renderedItems.value;
+  selectedIds.value = new Set(shown.map((item) => item.id));
+  bulkDeleteError.value = "";
+}
 
 function toggleSelectMode() {
+  bulkDeleteError.value = "";
   selectMode.value = !selectMode.value;
   if (!selectMode.value) selectedIds.value = new Set();
 }
 function toggleSelectItem(id: string) {
+  if (bulkDeleteBusy.value) return;
+  bulkDeleteError.value = "";
   const next = new Set(selectedIds.value);
   if (next.has(id)) next.delete(id);
   else next.add(id);
   selectedIds.value = next;
 }
 function clearSelection() {
+  bulkDeleteError.value = "";
   selectedIds.value = new Set();
 }
 function bulkApplyStatus() {
@@ -567,12 +597,49 @@ function bulkApplyStatus() {
 function bulkFavorite() {
   emit("bulk-favorite", [...selectedIds.value]);
 }
-function bulkDelete() {
-  emit("bulk-delete", [...selectedIds.value]);
-  selectedIds.value = new Set();
+async function bulkDelete() {
+  if (bulkDeleteBusy.value || !props.onBulkDelete || !selectedIds.value.size)
+    return;
+  const ids = [...selectedIds.value];
+  bulkDeleteBusy.value = true;
+  bulkDeleteError.value = "";
+  try {
+    const retention = preferences.value.media_trash_retention_days;
+    if (
+      !(await confirm({
+        title: "Remove " + ids.length + " titles?",
+        message:
+          retention > 0
+            ? "These titles move to Trash and are eligible for automatic deletion after " +
+              retention +
+              " days. You can restore them before then."
+            : "These titles move to Trash, where you can restore them. Automatic deletion is off.",
+        confirmLabel: "Remove from library",
+        danger: true,
+      }))
+    )
+      return;
+    const result = await props.onBulkDelete(ids);
+    selectedIds.value = new Set(result.failedIds);
+    if (result.failedIds.length)
+      bulkDeleteError.value =
+        result.failedIds.length +
+        " of " +
+        ids.length +
+        " titles could not be removed. They remain selected for retry. " +
+        (result.error ?? "");
+  } catch (reason) {
+    bulkDeleteError.value =
+      reason instanceof Error
+        ? reason.message
+        : "Could not remove the selected titles.";
+  } finally {
+    bulkDeleteBusy.value = false;
+  }
 }
 
 function handleCardClick(it: LibraryCardVM) {
+  if (bulkDeleteBusy.value) return;
   if (selectMode.value) {
     toggleSelectItem(it.id);
     return;
@@ -792,6 +859,10 @@ function saveEdit() {
 // All three libraries share the progressive search page. The type is only a
 // local display filter; every provider search still covers movies, TV and anime.
 function openQuickAdd() {
+  if (props.kind === "book") {
+    emit("add");
+    return;
+  }
   void router.push({
     path: "/media/search",
     query: { type: props.kind === "tv" ? "tv_show" : props.kind },
@@ -819,7 +890,13 @@ defineExpose({ openQuickAdd });
         <div>
           <h1>
             {{
-              kind === "movie" ? "Movies" : kind === "tv" ? "TV Shows" : "Anime"
+              kind === "movie"
+                ? "Movies"
+                : kind === "tv"
+                  ? "TV Shows"
+                  : kind === "book"
+                    ? "Books"
+                    : "Anime"
             }}
           </h1>
           <div class="sub">
@@ -841,6 +918,7 @@ defineExpose({ openQuickAdd });
             type="button"
             class="select-btn"
             :class="{ on: selectMode }"
+            :disabled="bulkDeleteBusy"
             @click="toggleSelectMode"
           >
             {{ selectMode ? "Done" : "Select" }}
@@ -858,22 +936,58 @@ defineExpose({ openQuickAdd });
         </div>
       </div>
 
-      <div v-if="selectedIds.size" class="bulk-bar">
+      <div v-if="selectMode" class="selection-actions">
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="bulkDeleteBusy"
+          @click="selectShown"
+        >
+          Select shown titles
+        </button>
+        <span
+          >Only titles currently shown are selected; unloaded titles are
+          excluded.</span
+        >
+      </div>
+      <p v-if="bulkDeleteError" role="alert" class="bulk-delete-error">
+        {{ bulkDeleteError }}
+      </p>
+      <div v-if="selectedIds.size" class="bulk-bar" :aria-busy="bulkDeleteBusy">
         <span class="count">{{ selectedIds.size }} selected</span>
-        <select v-model="bulkStatusValue" @change="bulkApplyStatus">
+        <select
+          v-model="bulkStatusValue"
+          :disabled="bulkDeleteBusy"
+          @change="bulkApplyStatus"
+        >
           <option value="">Set status to...</option>
           <option v-for="s in STATUSES" :key="s.key" :value="s.key">
             {{ s.label }}
           </option>
         </select>
-        <button type="button" class="btn-outline" @click="bulkFavorite">
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="bulkDeleteBusy"
+          @click="bulkFavorite"
+        >
           Toggle Favorite
         </button>
         <div class="spacer"></div>
-        <button type="button" class="btn-outline" @click="bulkDelete">
-          Remove from library
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="bulkDeleteBusy"
+          @click="bulkDelete"
+        >
+          {{ bulkDeleteBusy ? "Removing…" : "Remove from library" }}
         </button>
-        <button type="button" class="btn-outline" @click="clearSelection">
+        <button
+          type="button"
+          class="btn-outline"
+          :disabled="bulkDeleteBusy"
+          @click="clearSelection"
+        >
           Clear
         </button>
       </div>
@@ -1127,6 +1241,7 @@ defineExpose({ openQuickAdd });
                     <img
                       v-if="it.poster"
                       v-viewport-image="it.poster"
+                      referrerpolicy="no-referrer"
                       :alt="it.title"
                       loading="lazy"
                       decoding="async"
@@ -1285,6 +1400,7 @@ defineExpose({ openQuickAdd });
                   <img
                     v-if="it.poster"
                     v-viewport-image="it.poster"
+                    referrerpolicy="no-referrer"
                     :alt="it.title"
                     loading="lazy"
                     decoding="async"
@@ -1478,6 +1594,7 @@ defineExpose({ openQuickAdd });
                     <img
                       v-if="it.poster"
                       v-viewport-image="it.poster"
+                      referrerpolicy="no-referrer"
                       :alt="it.title"
                       loading="lazy"
                       decoding="async"

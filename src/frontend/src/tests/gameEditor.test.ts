@@ -2,6 +2,7 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick, ref } from "vue";
+import EditorShell from "../components/EditorShell.vue";
 import GameFormModal from "../components/GameFormModal.vue";
 import MetadataComparison from "../components/MetadataComparison.vue";
 import { mockGames } from "../data/mockGames";
@@ -214,6 +215,8 @@ const button = (wrapper: VueWrapper, text: string | RegExp) =>
     .find((item) =>
       typeof text === "string" ? item.text() === text : text.test(item.text()),
     )!;
+const dirtyOf = (shell: VueWrapper) =>
+  (shell.props() as { dirty?: boolean }).dirty;
 const submit = async (wrapper: VueWrapper) => {
   await wrapper.get("form").trigger("submit");
   await flushPromises();
@@ -565,5 +568,41 @@ describe("shared full game editor", () => {
     expect(toggle.attributes("aria-expanded")).toBe("true");
     expect(wrapper.find('input[type="search"]').exists()).toBe(true);
     expect(wrapper.get('[aria-selected="true"]').text()).toBe("Ownership");
+  });
+
+  it("counts edits, not tab clicks or values that arrive later", async () => {
+    const wrapper = open(savedGame());
+    await flushPromises();
+    const shell = wrapper.findComponent(EditorShell);
+    const state = wrapper.vm as unknown as { description: string };
+    await tab(wrapper, "Details");
+    await nextTick();
+    expect(dirtyOf(shell)).toBe(false);
+    // a value settling after the tab click (e.g. metadata loading late)
+    state.description = "Arrived after open";
+    await nextTick();
+    expect(dirtyOf(shell)).toBe(false);
+    // the next click takes it as the starting point
+    await tab(wrapper, "Basics");
+    await nextTick();
+    expect(dirtyOf(shell)).toBe(false);
+    await field(wrapper, "Title").setValue("Renamed");
+    expect(dirtyOf(shell)).toBe(true);
+  });
+
+  it("counts a click that changes what Save would send", async () => {
+    const wrapper = open(savedGame());
+    await flushPromises();
+    const shell = wrapper.findComponent(EditorShell);
+    const state = wrapper.vm as unknown as { description: string };
+    const panel = wrapper.get('[role="tabpanel"]');
+    // a click handler that edits the form, like removing a chip
+    panel.element.addEventListener("click", () => {
+      state.description = "Cleared by a button";
+    });
+    await panel.trigger("click");
+    await nextTick();
+    await nextTick();
+    expect(dirtyOf(shell)).toBe(true);
   });
 });

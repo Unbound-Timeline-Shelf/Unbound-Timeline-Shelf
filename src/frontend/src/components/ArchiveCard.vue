@@ -2,6 +2,7 @@
 // A save or a world, shown as a card like a screenshot or a clip: a 16:9 top
 // with an icon, the name and a line of facts underneath, and copy,
 // download, add-version, edit and delete on hover.
+import { formatInstant } from "../utils/dates";
 import { computed, ref } from "vue";
 import { copyLink } from "../utils/copyMedia";
 import type { GameArchiveData } from "../services/gameArchives";
@@ -24,11 +25,6 @@ const emit = defineEmits<{
 }>();
 
 const latest = computed(() => props.archive.versions[0] ?? null);
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
 function size(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -38,7 +34,7 @@ function size(bytes: number): string {
 const facts = computed(() => {
   const bits: string[] = [];
   if (latest.value) {
-    bits.push(dateFormat.format(new Date(latest.value.uploaded_at * 1000)));
+    bits.push(formatInstant(latest.value.uploaded_at, { time: false }));
     bits.push(size(latest.value.size));
   }
   return bits;

@@ -1,6 +1,7 @@
 // Server-side per-user preferences. Defaults live on the server; this only carries the shape.
 import { DEFAULT_PAGE_SETTINGS } from "../utils/gamePage";
 import type { PageSettings } from "../utils/gamePage";
+import type { DateStyle, TimeFormat } from "../utils/dates";
 
 export type TimingMode =
   "inherit" | "immediate" | "coalesce" | "digest" | "mute";
@@ -55,6 +56,10 @@ export interface Preferences {
     import("../state/shortcuts").ShortcutOverride
   >;
   home_widgets: string[];
+  // the person chose their Home widgets, even none (A22)
+  home_widgets_customized: boolean;
+  // one-time tips dismissed on this account, on every device (A24)
+  dismissed_tips: string[];
   home_widget_config: Record<string, import("./pluginUi").UiValues>;
   calendar_game_releases: boolean;
   calendar_game_history: boolean;
@@ -96,6 +101,15 @@ export interface Preferences {
   library_relationship_display: Record<string, "link" | "nest" | "hidden">;
   lists_default_sort: "custom" | "name" | "count" | "recent";
   title_language: "english" | "romaji" | "native";
+  // how every date is shown (utils/dates.ts): 17/09/2020, 17 September
+  // 2020, 09/17/2020 or 2020-09-17; stored and sent as ISO either way
+  date_format: DateStyle;
+  // null is 24h, except month/day/year which reads as 12h
+  time_format: TimeFormat | null;
+  // the person picked a date format themselves
+  date_format_chosen: boolean;
+  // the one-time first-visit format offer was shown and answered
+  date_format_offered: boolean;
   stats_include_plan: boolean;
   anilist_import_username: string;
   anilist_import_update_existing: boolean;
@@ -103,6 +117,8 @@ export interface Preferences {
   steam_user_tags: boolean;
   // also add the Steam wishlist, as Wishlist games, when importing from Steam
   steam_import_wishlist: boolean;
+  // the client a game's Play button uses on every device (#319); "" is automatic
+  launch_default_client: "" | "playnite" | "steam" | "gog";
   metadata_automatic_search_enabled: boolean;
   metadata_automatic_search_providers: Record<string, boolean>;
   metadata_providers_enabled: Record<string, boolean>;
@@ -123,6 +139,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   keyboard_shortcuts_enabled: true,
   keyboard_shortcut_overrides: {},
   home_widgets: [],
+  home_widgets_customized: false,
+  dismissed_tips: [],
   home_widget_config: {},
   calendar_game_releases: true,
   calendar_game_history: true,
@@ -156,11 +174,16 @@ export const DEFAULT_PREFERENCES: Preferences = {
   library_relationship_display: {},
   lists_default_sort: "custom",
   title_language: "english",
+  date_format: "dmy",
+  time_format: null,
+  date_format_chosen: false,
+  date_format_offered: false,
   stats_include_plan: true,
   anilist_import_username: "",
   anilist_import_update_existing: false,
   steam_user_tags: true,
   steam_import_wishlist: false,
+  launch_default_client: "",
   metadata_automatic_search_enabled: true,
   metadata_automatic_search_providers: {},
   metadata_providers_enabled: {},

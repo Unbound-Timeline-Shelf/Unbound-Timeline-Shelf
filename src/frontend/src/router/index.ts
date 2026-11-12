@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from "vue-router";
+import { createRouter, createWebHistory, START_LOCATION } from "vue-router";
 import {
   currentUser,
   authChecked,
@@ -6,9 +6,17 @@ import {
   ensureAuthChecked,
 } from "../state/auth";
 import {
-  captureLibraryNavigation,
-  hasLibraryScroll,
-} from "../state/libraryScroll";
+  cancelScrollRestore,
+  changesDestination,
+  installScrollPersistence,
+  keptScroll,
+  rememberScroll,
+  restoreWhenReady,
+  scrollKey,
+  takeUnloadedScroll,
+} from "../state/scrollMemory";
+import { legacySettingsRedirect } from "../state/settingsRegistry";
+import { installRouteFocus } from "../state/routeFocus";
 import { appearanceLoaded, loadAppearanceSettings } from "../state/appearance";
 import { fetchSetupStatus } from "../services/setup";
 import {
@@ -24,23 +32,32 @@ declare module "vue-router" {
     // Shown on the browser tab as "<title> · Archive". Left unset, the
     // tab just falls back to "Archive".
     title?: string;
+    // A kept-alive page that returns to where you left it, even through an
+    // ordinary link rather than Back (UX-AUDIT-APP A4).
+    keepsScroll?: boolean;
+    // Query keys that pick a different place on the same path (a settings
+    // section), so changing one starts at the top like a new page (A10).
+    destinationQuery?: string[];
   }
 }
 
 const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to, from, savedPosition) {
-    // A game-detail return restores after the asynchronous library has painted.
-    if (
-      to.path === "/games" &&
-      from.name === "game-detail" &&
-      hasLibraryScroll()
-    )
-      return false;
-    if (savedPosition) return savedPosition;
-    // Filter and sort controls update the query on the current page. They do
-    // not navigate away, so leave the viewport at the user's current position.
-    if (to.path === from.path && to.hash === from.hash) return false;
+    // Back, Forward and reload: the entry's saved position, applied once the
+    // view has loaded enough to show it rather than clamped to the top.
+    if (savedPosition) return restoreWhenReady(savedPosition);
+    if (from === START_LOCATION) {
+      const unloaded = takeUnloadedScroll(to);
+      if (unloaded) return restoreWhenReady(unloaded);
+    }
+    if (to.path === from.path && to.hash === from.hash) {
+      // A settings section is a new place; a filter, sort or tab is not, so
+      // those leave the viewport where the person is (A7, A10).
+      return changesDestination(to, from) ? { top: 0 } : false;
+    }
+    const kept = keptScroll(to);
+    if (kept && !to.hash) return restoreWhenReady(kept);
     return { top: 0 };
   },
   routes: [
@@ -88,13 +105,13 @@ const router = createRouter({
     {
       path: "/",
       name: "home",
-      meta: { title: "Home" },
+      meta: { title: "Home", keepsScroll: true },
       component: () => import("../views/HomeHub.vue"),
     },
     {
       path: "/games",
       name: "library",
-      meta: { title: "Games" },
+      meta: { title: "Games", keepsScroll: true },
       component: () => import("../views/GameLibrary.vue"),
     },
     {
@@ -137,7 +154,7 @@ const router = createRouter({
     {
       path: "/movies",
       name: "movie-library",
-      meta: { title: "Movies" },
+      meta: { title: "Movies", keepsScroll: true },
       component: () => import("../views/MovieLibrary.vue"),
     },
     {
@@ -149,7 +166,7 @@ const router = createRouter({
     {
       path: "/tv",
       name: "tv-show-library",
-      meta: { title: "TV Shows" },
+      meta: { title: "TV Shows", keepsScroll: true },
       component: () => import("../views/TVShowLibrary.vue"),
     },
     {
@@ -161,7 +178,7 @@ const router = createRouter({
     {
       path: "/anime",
       name: "anime-library",
-      meta: { title: "Anime" },
+      meta: { title: "Anime", keepsScroll: true },
       component: () => import("../views/AnimeLibrary.vue"),
     },
     {
@@ -171,21 +188,33 @@ const router = createRouter({
       component: () => import("../views/AnimeDetail.vue"),
     },
     {
+      path: "/books",
+      name: "book-library",
+      meta: { title: "Books", keepsScroll: true },
+      component: () => import("../views/BookLibrary.vue"),
+    },
+    {
+      path: "/books/:id",
+      name: "book-detail",
+      meta: { title: "Book" },
+      component: () => import("../views/BookDetail.vue"),
+    },
+    {
       path: "/calendar",
       name: "calendar",
-      meta: { title: "Calendar" },
+      meta: { title: "Calendar", keepsScroll: true },
       component: () => import("../views/Calendar.vue"),
     },
     {
       path: "/statistics",
       name: "statistics",
-      meta: { title: "Statistics" },
+      meta: { title: "Statistics", keepsScroll: true },
       component: () => import("../views/Statistics.vue"),
     },
     {
       path: "/notifications",
       name: "notifications",
-      meta: { title: "Notifications" },
+      meta: { title: "Notifications", keepsScroll: true },
       component: () => import("../views/Notifications.vue"),
     },
     {
@@ -203,7 +232,7 @@ const router = createRouter({
     {
       path: "/media/collections",
       name: "media-lists",
-      meta: { title: "Collections" },
+      meta: { title: "Collections", keepsScroll: true },
       component: () => import("../views/MediaLists.vue"),
     },
     {
@@ -251,8 +280,11 @@ const router = createRouter({
       component: () => import("../views/Setup.vue"),
     },
     { path: "/profile", redirect: "/settings" },
-    { path: "/sessions", redirect: "/settings?section=sessions" },
-    { path: "/admin/sessions", redirect: "/settings?section=admin-sessions" },
+    { path: "/sessions", redirect: "/settings/account/sessions" },
+    {
+      path: "/admin/sessions",
+      redirect: "/settings/administration/admin-sessions",
+    },
     {
       path: "/plugins/:pluginId",
       name: "plugin-host",
@@ -264,9 +296,11 @@ const router = createRouter({
       component: () => import("../views/PluginHost.vue"),
     },
     {
-      path: "/settings",
+      // /settings, /settings/<area>, /settings/<area>/<section> (§3.4); old
+      // ?section= addresses are moved here by legacySettingsRedirect below
+      path: "/settings/:area(preferences|account|administration)?/:section?",
       name: "settings",
-      meta: { title: "Settings" },
+      meta: { title: "Settings", destinationQuery: ["area", "section"] },
       component: () => import("../views/Settings.vue"),
     },
     {
@@ -284,6 +318,12 @@ const router = createRouter({
     },
   ],
 });
+
+installScrollPersistence(() =>
+  scrollKey(router.currentRoute.value.path, router.currentRoute.value.query),
+);
+
+installRouteFocus(router);
 
 let setupState: "unknown" | "required" | "complete" = "unknown";
 
@@ -317,7 +357,14 @@ function setupRedirect(toPath: string) {
 }
 
 router.beforeEach(async (to, from) => {
-  captureLibraryNavigation(to.path, from.path, window.scrollY);
+  cancelScrollRestore();
+  if (typeof window !== "undefined")
+    rememberScroll(from, { left: window.scrollX, top: window.scrollY });
+
+  // Settings sections moved from ?section= to paths: links, bookmarks and
+  // notifications that still use the old form land on the same section.
+  const movedSettings = legacySettingsRedirect(to);
+  if (movedSettings) return { ...movedSettings, hash: to.hash };
 
   // Start fetching this route's code while the startup checks are in flight.
   // Vue Router normally resolves lazy components only after beforeEach guards

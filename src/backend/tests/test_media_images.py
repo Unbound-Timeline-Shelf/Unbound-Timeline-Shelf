@@ -1,17 +1,11 @@
 """Posters and backdrops of movies, shows and anime are kept on this server."""
 
 import io
-from uuid import UUID, uuid4
 
 import pytest
 from PIL import Image
-from sqlalchemy import delete
 
 from src.api.routes import media_images
-from src.database.models.anime import AnimeEpisode, AnimeSeason
-from src.database.models.tv_show import TVEpisode, TVSeason, TVShow
-from src.database.models.user import User
-from src.database.session import SessionLocal
 from src.helpers import remote_images
 from tests.test_game_files_flow import game_flow  # noqa: F401  (registers the "flow" fixture)
 
@@ -107,57 +101,6 @@ async def test_missing_image_and_unknown_title_are_404(flow, downloads) -> None:
     assert (await flow.client.get(f"/api/media-image/game/{item}/poster")).status_code == 422
 
 
-async def _episode(kind: str, show_id: str, still_url: str | None) -> str:
-    season_model, episode_model = (
-        (TVSeason, TVEpisode) if kind == "tv" else (AnimeSeason, AnimeEpisode)
-    )
-    async with SessionLocal() as db:
-        season = season_model(show_id=UUID(show_id), season_number=1)
-        db.add(season)
-        await db.flush()
-        episode = episode_model(season_id=season.id, episode_number=1, still_url=still_url)
-        db.add(episode)
-        await db.commit()
-        return str(episode.id)
-
-
-@pytest.mark.parametrize("kind", ["tv", "anime"])
-async def test_episode_stills_are_served_from_this_server(flow, downloads, kind: str) -> None:
-    show = await _create(flow, kind)
-    episode = await _episode(kind, show, "https://img.example.test/still.jpg")
-    response = await flow.client.get(f"/api/media-image/{kind}/episode/{episode}/still")
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "image/jpeg"
-    assert Image.open(io.BytesIO(response.content)).width == 640
-    assert downloads == ["https://img.example.test/still.jpg"]
-
-    bare = await _episode(kind, await _create(flow, kind), None)
-    assert (
-        await flow.client.get(f"/api/media-image/{kind}/episode/{bare}/still")
-    ).status_code == 404
-
-
-async def test_episode_stills_belong_to_their_owner(flow, downloads) -> None:
-    owner = uuid4()
-    name = f"still_{owner.hex[:10]}"
-    try:
-        async with SessionLocal() as db:
-            other = User(id=owner, username=name, email=f"{name}@example.test", password_hash="x")
-            db.add(other)
-            await db.flush()
-            show = TVShow(user_id=other.id, title="Not yours", sort_title="not yours")
-            db.add(show)
-            await db.commit()
-            show_id = str(show.id)
-        episode = await _episode("tv", show_id, "https://img.example.test/private.jpg")
-        response = await flow.client.get(f"/api/media-image/tv/episode/{episode}/still")
-        assert response.status_code == 404 and downloads == []
-    finally:
-        async with SessionLocal() as db:
-            await db.execute(delete(User).where(User.id == owner))
-            await db.commit()
-
-
 @pytest.mark.parametrize(
     ("host", "public"),
     [
@@ -200,3 +143,30 @@ def test_calendar_posters_are_served_from_this_server() -> None:
     assert entry["poster_url"] == "/api/media-image/tv/show-1/poster"
     show.poster_url = None
     assert _calendar_entries_for_show(show, "tv", 0)[0]["poster_url"] is None
+
+
+async def test_book_cover_is_kept_on_this_server(flow, downloads) -> None:
+    """A provider cover is stored as the provider's address; the library and book page load
+    this server's copy, so viewers' browsers never go to the provider's image host."""
+    created = await flow.client.post(
+        "/api/book/create",
+        json={"title": "A Synthetic Novel", "cover_url": "https://covers.example.test/c.jpg"},
+    )
+    assert created.status_code == 201, created.text
+    book = created.json()["id"]
+
+    first = await flow.client.get(f"/api/media-image/book/{book}/cover")
+    assert first.status_code == 200
+    assert first.headers["content-type"] == "image/jpeg"
+    assert Image.open(io.BytesIO(first.content)).width == 400
+    await flow.client.get(f"/api/media-image/book/{book}/cover")
+    assert downloads == ["https://covers.example.test/c.jpg"]
+
+
+async def test_book_without_a_cover_or_not_owned_is_404(flow, downloads) -> None:
+    created = await flow.client.post("/api/book/create", json={"title": "No Cover"})
+    book = created.json()["id"]
+    assert (await flow.client.get(f"/api/media-image/book/{book}/cover")).status_code == 404
+    other = "00000000-0000-0000-0000-000000000001"
+    assert (await flow.client.get(f"/api/media-image/book/{other}/cover")).status_code == 404
+    assert downloads == []

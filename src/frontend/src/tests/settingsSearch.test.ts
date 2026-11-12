@@ -25,7 +25,11 @@ import type { PluginUiDocument } from "../services/pluginUi";
 import type { CurrentUser } from "../services/auth";
 
 const routing = vi.hoisted(() => ({
-  route: undefined as unknown as { query: Record<string, string> },
+  route: undefined as unknown as {
+    path: string;
+    params: Record<string, string>;
+    query: Record<string, string>;
+  },
   replace: vi.fn(),
   push: vi.fn(),
 }));
@@ -240,14 +244,16 @@ describe("settings search registry", () => {
     signIn(false);
     const [trash] = searchSettings(settingsSearchIndex.value, "media trash");
     expect(trash).toMatchObject({ section: "library", tab: "trash" });
+    // a section is a path; its tab stays a query (UX-AUDIT-APP §3.4)
     expect(settingsSearchLocation(trash!)).toEqual({
-      path: "/settings",
-      query: { section: "library", tab: "trash" },
+      path: "/settings/preferences/library",
+      query: { tab: "trash" },
     });
     const [scan] = searchSettings(settingsSearchIndex.value, "scan");
     expect(scan).toMatchObject({ section: "metadata", tab: "scan" });
-    expect(settingsSearchLocation(labelEntry("Library")).query).toEqual({
-      section: "library",
+    expect(settingsSearchLocation(labelEntry("Library"))).toEqual({
+      path: "/settings/preferences/library",
+      query: {},
     });
   });
 
@@ -410,17 +416,39 @@ describe("SettingsSearch keyboard behaviour", () => {
 });
 
 describe("Settings page navigation from search", () => {
-  function renderSettings(query: Record<string, string> = {}) {
-    routing.route = reactive({ query: { ...query } });
+  // /settings/<area>/<section>?tab=… as the router would parse it
+  function routeFor(path: string, query: Record<string, string> = {}) {
+    const [, , area, section] = path.split("/");
+    const params: Record<string, string> = {};
+    if (area) params.area = area;
+    if (section) params.section = decodeURIComponent(section);
+    return { path, params, query: { ...query } };
+  }
+  function renderSettings(
+    path = "/settings",
+    query: Record<string, string> = {},
+  ) {
+    routing.route = reactive(routeFor(path, query));
     routing.replace.mockImplementation(
-      async (location: { query: Record<string, string | undefined> }) => {
-        routing.route.query = Object.fromEntries(
-          Object.entries(location.query).filter(
-            (entry): entry is [string, string] => entry[1] !== undefined,
+      async (location: {
+        path: string;
+        query: Record<string, string | undefined>;
+      }) => {
+        Object.assign(
+          routing.route,
+          routeFor(
+            location.path,
+            Object.fromEntries(
+              Object.entries(location.query ?? {}).filter(
+                (entry): entry is [string, string] => entry[1] !== undefined,
+              ),
+            ),
           ),
         );
       },
     );
+    // opening a search result is a history step (UX-AUDIT-APP A9)
+    routing.push.mockImplementation(routing.replace.getMockImplementation()!);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("[]", { status: 200 })),
@@ -430,7 +458,7 @@ describe("Settings page navigation from search", () => {
 
   it("opens the containing tab, updates the URL and moves focus to the section", async () => {
     signIn(false);
-    const view = renderSettings({ area: "account", section: "profile" });
+    const view = renderSettings("/settings/account/profile");
     await flushPromises();
     const search = view.getComponent(SettingsSearch);
     search.vm.$emit(
@@ -439,8 +467,9 @@ describe("Settings page navigation from search", () => {
     );
     await flushPromises();
 
-    expect(routing.replace).toHaveBeenCalledWith({
-      query: { section: "library", tab: "trash" },
+    expect(routing.push).toHaveBeenCalledWith({
+      path: "/settings/preferences/library",
+      query: { tab: "trash" },
     });
     expect(view.get("library-settings-stub").attributes("initial-tab")).toBe(
       "trash",
@@ -452,10 +481,8 @@ describe("Settings page navigation from search", () => {
       searchSettings(settingsSearchIndex.value, "refresh media")[0],
     );
     await flushPromises();
-    expect(routing.route.query).toEqual({
-      section: "metadata",
-      tab: "refresh",
-    });
+    expect(routing.route.path).toBe("/settings/preferences/metadata");
+    expect(routing.route.query).toEqual({ tab: "refresh" });
     expect(view.get("metadata-settings-stub").attributes("initial-tab")).toBe(
       "refresh",
     );
@@ -463,17 +490,24 @@ describe("Settings page navigation from search", () => {
     search.vm.$emit("select", labelEntry("Calendar"));
     await flushPromises();
     // A stale tab from the previous result is never carried forward.
-    expect(routing.route.query).toEqual({ section: "calendar" });
+    expect(routing.route.path).toBe("/settings/preferences/calendar");
+    expect(routing.route.query).toEqual({});
     view.unmount();
   });
 
   it("keeps legacy links resolving to the same current area and tab", async () => {
     signIn(false);
-    const view = renderSettings({ section: "media-trash" });
+    // an old section id in the path still opens the merged tab, and the
+    // address is replaced by the canonical one
+    const view = renderSettings("/settings/preferences/media-trash");
     await flushPromises();
     expect(view.get("library-settings-stub").attributes("initial-tab")).toBe(
       "trash",
     );
+    expect(routing.replace).toHaveBeenCalledWith({
+      path: "/settings/preferences/library",
+      query: { tab: "trash" },
+    });
     view.unmount();
   });
 

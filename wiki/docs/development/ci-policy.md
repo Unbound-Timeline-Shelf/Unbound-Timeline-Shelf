@@ -79,7 +79,7 @@ dependencies first. Run the normal test commands independently of file selection
 ## Plugin repository integration
 
 `plugin-integration.yml` runs the host against the companion repository
-(`obsoletelabs/unnamed_tracking_app_plugins`). It is a separate workflow from
+(`Unbound-Timeline-Shelf/Plugins`). It is a separate workflow from
 `ci.yml`, so it is not part of **CI result**. Its `lifecycle` job is skipped
 (which GitHub treats as a pass) when a change cannot affect plugins.
 

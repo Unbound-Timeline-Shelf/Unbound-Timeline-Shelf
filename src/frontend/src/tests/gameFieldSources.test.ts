@@ -9,12 +9,19 @@ import type {
   FieldSources,
 } from "../services/gameFieldSources";
 import * as identity from "../services/gameIdentity";
-import { disagreeingFields, metadataSummary } from "../utils/fieldSources";
+import {
+  disagreeingFields,
+  fieldProvenance,
+  metadataSummary,
+  preferenceAwaitingValue,
+  preferenceNotInEffect,
+  showsFieldSource,
+} from "../utils/fieldSources";
 
 vi.mock("../services/gameFieldSources", async (original) => ({
   ...(await original<typeof import("../services/gameFieldSources")>()),
   fetchFieldSources: vi.fn(),
-  preferFieldSource: vi.fn(async () => ({ applied: true })),
+  preferFieldSource: vi.fn(async () => ({ applied: true, outcome: "applied" })),
   clearFieldSource: vi.fn(async () => {}),
 }));
 vi.mock("../services/gameIdentity", async (original) => ({
@@ -76,6 +83,57 @@ describe("field source rules", () => {
   });
 });
 
+describe("provenance and preference rules", () => {
+  const single = (over: Partial<FieldSourceEntry> = {}) =>
+    entry({ sources: [entry().sources[1]], ...over });
+
+  it("treats a preference as not in effect when another source supplies the value", () => {
+    expect(preferenceNotInEffect(single())).toBe(false);
+    expect(preferenceNotInEffect(single({ preferred: "provider:igdb" }))).toBe(
+      false,
+    );
+    // RAWG has reported no value for this field yet, so the preference waits
+    expect(preferenceNotInEffect(single({ preferred: "provider:rawg" }))).toBe(
+      true,
+    );
+    expect(
+      preferenceAwaitingValue(single({ preferred: "provider:rawg" })),
+    ).toBe(true);
+    // a listed preferred source is not awaiting a value
+    expect(
+      preferenceAwaitingValue(entry({ preferred: "provider:steam" })),
+    ).toBe(false);
+    expect(preferenceAwaitingValue(single())).toBe(false);
+  });
+
+  it("shows the label for a lock or an unapplied preference, not for one quiet source", () => {
+    expect(showsFieldSource(undefined)).toBe(false);
+    expect(showsFieldSource(single())).toBe(false);
+    expect(showsFieldSource(single({ locked: true }))).toBe(true);
+    expect(showsFieldSource(single({ preferred: "provider:rawg" }))).toBe(true);
+    expect(showsFieldSource(entry())).toBe(true);
+  });
+
+  it("names the source of every recorded field in a fixed order", () => {
+    const rows = fieldProvenance({
+      tags: single(),
+      developer: single({ locked: true }),
+      publisher: single({ preferred: "provider:rawg" }),
+      unknown_field: single(),
+    });
+    expect(rows.map((r) => [r.field, r.source])).toEqual([
+      ["developer", "igdb"],
+      ["publisher", "igdb"],
+      ["tags", "igdb"],
+    ]);
+    expect(rows[0].locked).toBe(true);
+    expect(rows[1]).toMatchObject({
+      preferred: "rawg",
+      preferenceNotInEffect: true,
+    });
+  });
+});
+
 describe("the field source label", () => {
   beforeEach(() => vi.clearAllMocks());
   const mountLabel = (e?: FieldSourceEntry) =>
@@ -121,6 +179,75 @@ describe("the field source label", () => {
     expect(fields.clearFieldSource).toHaveBeenCalledWith("g1", "developer");
   });
 
+  it("shows a lock on the label even when every source agrees", async () => {
+    const wrapper = mountLabel(
+      entry({ sources: [entry().sources[1]], locked: true }),
+    );
+    const chip = wrapper.get(".source-chip");
+    expect(chip.classes()).toContain("locked");
+    expect(chip.text()).toContain("Locked");
+    expect(chip.text()).toContain("igdb");
+    await chip.trigger("click");
+    expect(wrapper.text()).toContain("locked");
+  });
+
+  it("explains a preferred source that has not reported a value yet", async () => {
+    const wrapper = mountLabel(
+      entry({ sources: [entry().sources[1]], preferred: "provider:rawg" }),
+    );
+    const chip = wrapper.get(".source-chip");
+    expect(chip.classes()).toContain("warn");
+    await chip.trigger("click");
+    expect(wrapper.get(".source-list").text()).toContain(
+      "You prefer rawg here, but it has not reported a value for this field yet.",
+    );
+  });
+
+  it("names where the value comes from when a listed preferred source is not shown", async () => {
+    const both = entry();
+    const wrapper = mountLabel(entry({ preferred: both.sources[0].sourceKey }));
+    await wrapper.get(".source-chip").trigger("click");
+    expect(wrapper.get(".source-list").text()).toContain(
+      "but the value shown comes from igdb.",
+    );
+    expect(wrapper.get(".source-list").text()).not.toContain("not reported");
+  });
+
+  it.each([
+    [null, "Preference saved. The value shown did not change."],
+    ["unchanged", "Preference saved. The value shown already matches it."],
+    [
+      "locked",
+      "Preference saved. This field is locked, so the value shown stays until you unlock it.",
+    ],
+    [
+      "awaiting_value",
+      "Preference saved. steam has not reported a value for this field yet; the next refresh that reports one applies it.",
+    ],
+  ] as const)(
+    "says why a saved preference did not change the value (%s)",
+    async (outcome, message) => {
+      vi.mocked(fields.preferFieldSource).mockResolvedValueOnce({
+        applied: false,
+        outcome,
+      });
+      const wrapper = mountLabel(entry());
+      await wrapper.get(".source-chip").trigger("click");
+      await wrapper.get(".source-list li button").trigger("click");
+      await flushPromises();
+      expect(wrapper.get("[role=status]").text()).toBe(message);
+      expect(wrapper.emitted("changed")).toHaveLength(1);
+    },
+  );
+
+  it("closes the list with Escape", async () => {
+    const wrapper = mountLabel(entry());
+    await wrapper.get(".source-chip").trigger("click");
+    expect(wrapper.find(".source-list").exists()).toBe(true);
+    await wrapper.get(".field-source").trigger("keydown", { key: "Escape" });
+    expect(wrapper.find(".source-list").exists()).toBe(false);
+  });
+
   it("says so and stays usable when saving fails", async () => {
     vi.mocked(fields.preferFieldSource).mockRejectedValueOnce(
       new Error("Could not save"),
@@ -151,6 +278,32 @@ describe("the Metadata row in the Sources summary", () => {
     const row = wrapper.get(".metadata-row");
     expect(row.text()).toContain("Preferred: steam (1 field)");
     expect(row.text()).toContain("Developer");
+  });
+
+  it("names where each field comes from and flags a preference not shown", async () => {
+    vi.mocked(identity.fetchIdentitySources).mockResolvedValue({
+      observations: [],
+      versions: [],
+      counters: {},
+    } as unknown as identity.IdentitySources);
+    const one = (over: Partial<FieldSourceEntry> = {}) =>
+      entry({ sources: [entry().sources[1]], ...over });
+    vi.mocked(fields.fetchFieldSources).mockResolvedValue({
+      developer: one({ preferred: "provider:rawg" }),
+      release_date: one({ locked: true }),
+    });
+    const wrapper = mount(GameSourcesPanel, { props: { gameId: "g1" } });
+    await flushPromises();
+    const items = wrapper.findAll(".provenance li");
+    expect(
+      items.map((i) => [i.get(".field").text(), i.get(".from").text()]),
+    ).toEqual([
+      ["Developer", "igdb"],
+      ["Release date", "igdb"],
+    ]);
+    expect(items[0].get(".pref-note").text()).toBe("rawg preferred, not shown");
+    expect(items[0].classes()).toContain("warn");
+    expect(items[1].find("[aria-label=Locked]").exists()).toBe(true);
   });
 
   it("adds no row when nothing is preferred or disputed", async () => {

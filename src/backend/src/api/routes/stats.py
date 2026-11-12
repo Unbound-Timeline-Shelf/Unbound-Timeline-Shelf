@@ -59,7 +59,7 @@ def _folder_size_bytes(folder_location: str | None) -> int:
     return total
 
 
-def _overview_queries(user_id: UUID) -> dict[str, Select[Any]]:
+def _overview_queries(user_id: UUID) -> dict[str, Select[*tuple[Any, ...]]]:
     """All dashboard queries stay scoped to the caller's active (not trashed)
     games and run on one session."""
     user_filter = active_owned_games(user_id)
@@ -134,7 +134,9 @@ def _overview_queries(user_id: UUID) -> dict[str, Select[Any]]:
     }
 
 
-def _overview_payload(results: dict[str, Result[Any]], storage_used_bytes: int) -> dict:
+def _overview_payload(
+    results: dict[str, Result[*tuple[Any, ...]]], storage_used_bytes: int
+) -> dict:
     """Format database aggregates without mixing query execution into serialization."""
     total_games, favorite_count, total_playtime_seconds, total_spent, average_rating = results[
         "totals"

@@ -9,6 +9,7 @@ import {
   useId,
 } from "vue";
 import EditorShell from "./EditorShell.vue";
+import PartialDateInput from "./PartialDateInput.vue";
 import GamePlayFields from "./game/GamePlayFields.vue";
 import GameArtPicker from "./game/GameArtPicker.vue";
 import GameCollectionsField from "./game/GameCollectionsField.vue";
@@ -31,7 +32,12 @@ import { resolvePage } from "../utils/gamePage";
 import type { PageOverrides, PageSettings } from "../utils/gamePage";
 import { fetchMetadataProviders } from "../services/metadata";
 import type { MetadataProviderStatus } from "../services/metadata";
-import { localDateInputToUnixSeconds, toLocalDateInput } from "../utils/dates";
+import {
+  localDateInputToUnixSeconds,
+  releaseInput,
+  toLocalDateInput,
+  type DatePrecision,
+} from "../utils/dates";
 import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
 import { PLATFORM_SUGGESTIONS } from "../utils/platforms";
 import { sizedAssetUrl } from "../utils/gameImages";
@@ -52,6 +58,7 @@ import {
   attachArtwork,
   stagedArtworkList,
 } from "../composables/useGameArtworkTransfer";
+import { useUnsavedGuard } from "../composables/useUnsavedGuard";
 
 const props = defineProps<{
   game?: Game | null;
@@ -59,6 +66,9 @@ const props = defineProps<{
   // Unsaved values handed over by the quick editor's "Edit more"; they take
   // the place of the saved ones until this editor saves or is cancelled.
   draft?: GameEditDraft | null;
+  // The address parameter whose history step opened this editor; Back
+  // removing it closes the editor, after asking about unsaved edits.
+  historyKey?: string;
 }>();
 
 const compact = ref(!!props.quickAdd && !props.game);
@@ -276,6 +286,14 @@ const achievementsProvider = ref<AchievementsProvider>(
   props.game?.achievementsProvider ?? null,
 );
 const releaseDate = ref(props.game?.releaseDate ?? "");
+// how much of the release date is known (C5.5): a year or a month can be
+// typed on its own, and is saved as the first day of that period
+const releasePrecision = ref<DatePrecision | null>(
+  props.game?.releaseDatePrecision ?? null,
+);
+// false while the typed release date reads two ways or is not a date
+const releaseValid = ref(true);
+const releaseFieldId = `${useId()}-release`;
 // the local calendar day (what <input type="date"> shows), the stored value
 // is a full timestamp; only sent back if it was actually changed, so saving
 // the form doesn't reset the time a game was added to midnight
@@ -622,7 +640,7 @@ function buildInput() {
     relationshipType: parentGameId.value
       ? relationshipType.value || null
       : null,
-    releaseDate: releaseDate.value || null,
+    ...releaseInput(releaseDate.value, releasePrecision.value),
     dateAdded: dateAdded.value || null,
     createdAt:
       dateAdded.value && dateAdded.value !== initialDateAdded
@@ -718,6 +736,10 @@ let createdGame: Game | null = null;
 
 async function submit() {
   if (progressiveSearch.selected.value) return;
+  if (!releaseValid.value) {
+    error.value = "Choose which release date you meant.";
+    return;
+  }
   if (saving.value || selectingMetadata.value) return;
   if (compact.value) suggestFolderFromTitle();
   if (!validateBasics()) return;
@@ -744,6 +766,8 @@ async function submit() {
     if (import.meta.env.VITE_USE_MOCK_DATA !== "true" && pendingArtwork.length)
       await attachArtwork(savedGame.id, savedGame.title, pendingArtwork);
 
+    // the saved values are no longer "unsaved", so closing must not ask
+    unsaved.release();
     emit("saved", savedGame.id);
   } catch (err) {
     error.value =
@@ -751,6 +775,75 @@ async function submit() {
   } finally {
     saving.value = false;
   }
+}
+
+// Unsaved edits (UX-AUDIT-APP A1, A2): the form compares what Save would
+// send with what it opened with, once the person has edited something.
+// Until then the starting point keeps moving with the form, so values that
+// arrive asynchronously (metadata, artwork settling after open) never count
+// as edits. Typing or changing a field is an edit; a click is one only when it
+// changes what Save would send (a chip removed, a reset button), so switching
+// editor tabs or opening a menu leaves the starting point free to move.
+// Values handed over by the quick editor are unsaved from the start.
+const touched = ref(false);
+let openedWith: string | null = null;
+function editorSnapshot(): string {
+  try {
+    return JSON.stringify([
+      buildInput(),
+      !!cover.staged.value,
+      !!banner.staged.value,
+    ]);
+  } catch {
+    // a value Save would reject (e.g. a malformed number) is still an edit
+    return "invalid";
+  }
+}
+onMounted(() =>
+  nextTick(() => {
+    openedWith = editorSnapshot();
+  }),
+);
+function markTouched() {
+  touched.value = true;
+}
+// Before the first edit, take a fresh starting point as a click begins, then
+// count the click only if it changed the form.
+function beforeClick() {
+  if (!touched.value && openedWith !== null) openedWith = editorSnapshot();
+}
+function afterClick() {
+  if (touched.value || openedWith === null) return;
+  void nextTick(() => {
+    if (!touched.value && editorSnapshot() !== openedWith) markTouched();
+  });
+}
+const dirty = computed(
+  () =>
+    !saving.value &&
+    (!!props.draft ||
+      (touched.value &&
+        openedWith !== null &&
+        editorSnapshot() !== openedWith)),
+);
+const unsaved = useUnsavedGuard(() => dirty.value, {
+  closesOn: (to, from) =>
+    !!props.historyKey &&
+    from.query[props.historyKey] !== undefined &&
+    to.query[props.historyKey] === undefined,
+});
+// Escape, the backdrop and × already asked (UiModal `dirty`).
+function onShellClose() {
+  unsaved.release();
+  emit("close");
+}
+// Opened from its own history step, the editor closes with its page (and the
+// leave guard asks first); elsewhere it closes before the link navigates.
+function closeForLink() {
+  if (!props.historyKey) emit("close");
+}
+async function cancel() {
+  if (await unsaved.confirmDiscard()) emit("close");
 }
 </script>
 
@@ -767,9 +860,14 @@ async function submit() {
     tabs-label="Game details"
     :size="compact ? 'standard' : 'editor'"
     :dismissible="!saving"
+    :dirty="dirty"
     class="game-editor"
     :class="{ 'quick-add': compact }"
-    @close="emit('close')"
+    @close="onShellClose"
+    @input="markTouched"
+    @change="markTouched"
+    @click.capture="beforeClick"
+    @click="afterClick"
     @submit="submit"
     @cover="activeTab = 'Artwork'"
   >
@@ -805,7 +903,9 @@ async function submit() {
           class="steamgriddb-hint"
         >
           Configure the built-in artwork providers in
-          <router-link to="/settings?section=sources" @click="emit('close')"
+          <router-link
+            to="/settings/preferences/metadata?tab=sources"
+            @click="closeForLink"
             >Settings &rsaquo; Metadata/API</router-link
           >
           to receive cover and hero artwork after choosing a game.
@@ -1036,10 +1136,15 @@ async function submit() {
             <span>Series</span>
             <input v-model="series" type="text" />
           </label>
-          <label class="field">
-            <span>Release date</span>
-            <input v-model="releaseDate" type="date" />
-          </label>
+          <div class="field">
+            <label :for="releaseFieldId"><span>Release date</span></label>
+            <PartialDateInput
+              :id="releaseFieldId"
+              v-model:date="releaseDate"
+              v-model:precision="releasePrecision"
+              @update:valid="releaseValid = $event"
+            />
+          </div>
         </div>
         <p class="editor-section">Release details</p>
         <div class="editor-grid">
@@ -1341,6 +1446,20 @@ async function submit() {
           :defaults="pageDefaults"
           @update:model-value="pageOverrides = $event as PageOverrides"
         />
+        <!-- away from the everyday actions in the footer (UX-AUDIT-APP A13) -->
+        <section v-if="isEditing" class="danger-zone" aria-label="Delete">
+          <p class="editor-section">Delete</p>
+          <p class="hint">
+            Removes this game, its notes and its files from your library.
+          </p>
+          <button
+            type="button"
+            class="danger-button"
+            @click="emit('delete', props.game!.id)"
+          >
+            Delete game
+          </button>
+        </section>
       </div>
 
       <div
@@ -1406,14 +1525,6 @@ async function submit() {
 
     <template #actions="{ formId }">
       <button
-        v-if="isEditing"
-        type="button"
-        class="danger-button"
-        @click="emit('delete', props.game!.id)"
-      >
-        Delete game
-      </button>
-      <button
         v-if="compact"
         type="button"
         class="secondary-button"
@@ -1437,7 +1548,7 @@ async function submit() {
         type="button"
         class="secondary-button"
         :disabled="saving"
-        @click="emit('close')"
+        @click="cancel"
       >
         Cancel
       </button>
@@ -1448,6 +1559,7 @@ async function submit() {
         :disabled="
           saving ||
           selectingMetadata ||
+          !releaseValid ||
           !!progressiveSearch.selected.value ||
           (compact && !title.trim())
         "

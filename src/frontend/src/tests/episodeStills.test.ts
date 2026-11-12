@@ -49,7 +49,7 @@ it.each([
     );
     const loaded = await fetchEpisodes("show", "season");
     expect(loaded.seasons[0]!.episodes[0]!.stillUrl).toBe(
-      `/api/media-image/${kind}/episode/ep%201/still`,
+      `/api/media-image/${kind}/episodes/ep%201/still`,
     );
   },
 );

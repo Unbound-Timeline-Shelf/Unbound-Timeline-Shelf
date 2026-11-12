@@ -1,6 +1,7 @@
 // Real OIDC authorization/code/JWT exchange against a disposable local identity provider.
 // No host API responses are mocked. Run only against a disposable server with no configured OIDC provider.
 import assert from "node:assert/strict";
+import { escapeHtmlAttribute } from "./html_attribute.mjs";
 import { createServer, request as httpRequest } from "node:http";
 import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
@@ -44,7 +45,7 @@ const idp = createServer(async (incoming, outgoing) => {
     assert(state && url.searchParams.get("nonce"));
     authorizations.set(state, { redirect, nonce: url.searchParams.get("nonce") });
     outgoing.setHeader("Content-Type", "text/html");
-    return outgoing.end(`<form method="post" action="/confirm"><input type="hidden" name="state" value="${state}"><button>Sign in to the review account</button></form>`);
+    return outgoing.end(`<form method="post" action="/confirm"><input type="hidden" name="state" value="${escapeHtmlAttribute(state)}"><button>Sign in to the review account</button></form>`);
   }
   if (url.pathname === "/confirm" && incoming.method === "POST") {
     let body = ""; for await (const chunk of incoming) body += chunk;

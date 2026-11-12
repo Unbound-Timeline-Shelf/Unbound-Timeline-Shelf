@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
 
   app:
-    #image: ghcr.io/rosefall-a/unnamed_tracking_app:feat-central-config-handler
+    #image: ghcr.io/unbound-timeline-shelf/unbound-timeline-shelf:main
     build:
       context: .
       dockerfile: ./src/docker-container/Dockerfile

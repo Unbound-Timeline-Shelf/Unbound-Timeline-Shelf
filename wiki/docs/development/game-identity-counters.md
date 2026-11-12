@@ -1,8 +1,8 @@
 # Counter groups and persistent adjustments
 
 Phase 2 of the game identity overhaul
-([#91](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/91)), delivered for
-[#96](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/96). It describes the
+([#91](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/91)), delivered for
+[#96](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/96). It describes the
 **code that exists now** on top of the [data model](game-identity-model.md),
 [ingestion](game-ingestion.md) and [decisions](game-identity-decisions.md). Paths start
 `src/backend/src/`. No migration: `game_metric_counters`, `game_metric_counter_members` and

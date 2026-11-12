@@ -9,6 +9,8 @@ same migration builds a fresh database and leaves an adopted one alone.
 
 from __future__ import annotations
 
+from typing import Any
+
 import sqlalchemy as sa
 
 # alembic.op is a proxy filled in while a migration runs, so pylint can't
@@ -62,7 +64,7 @@ def has_constraint(table: str, name: str) -> bool:
     return row.first() is not None
 
 
-def create_table_if_missing(table: str, *columns: sa.schema.SchemaItem, **kw: object) -> None:
+def create_table_if_missing(table: str, *columns: sa.schema.SchemaItem, **kw: Any) -> None:
     """op.create_table, skipped when the table already exists."""
     if not has_table(table):
         # pylint: disable-next=no-member

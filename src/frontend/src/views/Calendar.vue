@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDay, formatMonthYear } from "../utils/dates";
 import { WEEKDAY_NAMES, type WeekStart } from "../utils/calendarWeeks";
 import UiModal from "../components/UiModal.vue";
 import AppTopBar from "../components/AppTopBar.vue";
@@ -37,7 +38,6 @@ const {
   retryFailedLayers,
   refreshing,
   refreshAll,
-  MONTH_NAMES,
   WEEKDAY_LABELS,
   gridCells,
   prevMonth,
@@ -197,7 +197,7 @@ const {
         >
           External calendars: {{ notice }}
         </p>
-        <RouterLink class="section-hint" to="/settings?section=calendar"
+        <RouterLink class="section-hint" to="/settings/preferences/calendar"
           >Manage external calendars</RouterLink
         >
         <div class="month-bar">
@@ -211,7 +211,7 @@ const {
               ‹
             </button>
             <label class="month-label month-picker" title="Jump to a month">
-              {{ MONTH_NAMES[viewMonth] }} {{ viewYear }}
+              {{ formatMonthYear(viewYear, viewMonth + 1) }}
               <input
                 type="month"
                 :value="jumpMonthValue"
@@ -1070,7 +1070,7 @@ const {
           >
             Search and add it
           </button>
-          You will come back here with the day {{ manualDate }} kept.
+          You will come back here with the day {{ formatDay(manualDate) }} kept.
         </p>
         <div
           v-if="manualSearchState === 'results'"

@@ -1,0 +1,24 @@
+{
+  "stubbed_api": true,
+  "synthetic_data": true,
+  "answers_from": "make_preview.py (real parser and matcher)",
+  "screenshots": [
+    "book-import-isbn-list-desktop-light.png",
+    "book-import-preview-desktop-light.png",
+    "book-import-result-desktop-light.png",
+    "book-import-isbn-list-desktop-dark.png",
+    "book-import-preview-desktop-dark.png",
+    "book-import-result-desktop-dark.png",
+    "book-import-isbn-list-mobile-light.png",
+    "book-import-preview-mobile-light.png",
+    "book-import-result-mobile-light.png",
+    "book-import-isbn-list-mobile-dark.png",
+    "book-import-preview-mobile-dark.png",
+    "book-import-result-mobile-dark.png"
+  ],
+  "page_errors": [],
+  "import_requests": [
+    "POST /api/import/books/preview",
+    "POST /api/import/books"
+  ]
+}

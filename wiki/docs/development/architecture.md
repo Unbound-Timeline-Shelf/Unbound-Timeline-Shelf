@@ -220,6 +220,33 @@ failed partway through. Fix the reported storage problem instead of deleting row
 or recovery records by hand. For example, retry saving the game's folder name to
 reconcile an interrupted move.
 
+### Whole-game trash and restore never delete existing data
+
+Deleting a game moves its folder to `<data>/users/_trash/<game-id>/`, and restoring moves
+it back, both in `features/trash/game_trash.py` under the game's exclusive row lock. Neither
+direction removes anything that is already at the destination. A leftover trash folder, or
+a folder recreated at the old name, is merged with instead:
+
+- the folder being moved keeps its names, and the entry it collides with is renamed beside
+  it to `<name> (preserved-N)<ext>` (the next free `N`), for files, directories, nested
+  folders and a file facing a directory alike;
+- a byte-identical file is not duplicated;
+- a destination that is a symlink, or a file where a folder belongs, is refused with a
+  conflict and both locations are left as they were.
+
+Every step is idempotent, so a move that was interrupted can be run again. If the database
+commit fails, the files are moved back (a failed restore undoes only the steps it performed, so data that was already in the active folder is never sent to trash) after the row is re-read under a new lock (a commit
+whose acknowledgement was lost is kept as committed). Where that is not possible the data
+stays in one of two recoverable places:
+
+| Row | Data is in | What finishes it |
+|---|---|---|
+| active | `<data>/users/_trash/<game-id>/` (a delete died before its commit) | the next trash sweep moves it back; deleting again also finishes it |
+| deleted | the game's old active folder (a restore died before its commit) | restoring again finishes it; while that folder holds data and no active game owns it, the sweep keeps the deleted row and logs that it did |
+
+Retention is unchanged: the sweep purges only `_trash/<game-id>/` seven days after deletion.
+Preserved copies stay inside the game's folder, so they are restored and purged with it.
+
 ## How a game page opens
 
 `services/games.ts` keeps every game it has fetched in an entity cache (`peekGame`). Opening a game from the library draws it from that cache straight away and refreshes it from the server behind it. Its achievements, variants and parent game are requested in parallel with the game, and fill in when they arrive instead of holding the page back. The hero and poster downloads start before the game's details have returned. When there is nothing cached (opening the address directly), a loading screen is shown whose hero, poster and tab bar match the real page's sizes, so the page does not jump when it replaces it.
@@ -236,6 +263,8 @@ Every routed view in `router/index.ts` is a dynamic `import()`, so opening a pag
 Requests that several components make at the same moment are shared. `refreshMediaNotifications({ shared: true })` joins an unfinished request for the same account, and a background `refreshPluginExtensions` is skipped for two seconds after another one finished. Explicit refreshes (opening the bell, installing or removing a plugin) never take the shared path. The five-second session and plugin check in `App.vue` pauses while the browser tab is hidden and runs once when the tab becomes visible again.
 
 The game list endpoint accepts pages of 1–1,000 rows (default 50); existing 200-row clients remain compatible. The body is a plain array with `X-Total-Count` and optional `X-Status-Counts`. The Games view uses smaller viewport-sized windows (25–250 rows), adaptive prefetch and backend title/status/favorite filtering, rather than fetching the complete library. Bulk workflows use up to 1,000 rows per request and four concurrent continuations to reduce RTTs; they fall back to sequential reads when the total header is missing. Collection membership uses a compact collection index because manual/smart collection rules remain local. Home cold widgets still have a full-library dependency; retained Home state avoids repeating it on every navigation.
+
+**Complete library reads (#469).** `fetchGames()` reads every page of the library, and it has fourteen call sites (Home, the game page's similar games, collection and copy pickers, library management). Measured in the Linux lane with `src/backend/tests/measure_full_library_reads.py` (PostgreSQL 18, in-process, no network; run it with `tools/backend_linux_lane.sh tests/measure_full_library_reads.py -s`), one complete read took a median of 62 ms and 485 KB (17 KB gzipped) for 250 games, 398 ms and 1.9 MB (64 KB) for 1,000, and 1,659 ms and 9.7 MB (325 KB) in five requests for 5,000. Callers that ask while an identical read (same account, same library revision) is still in flight now share it; each gets its own array, a mutation, import or account change since it started gives the next caller a fresh read, and failed or finished reads are never reused (`src/tests/fullLibraryReads.test.ts`). No freshness window was added: several consumers act on the list (bulk library operations, duplicate checks), and reusing a finished read would let them act on a library that changed in another tab or through Playnite. Repeated visits to game pages therefore still read the whole library once per page for similar games; a small server-side summary for that panel is the next step if large libraries need it.
 
 `src/tests/routeSplitting.test.ts` fails if a route, a Settings section or a Game detail panel goes back to being a static import.
 
@@ -270,6 +299,7 @@ The Movie, TV and Anime list endpoints return `score_ranks`: the position of eve
 `features/activity_stats.py` owns the Statistics heatmap data and its day detail, so both use one rule. `GET /api/media-stats?section=overview&tz=<IANA zone>` returns the 52-week window (whole Sunday-first weeks ending today in that zone) and per-day `count`, `episodes`, `achievements` and `history`. `GET /api/media-stats/activity/day?date=YYYY-MM-DD&tz=<zone>&offset=&limit=` returns the same totals for one day plus a page of entries (`limit` is 1 to 100, default 50; entries are ordered episodes, achievements, other history).
 
 - **Day boundary.** `ActivityLog` stores a calendar `event_date` with no time, so those rows stay on their recorded day in every zone. Achievements store a unix instant and belong to the local day of that instant in `tz` (UTC when omitted). `day_bounds(day, zone)` returns the `[start, end)` seconds of a local day, handling 23 and 25 hour days and midnights skipped by daylight saving; the heatmap places unlocks with the same boundaries. Unknown names, `localtime` and path-like names are rejected with 422 by checking against the IANA database, which the `tzdata` requirement keeps complete on slim images.
+- **Writers (#473).** Episode progress, status changes (`log_episode_progress`, `log_status_change`, the movie status change) and a rewatch without `finished_on` record `core/viewer_day.viewer_today()`: the current day in the request's `X-Timezone` zone. The app adds that header, the device zone Statistics reads with, to every same-origin `/api` request (`services/viewerTimeZoneHeader.ts`, installed in `main.ts`). `ViewerTimezoneMiddleware` accepts only known IANA names; a missing or unknown zone (Playnite, plugins, scheduled work) keeps the server's own day as before. Nothing rewrites stored rows. The device zone was chosen over an account preference because it is the zone the readers already use and no account-wide zone exists (`notification_timing.timezone` is only for notification delivery).
 - **Ownership.** `ActivityLog.media_id` has no foreign key, so `owned_activity()` joins it to the movie, TV or anime table with the owner and `deleted_at IS NULL` in the join, dropping rows that name another account's, trashed or purged titles. Achievements join games through `active_owned_games(user_id)` from `features/game_stats.py`, so trashed games match the game statistics scope below exactly. Both endpoints keep `get_current_user`, so integration (`utd_`), plugin (`utp_`) and management (`utpm_`) credentials are refused rather than granted a new read scope.
 - **No invention.** Entries carry only what was recorded: per-title episode counts, achievement unlock instants, history labels. Missing unlock times and locked achievements are on no day.
 - **Frontend.** `components/stats/ActivityHeatmap.vue` renders the grid (month labels, roving-tabindex buttons, horizontal scroll) and `ActivityDayDialog.vue` renders the dialog inside `UiModal`. Classic and Modern share both; Classic only changes shape tokens.

@@ -1,0 +1,34 @@
+{
+  "stubbed_api": true,
+  "synthetic_data": true,
+  "screenshots": [
+    "book-search-results-desktop-light.png",
+    "book-search-found-desktop-light.png",
+    "book-search-isbn-found-desktop-light.png",
+    "book-provider-editions-desktop-light.png",
+    "book-search-results-desktop-dark.png",
+    "book-search-found-desktop-dark.png",
+    "book-search-isbn-found-desktop-dark.png",
+    "book-provider-editions-desktop-dark.png",
+    "book-search-results-mobile-light.png",
+    "book-search-found-mobile-light.png",
+    "book-search-isbn-found-mobile-light.png",
+    "book-provider-editions-mobile-light.png",
+    "book-search-results-mobile-dark.png",
+    "book-search-found-mobile-dark.png",
+    "book-search-isbn-found-mobile-dark.png",
+    "book-provider-editions-mobile-dark.png"
+  ],
+  "page_errors": [],
+  "metadata_requests": [
+    "GET /api/metadata/providers",
+    "POST /api/metadata/sessions {\"query\":\"lantern\",\"media_type\":\"book\",\"trigger\":\"explicit\"}",
+    "GET /api/metadata/sessions/s1/events",
+    "POST /api/metadata/sessions/s1/selection {\"candidate_id\":\"c1\"}",
+    "POST /api/metadata/sessions/s1/artwork {\"candidate_id\":\"c1\",\"url\":\"https://covers.example.test/lantern.png\"}",
+    "DELETE /api/metadata/sessions/s1",
+    "POST /api/metadata/sessions {\"query\":\"978-0-00-000000-2\",\"media_type\":\"book\",\"trigger\":\"explicit\"}",
+    "POST /api/metadata/selection {\"candidate\":{\"title\":\"The Lantern Archive\",\"provider\":\"local\",\"external_id\":\"The Lantern Archive\",\"media_type\":\"book\",\"provider_ids\":{\"example\":\"EX-W1\"}}}",
+    "GET /api/metadata/sessions/s2/events"
+  ]
+}

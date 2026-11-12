@@ -12,6 +12,13 @@ import type { Preferences } from "../services/preferences";
 export const preferences = ref<Preferences>({ ...DEFAULT_PREFERENCES });
 export const preferencesLoaded = ref(false);
 export const preferencesError = ref<string | null>(null);
+// The account whose first-visit date-format offer was closed this session.
+// Closing it hides it at once, even when saving that answer fails; an unsaved
+// answer means the offer comes back on the next visit, never in a loop now.
+export const dateOfferHiddenFor = ref<string | null>(null);
+// The account that chose "Later" on the first-visit welcome this session
+// (UX-AUDIT-APP A24): it is closable now, and comes back next visit.
+export const welcomeHiddenFor = ref<string | null>(null);
 let generation = 0;
 
 export function resetSharedPreferences(): void {
@@ -20,6 +27,8 @@ export function resetSharedPreferences(): void {
   preferences.value = { ...DEFAULT_PREFERENCES };
   preferencesLoaded.value = false;
   preferencesError.value = null;
+  dateOfferHiddenFor.value = null;
+  welcomeHiddenFor.value = null;
 }
 
 export async function loadSharedPreferences(): Promise<void> {

@@ -1,7 +1,8 @@
+import { formatInstant } from "../utils/dates";
 import { computed, ref, watch } from "vue";
 import type { Achievement, Game } from "../types/game";
 import type { SegmentOption } from "../components/SegmentedTabs.vue";
-import { isUnlocked, formatPercent } from "../utils/achievements";
+import { isUnlocked, isPlatinum, formatPercent } from "../utils/achievements";
 import {
   loadAchievementLocal,
   saveAchievementLocal,
@@ -389,6 +390,13 @@ export function useGameAchievements(game: Ref<Game | null>) {
         label: "complete",
         value: `${Math.round((done.length / list.length) * 100)}%`,
       });
+    // the whole-catalogue trophy, when the game has one
+    const platinum = list.find(isPlatinum);
+    if (platinum)
+      stats.push({
+        label: isUnlocked(platinum) ? "earned" : "not earned yet",
+        value: "Platinum",
+      });
     const percents = done
       .map((a) => a.rarityPercent)
       .filter((p): p is number => typeof p === "number");
@@ -402,7 +410,7 @@ export function useGameAchievements(game: Ref<Game | null>) {
       const last = times.reduce((m, t) => (t > m ? t : m));
       stats.push({
         label: "last unlock",
-        value: new Date(last).toLocaleDateString(),
+        value: formatInstant(last, { time: false }),
       });
       const weekAgo = Date.now() - 7 * 86_400_000;
       const week = times.filter((t) => new Date(t).getTime() >= weekAgo).length;

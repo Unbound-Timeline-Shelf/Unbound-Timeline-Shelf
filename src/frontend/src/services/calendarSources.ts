@@ -1,3 +1,4 @@
+import { deviceTimeZone } from "../utils/dates";
 export interface CalendarSource {
   id: string;
   name: string;
@@ -112,7 +113,7 @@ export const fetchSourceEvents = (
     events: Omit<ExternalCalendarEvent, "source">[];
     warnings: string[];
   }>(
-    `/${source.id}/events?${new URLSearchParams({ start, end, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" })}`,
+    `/${source.id}/events?${new URLSearchParams({ start, end, timezone: deviceTimeZone() })}`,
   );
 export const setCalendarOverride = (id: string, input: OverrideInput) =>
   request(`/${id}/overrides`, "PUT", input);
@@ -127,7 +128,7 @@ export function occurrenceTarget(
     event_id: event.event_id,
     recurrence_key: event.recurrence_key,
     occurrence_date: event.original_start.value.slice(0, 10),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    timezone: deviceTimeZone(),
   };
 }
 

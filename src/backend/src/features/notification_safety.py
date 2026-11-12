@@ -130,7 +130,12 @@ def url_is_safe(value: str) -> bool:
 
 
 def _is_own_api_url(url: str) -> bool:
-    """An absolute link into this host's own API, which application paths already refuse."""
+    """An absolute link into this app's own API (#398, defence in depth).
+
+    An application path to `/api/...` is already refused; the same address written as
+    `https://<this app>/api/...` must not pass as an "external" link either. The host is the
+    effective deployment URL (the saved setting, with the environment taking precedence) when a
+    caller supplied it through `notification_origin`, else the environment value."""
     configured = _PUBLIC_APP_URL.get()
     if configured is None:
         configured = settings.PUBLIC_APP_URL
@@ -140,11 +145,11 @@ def _is_own_api_url(url: str) -> bool:
         own, target = urlsplit(configured), urlsplit(url)
     except ValueError:
         return True
-    if (target.hostname or "").rstrip(".").lower() != (own.hostname or "").lower():
+    if (target.hostname or "").rstrip(".").lower() != (own.hostname or "").rstrip(".").lower():
         return False
-    api = own.path.rstrip("/") + "/api"
-    path = unquote(target.path)
-    return path == api or path.startswith(api + "/")
+    path = unquote(target.path) or "/"
+    # The API at the root, and under the deployment's own path prefix when it has one.
+    return any(path == api or path.startswith(api + "/") for api in {"/api", own.path.rstrip("/") + "/api"})
 
 
 def _has_secret_query(url: str) -> bool:

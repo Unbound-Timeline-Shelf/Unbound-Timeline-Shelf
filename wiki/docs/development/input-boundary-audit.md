@@ -57,25 +57,33 @@ The #293 audit covered `v-html` and host-side field handling. This pass followed
 | Game metadata refresh `links` and `release_date` | Provider `links` were assigned as dicts to a relationship that expects `GameLink` rows, and `release_date` as an ISO string. | Both are converted (links clipped to the column sizes). `test_plugin_metadata_integrity.py` |
 | Notification text | Bidirectional overrides and zero-width characters were accepted in titles, labels and facts (`Invoice ‮gpj.exe` displays as `Invoice exe.jpg`), and the typed-template path (`emit_source`) skipped the content checks of the canonical path. | Canonical content and template output are rejected when they contain U+200B, U+2060, U+202A-202E, U+2066-2069 or U+FEFF; the legacy title and body path strips them. The direction marks U+200E/U+200F and joiners U+200C/U+200D stay, since right-to-left text and emoji need them. `test_notification_content_spoofing.py`, `test_notification_sources.py` |
 
-### Follow-ups (#398)
+### Follow-up status (#398)
 
 Fixed since the first pass:
 
-* **Game metadata refresh `links`** are converted to `GameLink` rows (see the table above).
-* **Episode stills and calendar posters** are served through `/api/media-image/...` (`/api/media-image/{tv|anime}/episode/{id}/still` for stills), so the browser never loads a provider or plugin address directly. `test_media_images.py`, `episodeStills.test.ts`
-* **UI document collections** are bounded: `PluginUiDocument` rejects more than 256 entries in any contribution collection and more than 64 columns in a table (checked in a validator, so the published schema is unchanged).
-* **Install consent preview** shows only an icon packaged in the plugin, never a manifest-chosen URL.
-* **Runtime output.** Each line a plugin process writes (an action result, a gateway request or a log line) is capped at 16 MiB while it is read; an oversized result fails the action, an oversized gateway request is logged and skipped. A chunked request body stops at the 48 KiB limit. `plugin-runtime/tests/test_gateway_transport.py`
-* **Smaller caps.** Two achievement ids that share their first 200 characters are one row, and provider-reported `provider_custom` fields stop growing at 64 keys.
-* **Self-origin links.** A notification link to the app's own `/api/...` is refused as an absolute URL too: by `url_is_safe` using the effective saved deployment URL (environment overrides it), and by `safeHref` against the page's host. `test_notification_rich_content.py`, `notificationStory.test.ts`
-* **Plugin frame saves.** `plugin.save-secret` and `plugin.save-settings` need transient user activation (a click in the frame), like external-navigation actions. `pluginUserActivation.test.ts`
-* **Push preview** bodies are rendered from Markdown to plain text; the credential check covers both. `test_notification_browser_story.py`
-* **Native-frontend files** are served with `Content-Security-Policy: sandbox`. It has no effect on the module imports and subresources the host loads, but an HTML or SVG asset opened as a page runs without script on a unique origin.
+| Finding | Fix and test |
+| --- | --- |
+| Game metadata refresh `links` were passed as dictionaries | Converted to `GameLink` rows (see the table above). `test_plugin_metadata_integrity.py` |
+| Episode stills (`still_url`) were loaded raw by the browser | TV and anime episodes now point at `/api/media-image/{tv\|anime}/episodes/{id}/still`, an owner-scoped route that fetches through `public_http`, caches a 640 px JPEG and falls back like posters do (a private address is a 404, never a redirect). Calendar entries use the title's `/api/media-image/.../poster` too. `test_plugin_content_followups.py`, `test_media_images.py`, `episodeStill.test.ts`, `episodeStills.test.ts` |
+| Plugin UI document collections had no count limit | `PluginUiDocument` rejects more than 256 entries in any contribution collection and more than 64 columns in a table (a validator, so the published schema is unchanged). |
+| Install consent preview loaded a manifest-chosen icon URL | Only the packaged icon, as a data URI, is shown before consent. |
+| A single plugin output line was read without a cap | The runtime reads stdout and stderr in bounded chunks (`read_bounded_lines`): an action result line over 16 MiB fails the action with a policy error before it is buffered, and a log line over 64 KiB is dropped with a marker. `plugin-runtime/tests/test_output_line_limits.py` |
+| A chunked request body was buffered before the 48 KiB check | The route reads the body as a stream and stops at the limit. |
+| Achievement id truncation and `provider_custom` growth | Ids that share their first 200 characters are one row; `provider_custom` stops at 64 keys. |
+| A notification link to the app's own `/api/...` counted as an external link | Refused on the server (`url_is_safe`, against the effective deployment URL: the saved setting, with `PUBLIC_APP_URL` taking precedence, resolved during acceptance and rendering) and in the browser (`namesOwnApi`, against the page's own hostname, with the path decoded). `test_plugin_content_followups.py`, `test_notification_rich_content.py`, `notificationStory.test.ts` |
+| Browser push previews showed Markdown source (`**Now** streaming`) | The preview renders the summary and turns it into plain text. `test_notification_browser_story.py` |
+| A plugin frame could ask the host to save a secret or settings without a click | `plugin.save-secret` and `plugin.save-settings` now need transient user activation, like external navigation. `pluginExternalNavigation.test.ts` |
 
-Still open:
+| A native-frontend HTML or SVG asset opened directly as a page ran script on the host origin | Native-frontend files are served with `Content-Security-Policy: sandbox`. It has no effect on the module imports and subresources the host loads. `test_plugin_authorization_http.py` |
 
-* **Public-app files:** a separate HTTPS hostname configured through `PUBLIC_APPS_ORIGIN` is required. Main-origin asset requests are refused. The public hostname exposes only public-app APIs, strips incoming/outgoing cookies, and cannot call ordinary host APIs using the public Origin. Participant bearer sessions stay separate from application users. See [deployment and upgrade instructions](plugin-public-apps.md#separate-browser-origin-v005) and `test_public_app_origin.py`.
-* **Plugin frontend assets:** confirmed policy: ordinary static package assets are readable by signed-in users for executable installations and must contain no secrets. Page sandboxing remains mandatory. Capability grants continue to control actions, data and UI contribution activation; native modules still require `frontend.native`. `test_static_frontend_assets_are_readable_without_action_grants` pins file access versus refused execution.
+Decided by the maintainer and implemented (#458):
+
+* **Public-app files:** a separate HTTPS hostname configured through `PUBLIC_APPS_ORIGIN` is required. Main-origin asset requests are refused. The public hostname exposes only public-app APIs, strips incoming and outgoing cookies, and cannot call ordinary host APIs using the public `Origin`. Participant bearer sessions stay separate from application users. See [deployment and upgrade instructions](plugin-public-apps.md#separate-browser-origin-v005) and `test_public_app_origin.py`.
+* **Plugin page files:** confirmed policy: ordinary static package assets are readable by signed-in users for executable installations and must contain no secrets. Page sandboxing remains mandatory. Capability grants continue to control actions, data and UI contribution activation; native modules still require `frontend.native`. `test_static_frontend_assets_are_readable_without_action_grants` pins file access versus refused execution.
+
+Still open, needing the plugin platform owner's agreement:
+
+* **Native plugin frontends** run on the host origin by design (they are reviewed, admin-installed code). Beyond the sandbox header above, a CSP for the modules themselves would change what native plugins can do.
 
 ### Checked and found safe
 

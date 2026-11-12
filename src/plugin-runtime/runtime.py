@@ -46,7 +46,10 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
     resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PLUGIN_API_CONTRACT_VERSION = "1.1.19"
+PLUGIN_API_CONTRACT_VERSION = "1.1.20"
+# api_contract_max exists from this contract on (the host's UNIFIED_CONTRACT).
+_CONTRACT_RANGE_SINCE = (1, 1, 20)
+_SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)")
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -72,11 +75,12 @@ _MAX_PACKAGE_ENTRIES = 1000
 _MAX_PACKAGE_FILE_BYTES = 16 * 1024 * 1024
 _MAX_PACKAGE_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 _MAX_PACKAGE_COMPRESSION_RATIO = 100.0
-# One protocol, gateway or log line from a plugin process. Larger lines are discarded
-# while they are read, so a plugin cannot make the runtime buffer unbounded output.
-_MAX_PLUGIN_LINE_BYTES = 16 * 1024 * 1024
-# Queued in place of a discarded line; compared by identity, never by value.
-_OVERSIZED_LINE = b"<oversized line>"
+# One protocol line (a gateway request or the action result) and one stderr line. A plugin
+# could otherwise grow a single unterminated line until the memory rlimit (#398); results are
+# capped again after decoding (64 KiB, or 4 MiB for public app work).
+_MAX_PROTOCOL_LINE_BYTES = 16 * 1024 * 1024
+_MAX_LOG_LINE_BYTES = 64 * 1024
+_OVERSIZED_LINE = b"\x00oversized"
 _PACKAGE_ARCHIVE = ".runtime-state-package.utp"
 _BACKEND_ROUTE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 _BACKEND_ROUTE_SEGMENT = re.compile(r"^(?:[a-z0-9][a-z0-9._-]*|\{[a-z_][a-z0-9_]*\})$")
@@ -110,21 +114,6 @@ _RESERVED_PLUGIN_ROUTE_ROOTS = {
 }
 
 
-def _bounded_lines(stream: Any, limit: int | None = None) -> Iterator[bytes | None]:
-    """Yield each line of a plugin stream, or None for a line longer than the limit."""
-    limit = _MAX_PLUGIN_LINE_BYTES if limit is None else limit
-    while True:
-        line = stream.readline(limit + 1)
-        if not line:
-            return
-        if len(line) <= limit:
-            yield line
-            continue
-        while line and not line.endswith(b"\n"):
-            line = stream.readline(limit)
-        yield None
-
-
 class RuntimePolicyError(ValueError):
     """Raised when a plugin request violates the runtime contract."""
 
@@ -146,9 +135,49 @@ def plugin_contract_compatibility_reason(
             f"Plugin API contract {declared} is v1.0-only. Limited compatibility is available "
             "for shipped examples and already-installed plugins; new plugins must target v1.1."
         )
-    if not (1, 1, 0) <= version <= tuple(map(int, PLUGIN_API_CONTRACT_VERSION.split("."))):
+    host = tuple(int(part) for part in PLUGIN_API_CONTRACT_VERSION.split("."))
+    maximum = manifest.get("api_contract_max")
+    if maximum is not None:
+        # C16 22.6: the plugin also supports contracts up to this one. It needs 1.1.20 (older
+        # hosts refuse the unknown manifest field) and runs at min(maximum, host).
+        if not isinstance(maximum, str) or not _SEMVER.fullmatch(maximum):
+            return "Plugin API contract maximum is invalid."
+        top = tuple(int(part) for part in maximum.split("."))
+        if version < _CONTRACT_RANGE_SINCE or top[0] != version[0] or top < version:
+            return f"Plugin API contract range {declared}-{maximum} is invalid."
+        if not (1, 1, 0) <= version <= host:
+            return (
+                f"Plugin API contract range {declared}-{maximum} is not supported by this host "
+                f"(1.1.0-{PLUGIN_API_CONTRACT_VERSION})."
+            )
+        return None
+    if not (1, 1, 0) <= version <= host:
         return f"Plugin API contract {declared} is not supported by this host ({PLUGIN_API_CONTRACT_VERSION})."
     return None
+
+
+def negotiated_contract(manifest: Mapping[str, Any]) -> str:
+    """The contract a compatible plugin runs at: min(api_contract_max, host maximum).
+
+    Without ``api_contract_max`` it is the declared version, exactly as before the range."""
+    declared = str(manifest.get("api_contract_version", "1.0.0"))
+    maximum = manifest.get("api_contract_max")
+    if not isinstance(maximum, str) or not _SEMVER.fullmatch(maximum):
+        return declared
+    top = tuple(int(part) for part in maximum.split("."))
+    host = tuple(int(part) for part in PLUGIN_API_CONTRACT_VERSION.split("."))
+    return ".".join(map(str, min(top, host)))
+
+
+def contract_environment(manifest: Mapping[str, Any]) -> dict[str, str]:
+    """What a worker learns about the contract it runs under (C16 22.6 init context)."""
+    return {
+        "PLUGIN_API_CONTRACT": negotiated_contract(manifest),
+        "PLUGIN_API_HOST_MIN": "1.0.0"
+        if str(manifest.get("api_contract_version", "1.0.0")).startswith("1.0.")
+        else "1.1.0",
+        "PLUGIN_API_HOST_MAX": PLUGIN_API_CONTRACT_VERSION,
+    }
 
 
 class RuntimeGatewayError(RuntimePolicyError):
@@ -206,6 +235,25 @@ def validated_gateway_url(value: str) -> str:
     if parsed.port is not None and not 1 <= parsed.port <= 65535:
         raise ValueError("invalid gateway port")
     return value.rstrip("/")
+
+
+def read_bounded_lines(stream: Any, limit: int) -> Iterator[bytes]:
+    """Lines of at most `limit` bytes; a longer line yields `_OVERSIZED_LINE` once and is skipped.
+
+    `readline(limit + 1)` never buffers more than the limit, so a plugin cannot make the
+    runtime hold an unbounded line in memory."""
+    while True:
+        line = stream.readline(limit + 1)
+        if not line:
+            return
+        if len(line) <= limit or line.endswith(b"\n"):
+            yield line
+            continue
+        yield _OVERSIZED_LINE
+        while True:  # discard the rest of the oversized line
+            rest = stream.readline(limit + 1)
+            if not rest or rest.endswith(b"\n"):
+                break
 
 
 def gateway_error_response(exc: Exception, request: Any) -> dict[str, Any]:
@@ -444,13 +492,13 @@ class PluginSupervisor:
         stdout = getattr(process, "stdout", None)
         if stdout is None:
             return
-        for raw in _bounded_lines(stdout):
-            if raw is None:
+        for raw in read_bounded_lines(stdout, _MAX_PROTOCOL_LINE_BYTES):
+            if raw is _OVERSIZED_LINE:
                 self._log(
                     plugin_id,
-                    "Gateway request exceeded the size limit and was discarded.",
+                    "Gateway request line exceeds 16 MiB and was dropped.",
                     level="error",
-                    event="gateway.request_failed",
+                    event="gateway.request_too_large",
                 )
                 continue
             line = raw.decode("utf-8", errors="replace").strip()
@@ -488,9 +536,9 @@ class PluginSupervisor:
         stderr = getattr(process, "stderr", None)
         if stderr is None:
             return
-        for raw in _bounded_lines(stderr):
-            if raw is None:
-                raw = b"[plugin output line exceeded the size limit and was discarded]"
+        for raw in read_bounded_lines(stderr, _MAX_LOG_LINE_BYTES):
+            if raw is _OVERSIZED_LINE:
+                raw = b"[a log line over 64 KiB was dropped]"
             line = raw.decode("utf-8", errors="replace").rstrip()
             if line:
                 self._log(
@@ -1101,8 +1149,11 @@ class PluginSupervisor:
             lines: queue.Queue[tuple[str, bytes | None]] = queue.Queue()
 
             def read_stream(name: str, stream: Any) -> None:
-                for line in _bounded_lines(stream):
-                    lines.put((name, _OVERSIZED_LINE if line is None else line))
+                limit = (
+                    _MAX_PROTOCOL_LINE_BYTES if name == "stdout" else _MAX_LOG_LINE_BYTES
+                )
+                for line in read_bounded_lines(stream, limit):
+                    lines.put((name, line))
                 lines.put((name, None))
 
             threading.Thread(
@@ -1133,8 +1184,10 @@ class PluginSupervisor:
                     continue
                 if line is _OVERSIZED_LINE:
                     if stream_name == "stdout":
-                        raise RuntimePolicyError("plugin action output exceeds the line limit")
-                    line = b"[plugin output line exceeded the size limit and was discarded]"
+                        raise RuntimePolicyError(
+                            "plugin action output line exceeds 16 MiB"
+                        )
+                    line = b"[a log line over 64 KiB was dropped]"
                 if stream_name == "stderr":
                     message = line.decode("utf-8", errors="replace").rstrip()
                     if message:
@@ -1812,6 +1865,15 @@ class PluginRegistry:
             "release_notes": distribution.get("release_notes"),
             "version": data.get("version", "0.0.0"),
             "api_contract_version": data.get("api_contract_version", "1.0.0"),
+            "api_contract_max": data.get("api_contract_max"),
+            # C16 22.6: the contract the host validates this plugin against, and its own range.
+            "negotiated_api_contract": negotiated_contract(data)
+            if contract_error is None
+            else None,
+            "plugin_api": {
+                "min": "1.0.0" if legacy else "1.1.0",
+                "max": PLUGIN_API_CONTRACT_VERSION,
+            },
             "host_api_contract_version": PLUGIN_API_CONTRACT_VERSION,
             "sdk_version_range": data.get("sdk_version_range"),
             "application_version_range": data.get("application_version_range"),
@@ -2725,7 +2787,12 @@ class PluginRegistry:
             )
             try:
                 self.supervisor.start(
-                    PluginSpec(plugin_id, self._command(manifest)), package
+                    PluginSpec(
+                        plugin_id,
+                        self._command(manifest),
+                        contract_environment(manifest),
+                    ),
+                    package,
                 )
             except Exception as exc:
                 self._transition(
@@ -3021,7 +3088,9 @@ class PluginRegistry:
             ) from exc
         package, manifest = self.package(plugin_id)
         output = self.supervisor.execute(
-            PluginSpec(plugin_id, self._action_command(handler)),
+            PluginSpec(
+                plugin_id, self._action_command(handler), contract_environment(manifest)
+            ),
             package,
             payload,
             user_id=user_id,

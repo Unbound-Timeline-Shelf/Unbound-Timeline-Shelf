@@ -23,9 +23,11 @@ from src.plugin_api.metadata_contracts import (
     MetadataCandidate,
     MetadataProviderRegistration,
     MetadataProviderRequest,
+    MetadataResolveRequest,
     ProviderFailure,
     ProviderHealth,
     ProviderResponse,
+    contract_context,
 )
 from src.plugin_api.runtime_client import (
     PluginRuntimeClient,
@@ -82,10 +84,7 @@ async def authorize_metadata_action(
     matches = [
         row
         for row in registrations
-        if getattr(
-            MetadataProviderRegistration.model_validate(row.declaration).operations, operation
-        )
-        == action_id
+        if action_id in _operation_actions(row.declaration, operation)
         and (provider_id is None or row.provider_id == provider_id)
     ]
     if not matches:
@@ -95,6 +94,20 @@ async def authorize_metadata_action(
             raise PermissionError("This metadata provider is disabled for your account.")
 
 
+def _operation_actions(declaration: dict[str, Any], operation: Operation) -> set[str]:
+    """The actions a registration runs under one capability: a ``resolve`` action (the batched
+    identifier lookup, Plugin API 1.1.20) runs under ``metadata_providers.search``."""
+    operations = MetadataProviderRegistration.model_validate(declaration).operations
+    actions = {getattr(operations, operation)}
+    if operation == "search":
+        actions.add(operations.resolve)
+    return {action for action in actions if action}
+
+
+def _capability(operation: str) -> str:
+    return "metadata_providers." + ("search" if operation == "resolve" else operation)
+
+
 async def register_provider(
     db: AsyncSession, plugin_id: str, installation_id: UUID, payload: dict[str, Any]
 ) -> dict[str, Any]:
@@ -102,15 +115,25 @@ async def register_provider(
     declaration = MetadataProviderRegistration.model_validate(payload)
     if not declaration.provider_id.startswith(plugin_id + "."):
         raise PermissionError("metadata provider ID must belong to this plugin")
-    document = await bounded(PluginRuntimeClient().plugin_ui(plugin_id), 3)
+    runtime = PluginRuntimeClient()
+    document = await bounded(runtime.plugin_ui(plugin_id), 3)
+    # The declaration is held to the contract the plugin runs at (C15 6.3, C16 22.6): ``book``
+    # needs Plugin API 1.1.20. That is the runtime's negotiated contract, the same one
+    # ``invoke`` and discovery use; the UI document's declared version (always the manifest's,
+    # the runtime enforces it) stands in only when the runtime reports none.
+    state = await bounded(runtime.plugin_state(plugin_id), 2)
+    negotiated = state.get("negotiated_api_contract") if isinstance(state, dict) else None
+    declared = str(document.get("api_contract_version") or "1.0.0")
+    declaration = MetadataProviderRegistration.model_validate(
+        payload,
+        context=contract_context(negotiated if isinstance(negotiated, str) else declared),
+    )
     actions = {action["id"]: action for action in document.get("actions", [])}
     for operation, action_id in declaration.operations.model_dump().items():
         if action_id is None:
             continue
         action = actions.get(action_id)
-        if not action or action.get("capability", {}).get("name") != (
-            "metadata_providers." + operation
-        ):
+        if not action or action.get("capability", {}).get("name") != _capability(operation):
             raise ValueError("provider operation must declare its matching action capability")
     existing = await db.get(PluginMetadataProviderRegistration, declaration.provider_id)
     if existing is not None and existing.plugin_id != plugin_id:
@@ -176,6 +199,10 @@ class PluginMetadataProvider:
     artwork_priority: int = UNRANKED
     automatic_search_enabled: bool = True
     account_enabled: bool = True
+    # The Plugin API contract the plugin's manifest declared when it was discovered. Responses
+    # are validated against the current one in ``invoke``; this snapshot only decides which
+    # reports of a finished lookup have a defined meaning (game relations need 1.1.20).
+    api_contract: str = "1.0.0"
 
     @property
     def id(self) -> str:
@@ -186,16 +213,20 @@ class PluginMetadataProvider:
         return self.declaration.name
 
     async def authorized(self, operation: Operation) -> bool:
+        return await self._authorized_state(operation) is not None
+
+    async def _authorized_state(self, operation: Operation) -> dict[str, Any] | None:
+        """The installation's current runtime state when the operation is allowed, else None."""
         async with SessionLocal() as db:
             if not await provider_enabled(db, self.user_id, self.id):
-                return False
+                return None
             registration = await db.get(PluginMetadataProviderRegistration, self.id)
             if (
                 registration is None
                 or registration.revoked_at is not None
                 or registration.installation_id != self.installation_id
             ):
-                return False
+                return None
             for capability in ("metadata_providers.register", "metadata_providers." + operation):
                 if not await has_capability_grant(
                     db,
@@ -204,16 +235,18 @@ class PluginMetadataProvider:
                     capability=capability,
                     user_id=self.user_id,
                 ):
-                    return False
+                    return None
             _, revision = await configuration_values(db, registration, self.user_id)
             if revision != self.revision:
-                return False
+                return None
         plugin = await bounded(PluginRuntimeClient().plugin_state(self.plugin_id), 2)
-        return (
+        if (
             plugin.get("plugin_id") == self.plugin_id
             and plugin.get("installation_id") == str(self.installation_id)
             and installation_is_executable(plugin)
-        )
+        ):
+            return plugin
+        return None
 
     async def invoke(
         self,
@@ -223,14 +256,17 @@ class PluginMetadataProvider:
     ) -> ProviderResponse:
         """No provider-specific API, credentials, retries or throttling live in this adapter."""
         action_id = getattr(self.declaration.operations, operation)
-        is_authorized = (
-            bool(action_id) and request.user_id == self.user_id and await self.authorized(operation)
+        state = (
+            await self._authorized_state(operation)
+            if action_id and request.user_id == self.user_id
+            else None
         )
+        is_authorized = state is not None
         automatic_allowed = True
         if is_authorized and request.options.get("automatic_search") is True:
             async with SessionLocal() as db:
                 automatic_allowed = bool((await automatic_search_status(db, self))["enabled"])
-        if not action_id or not is_authorized or not automatic_allowed:
+        if not action_id or state is None or not automatic_allowed:
             return ProviderResponse(
                 failure=ProviderFailure(code="plugin_unavailable") if not is_authorized else None
             )
@@ -238,10 +274,13 @@ class PluginMetadataProvider:
         if candidate is not None:
             values["candidate"] = candidate.model_dump(mode="json")
         try:
+            # The response is held to the contract the plugin declared: a 1.1.20 field from a
+            # plugin built for an older host is an invalid response, as an unknown field was.
+            context = contract_context(plugin_contract(state))
             payload = await PluginRuntimeClient().action(
                 self.plugin_id, action_id, values, user_id=str(self.user_id)
             )
-            result = ProviderResponse.model_validate(payload)
+            result = ProviderResponse.model_validate(payload, context=context)
         except PluginRuntimeUnavailable:
             return ProviderResponse(failure=ProviderFailure(code="plugin_unavailable"))
         except ValidationError as exc:
@@ -260,6 +299,62 @@ class PluginMetadataProvider:
         if self.declaration.identifier_namespace:
             owned.add(self.declaration.identifier_namespace)
         return fit_response(confine_to_namespaces(result, owned))
+
+    async def resolve(self, request: MetadataResolveRequest) -> ProviderResponse:
+        """The batched identifier lookup (Plugin API 1.1.20): one action for up to 200 rows.
+
+        It is authorised exactly like a search (same grant, same account switch), and its answer
+        is held to the negotiated contract. An answer for a row it was not asked about, or a
+        candidate of another media type, makes the whole answer an ``invalid_response``."""
+        action_id = self.declaration.operations.resolve
+        state = (
+            await self._authorized_state("search")
+            if action_id and request.user_id == self.user_id
+            else None
+        )
+        if not action_id or state is None:
+            return ProviderResponse(
+                failure=ProviderFailure(code="plugin_unavailable") if action_id else None
+            )
+        values = {"request": request.model_dump(mode="json"), "provider_id": self.id}
+        try:
+            context = contract_context(plugin_contract(state))
+            payload = await PluginRuntimeClient().action(
+                self.plugin_id, action_id, values, user_id=str(self.user_id)
+            )
+            result = ProviderResponse.model_validate(payload, context=context)
+        except PluginRuntimeUnavailable:
+            return ProviderResponse(failure=ProviderFailure(code="plugin_unavailable"))
+        except (PluginRuntimeRequestError, ValueError) as exc:
+            if isinstance(exc, ValidationError):
+                logger.warning(
+                    "metadata_invalid_response provider=%s operation=resolve fields=%s",
+                    self.id,
+                    [(error["loc"], error["type"]) for error in exc.errors()],
+                )
+            return ProviderResponse(failure=ProviderFailure(code="invalid_response"))
+        asked = {item.key for item in request.items}
+        if any(
+            resolution.key not in asked or resolution.candidate.media_type != request.media_type
+            for resolution in result.resolved
+        ):
+            logger.warning("metadata_invalid_response provider=%s operation=resolve", self.id)
+            return ProviderResponse(failure=ProviderFailure(code="invalid_response"))
+        if not await self.authorized("search"):
+            return ProviderResponse(failure=ProviderFailure(code="plugin_unavailable"))
+        owned = {self.id}
+        if self.declaration.identifier_namespace:
+            owned.add(self.declaration.identifier_namespace)
+        return confine_to_namespaces(result, owned)
+
+
+def plugin_contract(plugin: dict[str, Any]) -> str:
+    """The contract a plugin's output is held to: the one the runtime negotiated
+    (min(api_contract_max, host maximum), C16 22.6), or its declared version on a runtime that
+    reports none."""
+    return str(
+        plugin.get("negotiated_api_contract") or plugin.get("api_contract_version") or "1.0.0"
+    )
 
 
 def _provider_state(
@@ -350,6 +445,7 @@ async def discover_providers(
                     preferences["image_provider_order"],
                     CORE_PROVIDER_NAMES,
                 ),
+                api_contract=plugin_contract(live.get(row.plugin_id, {})),
             )
         )
     return providers

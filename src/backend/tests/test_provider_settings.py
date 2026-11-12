@@ -140,6 +140,25 @@ async def test_encrypted_provider_credentials_and_unknown_provider(credentials, 
     db.commit.assert_awaited_once()
 
 
+async def test_provider_validation_does_not_return_sensitive_exception(credentials, monkeypatch):
+    client, _db, _user = credentials
+    monkeypatch.setattr(
+        settings_routes,
+        "_validate_provider",
+        Mock(side_effect=settings_routes.GOGError("https://provider/?token=secret")),
+    )
+    response = await client.put(
+        "/api/settings/provider-credentials/GOG", json={"fields": {"refresh_token": "token"}}
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "GOG",
+        "status": "error",
+        "detail": "Could not validate the credentials. Check them and try again.",
+    }
+    assert "secret" not in response.text
+
+
 async def test_library_counts_use_one_query_and_only_callers_active_games():
     owner_id, other_id = uuid4(), uuid4()
     statements = []

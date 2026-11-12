@@ -14,6 +14,27 @@ to each `games.import` item (see [artwork and release dates](plugin-game-imports
 A plugin that sends them declares `api_contract_version` 1.1.19, so an older host refuses it at
 install instead of rejecting its syncs as unknown fields.
 
+v1.1.20 adds partial and regional release dates (`first_release`, `releases`), the identity
+verdict of a lookup (`identity`), achievement `aliases` and the `platinum` achievement tier to
+metadata provider responses, and the host now stores crossplay as `yes`, `partial`, `no` or
+unknown. Every field is listed in
+[metadata providers](metadata-providers.md#plugin-api-1120-releases-identity-and-relations).
+v1.1.20 also adds books, in the same release (no separate minor): `MediaType.book` (a provider
+registration may now list all five media types), `MetadataPatch.book` (`MetadataBook`: authors with
+roles, partial first-published date, series, original language and `editions`), the candidate's
+`authors` and `isbn_13`, the `isbn` request option sent on an ISBN book search, and the batched
+identifier lookup a book import uses (the optional `resolve` operation, `MetadataResolveRequest`
+with up to 200 rows and `ProviderResponse.resolved`). The shared
+vocabularies gain `book_format` and `book_creator_role`. See
+[metadata providers](metadata-providers.md#plugin-api-1120-books).
+A 1.1.20 manifest may also declare `api_contract_max`, the newest contract the plugin supports; the
+host runs it at `min(api_contract_max, host maximum)`, reports that as `negotiated_api_contract` in
+the plugin inventory and passes it to the worker as `PLUGIN_API_CONTRACT` (with
+`PLUGIN_API_HOST_MIN` and `PLUGIN_API_HOST_MAX`). See [plugin manifest](plugin-manifest.md).
+The host holds each plugin to the contract its manifest declares: a 1.1.20 field or value from a
+plugin that declares 1.1.19 or older is an `invalid_response`, and an older plugin that sends none
+of them works exactly as before.
+
 v1.1.2 protects notification transport behind core-issued delivery work. Generic
 plugin/UI actions cannot authorize Discord delivery. Notification provider
 registration and live capability grants remain required; providers receive the

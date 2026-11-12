@@ -8,7 +8,10 @@ import {
 } from "../composables/useConnections";
 import type { ConnectionConfig } from "../composables/useConnections";
 import { usePluginConnections } from "../composables/usePluginConnections";
-import { pluginConnectionKey } from "../services/pluginConnections";
+import {
+  canContinueSync,
+  pluginConnectionKey,
+} from "../services/pluginConnections";
 import {
   pluginConnections,
   refreshPluginExtensions,
@@ -28,7 +31,7 @@ const plugins = computed(() =>
 async function syncBuiltIn(connection: ConnectionConfig) {
   if (menu.value) menu.value.open = false;
   if (!isConnectionConnected(state.credentialStatus[connection.key])) {
-    await router.push("/settings?section=connections");
+    await router.push("/settings/account/connections");
     return;
   }
   if (connection.syncProvider)
@@ -43,11 +46,19 @@ async function syncPlugin(connection: PluginConnectionContribution) {
   if (menu.value) menu.value.open = false;
   const key = pluginKey(connection);
   if (!pluginState.states[key]?.connected) {
-    await router.push("/settings?section=connections");
+    await router.push("/settings/account/connections");
     return;
   }
   await pluginState.sync(key, connection.label);
   emit("synced");
+}
+// A run that stopped with saved work left reads "Continue"; it never turns autosync on (#466).
+function pluginActionLabel(connection: PluginConnectionContribution): string {
+  const state = pluginState.states[pluginKey(connection)];
+  if (!state?.connected) return "Connect";
+  return state.sync && canContinueSync(state.sync)
+    ? "Continue syncing"
+    : "Sync";
 }
 function onToggle() {
   if (!menu.value?.open) return;
@@ -96,15 +107,14 @@ function onToggle() {
         "
         @click="syncPlugin(connection)"
       >
-        {{
-          pluginState.states[pluginKey(connection)]?.connected
-            ? "Sync"
-            : "Connect"
-        }}
+        {{ pluginActionLabel(connection) }}
         {{ connection.label }}
       </button>
-      <RouterLink to="/settings?section=background-tasks"
+      <RouterLink to="/settings/account/background-tasks"
         >Autosync settings</RouterLink
+      >
+      <RouterLink to="/settings/preferences/import-sync"
+        >All import & sync options</RouterLink
       >
     </div>
   </details>

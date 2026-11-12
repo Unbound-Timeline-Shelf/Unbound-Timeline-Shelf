@@ -129,7 +129,7 @@ def _retire(row: GameMetricAdjustment | GameMetricCounterMember, stamp: int) -> 
 
 def _counter_query(
     user_id: UUID, games: set[UUID], counter_ids: set[UUID] | None, metric: str | None
-) -> Select[tuple[GameMetricCounter]]:
+) -> Select[GameMetricCounter]:
     query = (
         select(GameMetricCounter)
         .where(GameMetricCounter.user_id == user_id, GameMetricCounter.archived_at.is_(None))

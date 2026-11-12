@@ -192,10 +192,10 @@ async def preview_for(
         return Preview(True, url, revision)
     content = await _content(db, notification, delivery.projection)
     title = _line(content.title if content else notification.title, MAX_TITLE)
-    source = content.summary if content and content.summary else notification.body
-    # Summaries and bodies are Markdown; a device shows them as plain text.
+    # a stored body is Markdown source; a device shows plain text, never "**bold**" (#398)
+    source = content.summary if content and content.summary else notification.body or ""
     body = _line(plain_text(render_markdown(source)), MAX_BODY)
-    if not title or not _safe_text(f"{title}\n{source}\n{body}"):
+    if not title or not _safe_text(f"{title}\n{body}"):
         return Preview(True, url, revision, fallbacks=("preview_withheld",))
     return Preview(
         False,

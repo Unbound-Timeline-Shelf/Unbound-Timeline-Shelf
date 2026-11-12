@@ -45,7 +45,7 @@ DEFAULT_INSTANCES = [
 ACTIONS = {"start", "stop", "reset", "rebuild", "status", "health", "logs"}
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-GHCR_BASE = "ghcr.io/rosefall-a/unnamed_tracking_app"
+GHCR_BASE = "ghcr.io/unbound-timeline-shelf/unbound-timeline-shelf"
 IMAGE_NAMES = {
     "app": GHCR_BASE,
     "frontend": GHCR_BASE + "-frontend",
@@ -233,6 +233,7 @@ def instance_by_id(instance_id: str) -> dict[str, Any]:
 
 
 def compose_env(instance: dict[str, Any]) -> dict[str, str]:
+    instance = validate_instance(instance)
     env = os.environ.copy()
     env["DEVCONTAINER_APP_PORT"] = str(instance["port"])
     env["DEV_PULL_POLICY"] = "build" if instance["build_mode"] == "source" else "always"
@@ -241,6 +242,7 @@ def compose_env(instance: dict[str, Any]) -> dict[str, str]:
 
 
 def compose_args(instance: dict[str, Any], action: str) -> list[str]:
+    instance = validate_instance(instance)
     if action not in ACTIONS:
         raise ValueError("unknown action")
     compose = (
@@ -269,7 +271,6 @@ def compose_args(instance: dict[str, Any], action: str) -> list[str]:
             else ["--no-build", "--pull", "always"]
         )
     args = [
-        "docker",
         "compose",
         "--env-file",
         str(CONFIG_PATH),
@@ -287,9 +288,10 @@ def compose_args(instance: dict[str, Any], action: str) -> list[str]:
     return args
 
 
-def run_command(
-    args: list[str], timeout: int = 120, environment: dict[str, str] | None = None
+def run_docker_command(
+    arguments: list[str], timeout: int = 120, environment: dict[str, str] | None = None
 ) -> tuple[int, str]:
+    args = ["docker", *arguments]
     try:
         completed = subprocess.run(
             args,
@@ -325,7 +327,7 @@ def probe(url: str) -> dict[str, Any]:
 
 
 def status(instance: dict[str, Any]) -> dict[str, Any]:
-    code, output = run_command(
+    code, output = run_docker_command(
         compose_args(instance, "status"), 20, compose_env(instance)
     )
     return {
@@ -348,9 +350,8 @@ def build_images(tag: str) -> tuple[int, str]:
     output = []
     for name, context, dockerfile in builds:
         image = f"{IMAGE_NAMES[name]}:{tag}"
-        code, result = run_command(
+        code, result = run_docker_command(
             [
-                "docker",
                 "build",
                 "--tag",
                 image,
@@ -435,7 +436,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/status":
             self._json([status(item) for item in load_instances()])
         elif self.path == "/health":
-            code, _ = run_command(["docker", "info"], 5)
+            code, _ = run_docker_command(["info"], 5)
             self._json({"status": "ok", "docker": code == 0})
         else:
             self.send_response(404)
@@ -460,7 +461,7 @@ class Handler(BaseHTTPRequestHandler):
                 action = body.get("action")
                 if action not in ACTIONS:
                     raise ValueError("invalid action")
-                code, output = run_command(
+                code, output = run_docker_command(
                     compose_args(instance, action),
                     300 if action in {"start", "rebuild"} else 120,
                     compose_env(instance),

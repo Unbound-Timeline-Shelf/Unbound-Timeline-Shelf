@@ -1,3 +1,4 @@
+import { formatInstant } from "./dates";
 import type { Achievement, AchievementTier } from "../types/game";
 
 export function displayFileName(filename: string): string {
@@ -25,8 +26,7 @@ export function deriveTier(achievement: Achievement): AchievementTier {
 }
 
 export function formatUnlockedAt(dateStr: string) {
-  const d = new Date(dateStr);
-  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  return formatInstant(dateStr);
 }
 
 export function formatPlaytime(minutes: number) {
@@ -34,4 +34,12 @@ export function formatPlaytime(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+// Whether the rendered text of `html` (its markup not counted) is longer than `limit`
+// characters, as the game page measures a description before clamping it.
+export function overflows(html: string, limit = 320): boolean {
+  const text = new DOMParser().parseFromString(html, "text/html").body
+    .textContent;
+  return (text?.length ?? 0) > limit;
 }

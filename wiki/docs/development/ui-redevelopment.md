@@ -108,7 +108,7 @@ At the initial audit, the two official previews remained unreleased pending thei
 
 Use the [interactive concept gallery](../assets/ui-redevelopment/concepts.html). These share feature scope but differ in layout and interaction.
 
-For reference before this PR is merged, [download the portable gallery ZIP](https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app/feat/ui-ux-redevelopment/wiki/docs/assets/ui-redevelopment/concept-reference.zip). Extract it and open `concepts.html`; no server or account is needed. The [local archive](../assets/ui-redevelopment/concept-reference.zip) and [instructions](../assets/ui-redevelopment/concept-reference.md) remain versioned with both original sources. The gallery can also be served by the wiki after merge.
+For reference before this PR is merged, [download the portable gallery ZIP](../assets/ui-redevelopment/concept-reference.zip). Extract it and open `concepts.html`; no server or account is needed. The [local archive](../assets/ui-redevelopment/concept-reference.zip) and [instructions](../assets/ui-redevelopment/concept-reference.md) remain versioned with both original sources. The gallery can also be served by the wiki after merge.
 
 | Direction | Desktop | Mobile | Tradeoff |
 | --- | --- | --- | --- |
@@ -294,7 +294,7 @@ App installation now lives in **Settings → App installation**, with browser
 prompt, installed status, recovery, and iOS guidance. Persistent installation
 controls no longer cover the top bar. The neutral offline page follows the
 current Light, Dark or System mode and personal palette without caching account
-data. See [PWA integration](https://github.com/obsoletelabs/unnamed_tracking_app_2/blob/main/docs/official-pwa.md).
+data. See [PWA integration](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/blob/main/docs/official-pwa.md).
 
 The [signed PWA report](../assets/ui-redevelopment/pwa-conformance.json) covers
 installation, consent, invalid signatures, branding changes, permission

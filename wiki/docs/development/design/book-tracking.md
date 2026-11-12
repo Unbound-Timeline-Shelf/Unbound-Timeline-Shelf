@@ -1,7 +1,8 @@
 # Design proposal: book tracking
 
-Status: accepted design, confirmed on 19 October 2026; nothing in this page is implemented. It
-answers [#265](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/265)
+Status: accepted design, confirmed on 19 October 2026. Phase 1 (works, editions, reads, trash, library
+views and export format 3) is implemented; see "Deviations in phase 1" in §9. It
+answers [#265](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/265)
 (part of #248; upstream Rosefall #57). Confirmed scope and implementation phases appear below.
 
 ## 1. Problem and current state
@@ -163,16 +164,19 @@ the new tables and enums. The generated migration is reviewed manually per AGENT
 - Editions and reads nest inside each exported book so one round trip is self-contained.
 - Importers for Goodreads CSV, StoryGraph CSV and ISBN lists follow the
   `features/imports/yamtrack.py` pattern (bounded size and rows, preview before
-  commit). They are a later phase.
+  commit). They shipped in phase 4 (M11, below).
 
 ### 4.5 Metadata providers and the plugin boundary
 
 - Core versus optional: only Steam, IGDB, SteamGridDB, TVmaze, AniList, AniZip and OMDb
   are hardcoded. This proposal adds **no** hardcoded book provider. Sources such as Open
   Library, Hardcover or Google Books would be optional plugins in
-  `obsoletelabs/unnamed_tracking_app_plugins`, using the existing
+  `Unbound-Timeline-Shelf/Plugins`, using the existing
   `metadata_providers.register` boundary and its permission, credential and account
   opt-out handling.
+- *Done in phase 3 (Plugin API 1.1.20):* `book` is a media type, a registration may list all
+  five, and the contract carries `MetadataBook`, candidate `authors`/`isbn_13` and the `isbn`
+  request option. The planning note follows.
 - Contract effect: `MediaType` is a public closed enum and registrations accept at most
   four media types (`media_types` has `max_length=4`). Book providers need an additive
   contract bump adding `book`, widening that bound, and regenerating the JSON schema
@@ -212,9 +216,12 @@ duplication evidence.
 1. Model, migration, CRUD routes, owner-scoped tests, manual-entry UI, export/import
    round trip. This is the first deliverable.
 2. Library filters, statistics and Home decisions.
-3. Additive plugin contract bump (`book` media type); choose its version at implementation against the current
-   contract. Any book provider belongs in the plugins repository. Provider selection, including any future Atlas
-   mapping, is deferred until the underlying book feature is ready; no specific provider is promised here.
+3. Additive plugin contract bump (`book` media type), done in Plugin API **1.1.20** (the same contract as
+   releases, see [metadata providers](../metadata-providers.md#plugin-api-1120-books)). Any book provider belongs
+   in the plugins repository; the host still has no hardcoded book provider. *Amended 2026-11-10:* the
+   programme's Phase 9, approved on 2026-11-08, names the providers that this item had deferred: books from
+   Atlas through the `metadata-atlas` plugin, and an optional `metadata-openlibrary` plugin for hosts without
+   Atlas. Both are plugins, built in their own repositories against this contract.
 4. CSV importers.
 5. Revisit shared abstractions only if duplication across five kinds proves costly.
 
@@ -234,12 +241,107 @@ duplication evidence.
 
 ## 9. Confirmed decisions and implementation boundary
 
-The maintainer's answers on [#265](https://github.com/obsoletelabs/unnamed_tracking_app_2/issues/265) approve the
+The maintainer's answers on [#265](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/265) approve the
 dedicated feature, optional editions, audiobook format with percent progress, an export-version bump, and an
 additive book metadata contract in phase 3. There is no new hardcoded provider. Delegation scopes and concrete
 provider integrations are deferred until needed. Series remain plain fields; work merging is deferred.
 These decisions complete the design, not book CRUD or provider support. Each phase needs its own implementation,
 regression coverage and migration/contract review.
+
+### Deviations in phase 1 (M9, `programme/m9-books-phase1`)
+
+- **Routes** follow the host's media convention (`/api/book/list|create|get|update|delete`, `/trash`,
+  `/{id}/restore|purge`, `/trash/empty`) instead of the REST shape sketched in §4. Editions and reads
+  are `POST /api/book/{id}/editions|reads` and `PATCH|DELETE .../{edition_id|read_id}`; each answers
+  with the whole work.
+- **Field names:** `rating` is `rating_overall` (as on the other media). `first_publish_year` became the
+  C5 partial date `first_published` + `first_published_precision` (C15 §6.2/§6.5), and an edition's
+  publish date is a partial date too. Typed book dates accept years 1000-2100.
+- **ISBN uniqueness** is also a partial unique index (`book_id`, `isbn_13`), not only an API check.
+- **Statuses** fill the five library tabs: Wishlist and Backlog are *Plan to Read*, On hold is *On Hold*.
+- **Export** is `LibraryExport` format 3 with `books` (editions and reads nested). An import of format > 3
+  is refused with a 400 saying to update the app; formats 1-2 import as before.
+- **Older builds do not refuse format 3 (gap against §4.4).** Releases before this change have no
+  `format_version` check in `/api/import/media` or `/api/import/library`, so importing a format-3
+  export into one of them silently drops the books. That cannot be fixed retroactively: only builds
+  from this change onward refuse a format newer than the one they know.
+- **Restore keeps the read rules.** A restored read that breaks the API's rules (page progress past
+  its edition's page count, percent over 100, a finish before its start) is dropped with an error
+  naming the work; the work, its editions and its other reads are still restored. The read routes
+  and the restore share one check (`reading_problem`).
+- **Restore keeps the response limits and reports every loss.** A restored work is checked against the
+  limits the book responses validate (authors, genres and tags, rating, text lengths, provider ids);
+  one that breaks them is skipped with an error, so a hand-edited export cannot break the Books
+  library, the export or the daily backup. An edition over a limit, or repeating another edition's
+  ISBN, is dropped on its own with an error; an invalid ISBN is left out with an error; editions past
+  50 and reads past 200 are cut with an error.
+- **Status follows a read's outcome only when it changes.** Adding a read, or changing a read's
+  outcome, applies the rule above; editing an older read's dates or progress leaves the work's status
+  as the person set it. A reread of a work already Read keeps it Read until the person changes it.
+- **Backups:** the daily JSON backup includes a library that holds only books.
+- **Tags:** book tags are part of the tag catalogue (counts, discovery and alias suggestions).
+- **Not in phase 1:** the activity log, the media-image proxy (covers load from the typed `cover_url`
+  with `referrerpolicy=no-referrer`, on the book page and on the List/Shelf/Board library tiles), the
+  plugin contract, the CSV export, the command palette, and any metadata provider. The book page has
+  its own hero rather than `MediaDetailHero`.
+
+### Deviations in phase 3 (M10, `programme/m10-plugin-api-books`)
+
+- **Contract number:** books join Plugin API 1.1.20 instead of a separate bump. One constant,
+  `UNIFIED_CONTRACT` in `plugin_api/base_contracts.py`, gates the release fields and the book fields
+  (`RELEASES_CONTRACT` is now an alias).
+- **Older books:** `MetadataBook.first_published` and an edition's `publish_date` are their own partial
+  dates with years 1000–2100, not a `MetadataRelease` (whose years start in 1950).
+- **Edition field names** follow the host's edition columns (`publish_date`, `page_count`), and two editions
+  in one result may not share an ISBN-13.
+- **The ISBN is not a provider id.** `provider_ids` stay confined to the provider's own namespaces; the
+  ISBN a provider matched travels in the candidate's `isbn_13`, and an ISBN search sends the `isbn`
+  request option.
+- **No refresh for books yet.** A provider's book is applied when the person adds the book or adds an
+  edition; there is no "Refresh metadata" for a book, and an edition's provider key is not stored
+  (editions are matched by ISBN).
+- **Search and add** is in the *Add book* form rather than the shared media-add dialog.
+- **Contract range:** a 1.1.20 manifest may declare `api_contract_max` (C16 §22.6); the host runs the plugin
+  at the highest contract both support.
+- **Book gate at registration only.** A registration listing `book` is refused below 1.1.20 when the plugin
+  registers it; there is no second check when stored rows are read, and no declaration-time gate at
+  `core.py` module load (C15 §6.3), because core provider declarations are host-owned and none lists `book`.
+- **Edition on ISBN search only.** The add form adds an edition with the work only when the search text was
+  an ISBN equal to the result's `isbn_13`; the chosen result's provider ids replace any applied earlier, and
+  its cover is shown through the host's artwork preview rather than loaded from the provider URL.
+
+### Phase 4: book list imports (M11, `programme/m11-book-imports`)
+
+- **Routes:** `POST /api/import/books/preview` and `POST /api/import/books` (multipart `file`,
+  `source` = `auto` | `goodreads` | `storygraph` | `isbn_list`, and on import `match`). Files are at
+  most 30 MB and 20 000 rows; a CSV must carry its format's columns.
+- **What comes across.** Goodreads: exclusive shelf (read, currently-reading, to-read, and custom
+  `did-not-finish`/`paused` shelves), stars ×2 onto the ten-point scale (0 = not rated), date read and
+  read count (extra reads kept undated, at most 20), other shelves as tags, review and private notes
+  as the note, the series in the title ("Title (Series, #1)"), and an edition from ISBN, binding,
+  publisher, pages and year. StoryGraph: read status (including `did-not-finish` and `paused`), every
+  `start-finish` range as a read, quarter stars ×2, review, tags, format and ISBN. An ISBN list:
+  ISBN-10 or ISBN-13 per token (hyphens and spaces allowed, `#` comments), each a wish-list book;
+  repeats and non-ISBNs are reported. To-read books on the reader's own shelf (Goodreads "Owned
+  Copies", StoryGraph "Owned?") become **Backlog**, the others **Wishlist**.
+- **Never twice, never overwritten.** A row whose ISBN is on one of the reader's editions, or whose
+  title and author match a book already there, is kept exactly as it is; a row repeated in the file is
+  imported once (and marked "Repeated" in the preview). Different subtitles are different books
+  ("Ember Cycle: The First Spark" is not "Ember Cycle: The Second Flame"), and a row whose ISBN
+  differs from every ISBN of a same-titled book is another book.
+- **Matching (C15 §6.2).** ISBN first, then title and author, through the account's book providers;
+  a provider with the Plugin API 1.1.20 `resolve` operation gets the rows in batches of at most 200
+  (one Atlas `/resolve` call each through `metadata-atlas`); the others are searched row by row, at
+  most 100 lookups per import. One import makes at most 20 batched calls and spends at most two
+  minutes matching; rows left then are added from the file. The host re-checks every answer (see
+  [metadata providers](../metadata-providers.md#plugin-api-1120-books)). Nothing is dropped: an
+  unmatched row is a manual book, and an ISBN-only row no provider knows is called "ISBN …" with that
+  ISBN on its edition.
+- **What a match adds:** the provider ids, and the title, authors and first-published year where
+  the file has none. Cover, description and editions are not fetched during an import (one more
+  request per book); "Find editions" on the book page fetches them on request.
+- **Dates** are ISO on the wire; the preview shows each row's last read through the shared formatter.
+- **No migration.**
 
 ## 10. Acceptance mapping
 

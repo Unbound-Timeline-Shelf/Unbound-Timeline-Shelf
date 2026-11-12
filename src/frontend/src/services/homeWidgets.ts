@@ -65,6 +65,38 @@ export const CORE_HOME_WIDGETS: HomeWidgetChoice[] = [
   },
 ];
 
+// What Home shows before the person has chosen (UX-AUDIT-APP A22): their
+// games in progress and the newest additions when the library has games, a
+// getting-started card when it is empty. Choosing in Customize Home, even
+// choosing nothing, replaces the suggestion for good.
+export const SUGGESTED_HOME_WIDGETS = [
+  "continue-playing",
+  "recently-added",
+  "library-summary",
+];
+export const EMPTY_LIBRARY_HOME_WIDGETS = ["getting-started"];
+
+/** The widget ids Home shows, or null while the library is still loading. */
+export function homeWidgetIds(
+  preferences: { home_widgets: string[]; home_widgets_customized?: boolean },
+  library: { loaded: boolean; size: number },
+): string[] | null {
+  if (preferences.home_widgets.length || preferences.home_widgets_customized)
+    return preferences.home_widgets;
+  if (!library.loaded) return null;
+  return library.size ? SUGGESTED_HOME_WIDGETS : EMPTY_LIBRARY_HOME_WIDGETS;
+}
+
+/** Home is still showing the suggestion rather than the person's choice. */
+export function showsSuggestedHome(preferences: {
+  home_widgets: string[];
+  home_widgets_customized?: boolean;
+}): boolean {
+  return (
+    !preferences.home_widgets.length && !preferences.home_widgets_customized
+  );
+}
+
 export function selectedHomeWidgets(
   ids: string[],
   choices: HomeWidgetChoice[],

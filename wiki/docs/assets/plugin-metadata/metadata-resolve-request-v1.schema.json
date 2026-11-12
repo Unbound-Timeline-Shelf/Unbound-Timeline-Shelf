@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "MediaType": {
+      "description": "Canonical library domains supported by provider capabilities.",
+      "enum": [
+        "game",
+        "movie",
+        "tv_show",
+        "anime",
+        "book"
+      ],
+      "title": "MediaType",
+      "type": "string"
+    },
+    "MetadataResolveItem": {
+      "additionalProperties": false,
+      "description": "One row to identify: an ISBN-13 (an identifier lookup) or a title with its authors.",
+      "properties": {
+        "key": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Key",
+          "type": "string"
+        },
+        "isbn_13": {
+          "anyOf": [
+            {
+              "maxLength": 13,
+              "minLength": 13,
+              "pattern": "^97[89]\\d{10}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Isbn 13"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "authors": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Authors",
+          "type": "array"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "maximum": 3000,
+              "minimum": 1000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Year"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "title": "MetadataResolveItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A batch of rows the host wants identified, sent to a provider's ``resolve`` action.\n\nThe provider answers with ``ProviderResponse.resolved``: one entry per row it identified,\nkeyed by the item's ``key``; a row it could not identify is simply absent.",
+  "properties": {
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "user_id": {
+      "format": "uuid",
+      "title": "User Id",
+      "type": "string"
+    },
+    "media_type": {
+      "$ref": "#/$defs/MediaType",
+      "default": "book"
+    },
+    "policy": {
+      "default": "background",
+      "enum": [
+        "interactive",
+        "background"
+      ],
+      "title": "Policy",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/MetadataResolveItem"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Items",
+      "type": "array"
+    }
+  },
+  "required": [
+    "request_id",
+    "user_id",
+    "items"
+  ],
+  "title": "MetadataResolveRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-api-contract-version": "1.1.20"
+}

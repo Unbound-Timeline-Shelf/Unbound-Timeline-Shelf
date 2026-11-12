@@ -20,7 +20,11 @@ import type { ConnectionConfig } from "../../composables/useConnections";
 import { SOURCE_VISUALS } from "../../composables/useMetadataSources";
 import { usePluginConnections } from "../../composables/usePluginConnections";
 import { steamOpenIdOutcome } from "../../services/steamOpenId";
-import { pluginConnectionKey } from "../../services/pluginConnections";
+import {
+  canContinueSync,
+  pluginConnectionKey,
+  syncOutcomeText,
+} from "../../services/pluginConnections";
 import { pluginConnections } from "../../state/pluginExtensions";
 import type { PluginConnectionContribution } from "../../state/pluginExtensions";
 
@@ -100,9 +104,7 @@ const pluginRows = computed<Row[]>(() =>
       if (status.display_name) bits.push(status.display_name);
       if (status.sync)
         bits.push(
-          status.sync.status === "failed"
-            ? "Last sync failed"
-            : timeAgo(status.sync.last_run_at),
+          syncOutcomeText(status.sync) ?? timeAgo(status.sync.last_run_at),
         );
     }
     return {
@@ -157,7 +159,9 @@ function syncOf(row: Row) {
 }
 
 function pluginSyncLabel(row: Row): string {
-  return row.plugin && plugins.isSyncing(row.key) ? "Syncing…" : "Sync now";
+  if (row.plugin && plugins.isSyncing(row.key)) return "Syncing…";
+  const sync = syncOf(row);
+  return sync && canContinueSync(sync) ? "Continue sync" : "Sync now";
 }
 
 function pluginSyncBlocked(row: Row): string {
@@ -193,7 +197,7 @@ watch(pluginConnections, () => void plugins.load(), { immediate: true });
       The accounts your library is linked to. Connect, update or disconnect an
       account here. Metadata sources and API keys are under Library > Metadata.
       Set up periodic library sync in
-      <RouterLink to="/settings?section=background-tasks"
+      <RouterLink to="/settings/account/background-tasks"
         >Background tasks</RouterLink
       >.
     </p>

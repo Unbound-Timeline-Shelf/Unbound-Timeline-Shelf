@@ -20,6 +20,8 @@ const props = withDefaults(
     tabsLabel?: string;
     size?: "standard" | "wide" | "editor";
     dismissible?: boolean;
+    // unsaved edits: closing asks first (see UiModal)
+    dirty?: boolean;
   }>(),
   {
     heading: undefined,
@@ -30,6 +32,7 @@ const props = withDefaults(
     tabsLabel: "Editor sections",
     size: "editor",
     dismissible: true,
+    dirty: false,
   },
 );
 const tab = defineModel<T>("tab");
@@ -105,6 +108,7 @@ defineExpose({ scrollToTop });
     :size="size"
     :bounded="bounded"
     :dismissible="dismissible"
+    :dirty="dirty"
     class="editor-shell"
     @close="emit('close')"
   >
@@ -358,6 +362,8 @@ defineExpose({ scrollToTop });
   .editor-tabs {
     max-width: calc(100% - 32px);
     margin: 10px 16px 0;
+    /* the sections that do not fit lie to the right (A13) */
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
   }
 
   .bounded .editor-body {

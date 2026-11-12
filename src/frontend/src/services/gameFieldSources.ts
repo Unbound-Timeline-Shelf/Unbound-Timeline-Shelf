@@ -56,11 +56,28 @@ export async function fetchFieldSources(
   return mapFieldSources(await response.json());
 }
 
+// Why a saved preference did or did not change the value shown (additive
+// `outcome` on PUT). An older backend sends only `applied`.
+export type PreferenceOutcome =
+  "applied" | "unchanged" | "locked" | "awaiting_value";
+
+export interface PreferenceResult {
+  applied: boolean;
+  outcome: PreferenceOutcome | null;
+}
+
+const OUTCOMES: readonly string[] = [
+  "applied",
+  "unchanged",
+  "locked",
+  "awaiting_value",
+];
+
 export async function preferFieldSource(
   gameId: string,
   field: string,
   sourceKey: string,
-): Promise<{ applied: boolean }> {
+): Promise<PreferenceResult> {
   const response = await fetch(
     `/api/game/${gameId}/field-preferences/${field}`,
     {
@@ -71,7 +88,13 @@ export async function preferFieldSource(
     },
   );
   if (!response.ok) throw await failedRequest(response);
-  return { applied: !!(await response.json()).applied };
+  const body = await response.json();
+  return {
+    applied: !!body.applied,
+    outcome: OUTCOMES.includes(body.outcome)
+      ? (body.outcome as PreferenceOutcome)
+      : null,
+  };
 }
 
 export async function clearFieldSource(

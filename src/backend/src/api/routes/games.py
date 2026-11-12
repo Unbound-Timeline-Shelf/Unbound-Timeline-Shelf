@@ -80,7 +80,6 @@ from src.api.routes.game_metadata import (
     MetadataRefreshRequest,
     MetadataSearchResponse,
     _metadata_value_is_present,
-    _normalize_metadata_title,
     refresh_game_metadata,
     search_metadata,
 )
@@ -132,6 +131,7 @@ from src.api.routes.utils.games import (
 )
 from src.api.schemas.game import (
     CollectionIndexGame,
+    GameBulkDelete,
     GameBulkUpdate,
     GameCreate,
     GameFieldChangeRead,
@@ -139,6 +139,7 @@ from src.api.schemas.game import (
     GameUpdate,
 )
 from src.core.auth import AuthenticatedActor, app_grant, get_current_actor, get_current_user
+from src.core.titles import normalize_metadata_title as _normalize_metadata_title
 from src.database.models.game import Game, GameLink, GameStatus
 from src.database.models.game_field_change import GameFieldChange
 from src.database.models.game_identity_tracking import FieldValueOrigin
@@ -154,8 +155,12 @@ from src.features.game_ingestion.legacy import (
     record_manual_fields,
     record_playnite_fields,
 )
-from src.features.metadata.locked_fields import apply_updates_with_locking, authorize_title_update
-from src.features.trash.game_trash import move_game_to_trash, restore_game_from_trash
+from src.features.metadata.locked_fields import (
+    apply_updates_with_locking,
+    authorize_title_update,
+    lock_release_precision_edit,
+)
+from src.features.trash import game_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.save_game_asset import (
     create_game_folder,
@@ -715,6 +720,7 @@ async def update_game(
 
     _record_field_changes(game, updates, db)
     edited = field_provenance.changed_values(game, updates)
+    lock_release_precision_edit(game, updates, edited)
     apply_updates_with_locking(game, updates, frozenset(_GAME_METADATA_FIELDS), actor=actor)
     await field_provenance.record_field_sources(db, game, edited, origin=FieldValueOrigin.USER)
     playnite.restore_locks(game, kept_locks)
@@ -838,12 +844,20 @@ async def delete_game(
     folder), so it gets the same protection as game archives instead of
     the instant, permanent delete it had before."""
     game = await _get_game_or_404(game_id, db, current_user.id, for_update=True, for_storage=True)
-    if game.folder_location:
-        move_game_to_trash(
-            _DATA_ROOT / str(game.user_id) / "games" / game.folder_location, _DATA_ROOT, game_id
-        )
-    game.deleted_at = int(time.time())
-    await db.commit()
+    try:
+        await game_trash.trash_game(db, game, _DATA_ROOT)
+    except game_folders.FolderStorageError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_games(
+    payload: GameBulkDelete,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict[str, list]:
+    """Move several games to trash, each through the single-delete path (#462)."""
+    return await game_trash.trash_games(db, current_user.id, payload.game_ids, _DATA_ROOT)
 
 
 @router.get("/trash")
@@ -889,11 +903,10 @@ async def restore_game(
         await _ensure_folder_location_available(
             game.folder_location, current_user.id, db, exclude_game_id=game_id
         )
-        restore_game_from_trash(
-            _DATA_ROOT / str(game.user_id) / "games" / game.folder_location, _DATA_ROOT, game_id
-        )
-    game.deleted_at = None
-    await db.commit()
+    try:
+        await game_trash.restore_game(db, game, _DATA_ROOT)
+    except game_folders.FolderStorageError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     await db.refresh(game)
     return game
 

@@ -20,6 +20,8 @@ from src.database.models.game import (
     FOLDER_NAME_MAX_LENGTH,
     FOLDER_NAME_PATTERN,
     GameStatus,
+    crossplay_projection,
+    crossplay_value,
 )
 from src.helpers.currency_codes import CURRENCY_CODES
 
@@ -65,15 +67,38 @@ class GamePlayCompatibility(BaseModel):
     min_players: int | None = Field(default=None, ge=1, le=32, strict=True)
     max_players: int | None = Field(default=None, ge=1, le=32, strict=True)
     duration_minutes: int | None = Field(default=None, ge=1, le=1440, strict=True)
+    # The yes/no flag every client has always sent. "true" is a confirmed yes; "false" is not a
+    # confirmed no, so it is stored as unknown unless the stored value already says "no".
     crossplay: bool = Field(default=False, strict=True)
+    # The stored value itself (contracts/vocab-v1.json crossplay): set it to say "partial" or a
+    # confirmed "no", or null for unknown. Sent alone it also sets ``crossplay``.
+    crossplay_status: Literal["yes", "partial", "no"] | None = None
     source: Literal["provider"] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flag_and_status_agree(cls, data: Any) -> Any:
+        """A client that echoes what it read and changes only the flag sends a status that no
+        longer agrees with it: the flag is the edit, so that status is dropped."""
+        if not isinstance(data, dict) or "crossplay_status" not in data:
+            return data
+        status = data["crossplay_status"]
+        if "crossplay" not in data:
+            return {**data, "crossplay": status in {"yes", "partial"}}
+        flag = data["crossplay"]
+        if isinstance(flag, bool) and flag != (status in {"yes", "partial"}):
+            return {key: value for key, value in data.items() if key != "crossplay_status"}
+        return data
 
     @model_serializer(mode="wrap")
     def _omit_unset_source(self, handler: Any) -> dict[str, Any]:
-        """User-confirmed details keep their established shape: no ``source`` key."""
+        """User-confirmed details keep their established shape: no ``source`` key, and no
+        ``crossplay_status`` unless the client sent one (a sent null clears it to unknown)."""
         data = handler(self)
         if data.get("source") is None:
             data.pop("source", None)
+        if "crossplay_status" not in self.model_fields_set:
+            data.pop("crossplay_status", None)
         return data
 
     @model_validator(mode="after")
@@ -87,6 +112,31 @@ class GamePlayCompatibility(BaseModel):
         ):
             raise ValueError("Maximum players must be at least the minimum.")
         return self
+
+
+class GamePlayCompatibilityRead(GamePlayCompatibility):
+    """Stored group-play details as clients read them: ``crossplay`` stays the yes/no flag
+    ("yes" and "partial" are true) and ``crossplay_status`` is the stored value."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_stored(cls, data: Any) -> Any:
+        return play_compatibility_view(data)
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_source(self, handler: Any) -> dict[str, Any]:
+        data = handler(self)
+        if data.get("source") is None:
+            data.pop("source", None)
+        return data
+
+
+def play_compatibility_view(stored: Any) -> Any:
+    """Stored play_compatibility in the shape clients read (see GamePlayCompatibilityRead)."""
+    if not isinstance(stored, dict) or isinstance(stored.get("crossplay"), bool):
+        return stored
+    status = crossplay_value(stored.get("crossplay"))
+    return {**stored, "crossplay": crossplay_projection(status), "crossplay_status": status}
 
 
 class GameBase(BaseModel):
@@ -193,11 +243,48 @@ _CREATED_AT_DESCRIPTION = (
 )
 
 
+# A person can type only a year or a month as a release date (C5.1, SPEC-UI-POLISH-PASS 7).
+# The date is then the first day of that period, within 1950-2100 like a provider's value.
+_RELEASE_PRECISION_DESCRIPTION = (
+    "How much of release_date is known, sent with it: 'year' (release_date is 1 January), "
+    "'month' (the 1st of the month) or 'day'/null (a full day)."
+)
+_PARTIAL_RELEASE_YEARS = (1950, 2100)
+
+
+def _checked_release_precision(
+    release_date: date | None,
+    precision: Literal["year", "month", "day"] | None,
+    fields_set: set[str],
+) -> Literal["year", "month"] | None:
+    """The precision to store: None for a day; refuses a period that does not match the date."""
+    if precision is None or precision == "day":
+        return None
+    if "release_date" not in fields_set or release_date is None:
+        raise ValueError("release_date_precision needs a release_date in the same request")
+    low, high = _PARTIAL_RELEASE_YEARS
+    if not low <= release_date.year <= high:
+        raise ValueError(f"A year or month release date must be from {low} to {high}")
+    if release_date.day != 1 or (precision == "year" and release_date.month != 1):
+        raise ValueError(f"A {precision} release date must be the first day of that {precision}")
+    return precision
+
+
 class GameCreate(GameBase):
     """Payload for creating a game. sort_title is derived if not given."""
 
     sort_title: str | None = Field(default=None, max_length=500)
     created_at: int | None = Field(default=None, ge=0, description=_CREATED_AT_DESCRIPTION)
+    release_date_precision: Literal["year", "month", "day"] | None = Field(
+        default=None, description=_RELEASE_PRECISION_DESCRIPTION
+    )
+
+    @model_validator(mode="after")
+    def _release_precision(self) -> "GameCreate":
+        self.release_date_precision = _checked_release_precision(
+            self.release_date, self.release_date_precision, self.model_fields_set
+        )
+        return self
 
 
 class GameUpdate(TitleProtectionUpdate):
@@ -208,6 +295,10 @@ class GameUpdate(TitleProtectionUpdate):
     created_at: int | None = Field(default=None, ge=0, description=_CREATED_AT_DESCRIPTION)
     description: str | None = None
     release_date: date | None = None
+    # after release_date: the update applies fields in order, and a new date resets the precision
+    release_date_precision: Literal["year", "month", "day"] | None = Field(
+        default=None, description=_RELEASE_PRECISION_DESCRIPTION
+    )
     developer: str | None = Field(default=None, max_length=200)
     publisher: str | None = Field(default=None, max_length=200)
     series: str | None = Field(default=None, max_length=200)
@@ -290,6 +381,25 @@ class GameUpdate(TitleProtectionUpdate):
 
         return value
 
+    @model_validator(mode="after")
+    def _release_precision(self) -> "GameUpdate":
+        if "release_date_precision" in self.model_fields_set:
+            self.release_date_precision = _checked_release_precision(
+                self.release_date, self.release_date_precision, self.model_fields_set
+            )
+        return self
+
+
+# Each removal moves a whole game folder, so one request stays small; the app sends a larger
+# selection in several requests (#462).
+GAME_BULK_DELETE_LIMIT = 100
+
+
+class GameBulkDelete(BaseModel):
+    """Move several of the caller's games to trash, each exactly as a single delete does."""
+
+    game_ids: list[UUID] = Field(min_length=1, max_length=GAME_BULK_DELETE_LIMIT)
+
 
 class GameBulkUpdate(BaseModel):
     """Apply the same field values to many games at once. Deliberately a
@@ -314,6 +424,17 @@ class GameBulkUpdate(BaseModel):
     features: list[str] | None = None
 
 
+class GameReleaseRead(BaseModel):
+    """One provider-reported release (Plugin API 1.1.20 MetadataRelease)."""
+
+    date: str = Field(description="YYYY, YYYY-MM or YYYY-MM-DD, as precise as `precision` says.")
+    precision: Literal["year", "month", "day"]
+    platform: str | None = None
+    region: str | None = None
+    edition: str | None = None
+    category: Literal["full", "early_access", "beta", "rerelease", "port", "demo"] = "full"
+
+
 class GameRead(GameBase):
     """Full representation returned to clients."""
 
@@ -325,6 +446,18 @@ class GameRead(GameBase):
     # Games list responses set this from the per-game asset manifest check so
     # clients can paint a local placeholder without requesting generated cover art.
     has_key_art: bool | None = None
+    play_compatibility: GamePlayCompatibilityRead | None = None
+    release_date_precision: Literal["year", "month", "day"] | None = Field(
+        default=None,
+        description=(
+            "How much of release_date is known: for 'year' and 'month' release_date is the first "
+            "day of that period. Null is a day (every date stored before Plugin API 1.1.20)."
+        ),
+    )
+    releases: list[GameReleaseRead] | None = Field(
+        default=None,
+        description="Up to five releases reported by a metadata provider; replaced by refreshes.",
+    )
     locked_fields: list[str] = Field(default_factory=list)
     provider_custom: dict[str, Any] | None = Field(
         default=None,

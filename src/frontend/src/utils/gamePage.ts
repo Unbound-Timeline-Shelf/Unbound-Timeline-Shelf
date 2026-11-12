@@ -168,6 +168,30 @@ export interface TabPlan {
   more: string[];
 }
 
+/**
+ * The tab a game page opens on: the one a link or `?tab=` asks for when the
+ * game has it, else the page's default tab unless that is hidden.
+ */
+export function pickTab<T extends string>(
+  asked: string | undefined,
+  tabs: readonly T[],
+  available: readonly T[],
+  settings: PageSettings,
+): T | null {
+  const wanted =
+    (asked === "World Map" ? "Worlds" : asked) ?? settings.default_tab;
+  const hidden =
+    (OPTIONAL_TABS as readonly string[]).includes(wanted) &&
+    settings.tabs[wanted as OptionalTab] === "hide";
+  if (
+    (tabs as readonly string[]).includes(wanted) &&
+    !(hidden && !asked) &&
+    available.includes(wanted as T)
+  )
+    return wanted as T;
+  return null;
+}
+
 // Works out the tab bar. The tab you are on always stays, so a tab that
 // empties (or is hidden) under you does not make the page jump.
 export function planTabs(

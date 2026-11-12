@@ -27,7 +27,8 @@ import {
 } from "vue";
 import { useKeptAlive } from "../utils/useKeptAlive";
 import { libraryFreshness } from "../utils/libraryFreshness";
-import { takeLibraryScroll } from "../state/libraryScroll";
+import { useScrollReady } from "../state/scrollMemory";
+import { BULK_EDIT_TIP, dismissTip, tipVisible } from "../state/tips";
 import { useRoute, useRouter, stringifyQuery } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
 import { useWindowVirtualizer } from "@tanstack/vue-virtual";
@@ -35,13 +36,13 @@ import { viewportPrefetchRows } from "../services/gamePages";
 
 import { activePriority, priorityLabel } from "../utils/priority";
 import { formatDisplayDate, newest } from "../utils/dates";
+import { newestRelease } from "../utils/releaseDate";
 import {
   fetchGamesForViewport,
   peekAllGames,
   deleteGame,
   setFavorite,
   fetchAchievementsSummary,
-  addGameToCollection,
 } from "../services/games";
 import { setLibraryNavOrder } from "../state/libraryNav";
 import { isCommandPaletteOpen } from "../state/commandPalette";
@@ -65,6 +66,7 @@ import {
   normalizeGameTags,
   normalizeGameExclusions,
   readGameLibraryFilterVisibility,
+  libraryHistoryMode,
   readGameLibraryQuery,
   writeGameLibraryQuery,
   type GameLibraryFilters,
@@ -82,6 +84,7 @@ import {
   type NestedGame,
 } from "../utils/gameIdentityGroups";
 import { usePrompt } from "../state/dialog";
+import { useGameSelectionActions } from "./useGameSelectionActions";
 import type { GameEditDraft } from "../utils/gameEditDraft";
 export function useGameLibrary() {
   const prompt = usePrompt();
@@ -243,18 +246,10 @@ export function useGameLibrary() {
   const showRandomPicker = ref(false);
 
   // one-time nudge toward bulk edit, gone for good the first time it's
-  // dismissed or the feature is actually used, not re-shown once discovered
-  const BULK_EDIT_HINT_KEY = "seenBulkEditHint";
-  const showBulkEditHint = ref(
-    localStorage.getItem(BULK_EDIT_HINT_KEY) !== "true",
-  );
+  // dismissed or the feature is actually used, on every device (A24)
+  const showBulkEditHint = tipVisible(BULK_EDIT_TIP);
   function dismissBulkEditHint() {
-    showBulkEditHint.value = false;
-    try {
-      localStorage.setItem(BULK_EDIT_HINT_KEY, "true");
-    } catch {
-      // worst case it just shows again next visit, not worth failing over
-    }
+    void dismissTip(BULK_EDIT_TIP);
   }
 
   function toggleSelectMode() {
@@ -300,34 +295,14 @@ export function useGameLibrary() {
     await loadGames();
   }
   const bulkEditResultCount = ref<number | null>(null);
-
-  // bulk-add selected games to a collection, a keyboard/click alternative to
-  // dragging cards onto a collection, which this codebase has no drag-and-drop
-  // library to build (see the arrow-based reorder in CollectionDetail.vue for
-  // the same tradeoff elsewhere)
-  const bulkAddingToCollection = ref(false);
-  async function bulkAddToCollection() {
-    if (!selectedIds.value.size) return;
-    const name = await prompt({
-      title: "Add to collection",
-      message: `Add ${selectedIds.value.size} selected game(s) to which collection?`,
-      confirmLabel: "Add",
-    });
-    if (!name || !name.trim()) return;
-    const trimmed = name.trim();
-    bulkAddingToCollection.value = true;
-    try {
-      await Promise.all(
-        [...selectedIds.value].map((id) => addGameToCollection(id, trimmed)),
-      );
-      bulkEditResultCount.value = selectedIds.value.size;
-      selectMode.value = false;
-      selectedIds.value = new Set();
-      await loadGames();
-    } finally {
-      bulkAddingToCollection.value = false;
-    }
-  }
+  const selectionActions = useGameSelectionActions({
+    games,
+    selectedIds,
+    selectMode,
+    selectedGame,
+    bulkEditResultCount,
+    loadGames,
+  });
 
   // Steam's "About This Game" section is rich HTML (headers, screenshots,
   // gifs), sanitize it instead of dumping the raw tags as text
@@ -783,6 +758,11 @@ export function useGameLibrary() {
       ),
     );
   const pendingQueries = new Set<string>();
+  // the first write only normalises the address this visit arrived with
+  let firstQueryWrite = true;
+  let searchStepOpen = false;
+  let searchStepTimer: ReturnType<typeof setTimeout> | undefined;
+  const SEARCH_STEP_PAUSE_MS = 900;
   function applyQueryFilters() {
     if (route.path !== "/games") return;
     if (pendingQueries.has(queryKey(route.query))) return;
@@ -826,9 +806,24 @@ export function useGameLibrary() {
       const key = queryKey(query);
       if (key === queryKey(route.query)) return;
       pendingQueries.add(key);
-      void router
-        .replace({ path: route.path, query, hash: route.hash })
-        .finally(() => pendingQueries.delete(key));
+      const mode = firstQueryWrite
+        ? "replace"
+        : libraryHistoryMode(route.query, query);
+      firstQueryWrite = false;
+      // Typing adds one history step when it starts, then refines that step
+      // until the person pauses, so Back undoes a search rather than a letter.
+      const push = mode === "push" || (mode === "search" && !searchStepOpen);
+      if (mode === "search") {
+        searchStepOpen = true;
+        if (searchStepTimer) clearTimeout(searchStepTimer);
+        searchStepTimer = setTimeout(() => {
+          searchStepOpen = false;
+        }, SEARCH_STEP_PAUSE_MS);
+      } else searchStepOpen = false;
+      const location = { path: route.path, query, hash: route.hash };
+      void (push ? router.push(location) : router.replace(location)).finally(
+        () => pendingQueries.delete(key),
+      );
     },
     { deep: true, immediate: true, flush: "post" },
   );
@@ -1072,23 +1067,19 @@ export function useGameLibrary() {
     if (searchReloadTimer) clearTimeout(searchReloadTimer);
   });
 
-  async function restoreLibraryScroll() {
-    await nextTick();
-    if (route.path !== "/games") return;
-    const y = takeLibraryScroll();
-    if (y > 0) window.scrollTo(0, y);
-  }
-  onMounted(async () => {
-    await loadGames();
-    await restoreLibraryScroll();
-  });
+  // A restored scroll position (Back, reload, or a link back to Games) waits
+  // for the first page and asks for further pages until it can be reached.
+  useScrollReady(
+    () => !loading.value && !refreshing.value && !queryReloadPending.value,
+    () => (hasMoreGames.value ? loadMoreGames() : undefined),
+  );
+  onMounted(() => void loadGames());
   useKeptAlive(
     () => {
       // KeepAlive preserves the library and its controls between routes. Do
       // not immediately repeat the full paged transfer when returning to a
       // recently loaded library; failed/stale data still refreshes on return.
       if (error.value !== null || freshness.isStale()) void loadGames();
-      void restoreLibraryScroll();
     },
     {
       isLoading: () => refreshing.value,
@@ -1121,6 +1112,7 @@ export function useGameLibrary() {
       showFormModal.value ||
       !!quickEditingGame.value ||
       !!deletingGame.value ||
+      selectionActions.confirmingBulkDelete.value ||
       showBulkEditModal.value ||
       !!collectionPickerGame.value ||
       isCommandPaletteOpen.value
@@ -1505,10 +1497,7 @@ export function useGameLibrary() {
           lastIfNull(activePriority(a), activePriority(b), (x, y) => x - y) ||
           a.title.localeCompare(b.title)
         );
-      if (sortBy.value === "release")
-        return lastIfNull(a.releaseDate, b.releaseDate, (x, y) =>
-          y.localeCompare(x),
-        );
+      if (sortBy.value === "release") return newestRelease(a, b);
       // shortest first, for "something I can finish this weekend"
       if (sortBy.value === "length")
         return lastIfNull(
@@ -1913,8 +1902,7 @@ export function useGameLibrary() {
     clearSelection,
     onBulkEditSaved,
     bulkEditResultCount,
-    bulkAddingToCollection,
-    bulkAddToCollection,
+    ...selectionActions,
     selectedGameDescriptionHtml,
     searchQuery,
     statusFilter,

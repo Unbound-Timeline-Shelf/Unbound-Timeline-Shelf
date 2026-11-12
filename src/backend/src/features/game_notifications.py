@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.preferences import load_preferences
 from src.database.models.game import Game, GameStatus
+from src.features.metadata.game_releases import known_day
 from src.features.notification_controller import NotificationDraft, NotificationEvent, emit
 from src.features.notification_producer_content import game_price_content, open_game_action
 from src.plugin_api.notification_story_contracts import (
@@ -72,7 +73,7 @@ async def interpret_game_event(
     if event.type == "game.released":
         if event.data:
             raise ValueError("Release facts are resolved from owned game metadata")
-        if game.release_date is None:
+        if game.release_date is None or game.release_date_precision in ("year", "month"):
             return None
         release_at = int(
             datetime.combine(
@@ -170,6 +171,8 @@ async def generate_game_releases(db: AsyncSession, user_id: UUID, *, now: int) -
             Game.deleted_at.is_(None),
             Game.status.in_((GameStatus.WISHLIST, GameStatus.BACKLOG, GameStatus.ON_HOLD)),
             Game.release_date.between(first_day, today),
+            # a year or month is not a release day to announce (C5.5)
+            known_day(),
         )
     )
     created = 0

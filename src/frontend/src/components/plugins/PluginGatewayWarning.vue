@@ -17,7 +17,7 @@ defineProps<{ runtime: RuntimeCapabilities }>();
       the service configuration, refresh Plugin Manager to check gateway health.
     </p>
     <a
-      href="https://github.com/obsoletelabs/unnamed_tracking_app_2/blob/main/wiki/docs/development/plugin-runtime.md#gateway-configuration"
+      href="https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/blob/main/wiki/docs/development/plugin-runtime.md#gateway-configuration"
       target="_blank"
       rel="noopener noreferrer"
       >Gateway configuration help</a

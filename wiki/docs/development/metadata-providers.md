@@ -1,6 +1,7 @@
 # Progressive metadata and Plugin API 1.1.1
 
-The host owns one metadata handler for games, movies, TV and anime. Its core
+The host owns one metadata handler for games, movies, TV, anime and (from Plugin API 1.1.20)
+books. Books have no core provider: they come only from optional plugins. Its core
 providers are **hardcoded inside the host application** and invoke their APIs
 directly through cancellable asynchronous HTTP. They are not installed plugins,
 packages, runtime workers or catalogue downloads. No plugin runtime or manual
@@ -18,7 +19,7 @@ provider installation is needed for default game, TV or anime search.
 
 Optional GOG, GiantBomb, RetroAchievements, ScreenScraper, HowLongToBeat, Kitsu,
 Jikan, TMDB and TVDB implementations live in
-[the companion repository](https://github.com/obsoletelabs/unnamed_tracking_app_plugins).
+[the companion repository](https://github.com/Unbound-Timeline-Shelf/Plugins).
 They use the existing verified package, permission, runtime action and gateway
 boundaries. Adding an optional provider does not require a host code change.
 Both kinds use the same canonical response models, ranking, rolling metadata preloading,
@@ -64,15 +65,181 @@ scores and oversized collections are rejected. Canonical provider scores use
 
 ### Group play and provider custom fields (API 1.1.15)
 
-`MetadataPatch` accepts three more optional fields: `players_min` and `players_max` (whole numbers from 1 to 32, minimum not above maximum) and `crossplay` (`yes`, `no` or `partial`). Missing means unknown, never "no". A metadata refresh stores them in the game's group-play details only when **both** limits are known and the game has no user-confirmed details; provider values are marked `source: "provider"` and are refreshed by later refreshes, while anything the user confirmed (no `source`) is never replaced. A game with the `play_compatibility` field protected is skipped and reported. The stored crossplay flag is true only for `yes` (`no`, `partial` and silence stay false because one flag cannot express them).
+`MetadataPatch` accepts three more optional fields: `players_min` and `players_max` (whole numbers from 1 to 32, minimum not above maximum) and `crossplay` (`yes`, `no` or `partial`). Missing means unknown, never "no". A metadata refresh stores them in the game's group-play details only when **both** limits are known and the game has no user-confirmed details; provider values are marked `source: "provider"` and are refreshed by later refreshes, while anything the user confirmed (no `source`) is never replaced. A game with the `play_compatibility` field protected is skipped and reported. Since host 1.1.20 the stored crossplay value is the provider's own (`yes`, `partial` or `no`), and silence is stored as unknown (`null`); see [crossplay](#crossplay-is-three-state-host-1120).
 
 `MetadataPatch` also accepts `custom`: up to 32 provider-defined fields with keys matching the usual action id pattern (`a-z0-9._-`) and bounded values (text up to 500 characters, whole or decimal numbers, booleans, or lists of up to 50 short strings; no nesting, no `null`, finite numbers only). They are merged per key (higher-priority provider first), stored on the game as read-only **provider custom** values (`provider_custom`, returned by the game API) and replaced key by key on refresh. They never overwrite a column the host already has, and a game with `provider_custom` protected is skipped.
 
 These fields need **Plugin API 1.1.15**: a provider that emits them must target 1.1.15 so older hosts reject it before execution. Regenerate the schema snapshots with `tools/export_metadata_contract.py` and copy them to the companion repository as described above.
 
+### Plugin API 1.1.20: releases, identity and relations
+
+Host contract **1.1.20** adds the fields below to `MetadataPatch` and `MetadataAchievement`. They
+are all optional and accepted **only** from a plugin whose manifest declares
+`api_contract_version` 1.1.20 or later: the host validates each response against the contract
+its plugin declared, so a 1.1.19 plugin that sends one of them (or the value `platinum`) gets
+`invalid_response`, exactly as an unknown field did before. A 1.1.15–1.1.19 plugin that sends
+none of them is unaffected, and a 1.1.20 plugin cannot be installed on an older host. The value
+lists are the shared vocabulary in `contracts/vocab-v1.json`, generated from
+`src/backend/src/plugin_api/vocab.py`: `python tools/vocab_check.py check` fails when the file
+is stale, and `python tools/vocab_check.py compare` checks it against the file Atlas publishes.
+
+| Field | Shape | What the host does with it |
+|---|---|---|
+| `MetadataPatch.first_release` | a release (below) | The game's first release at its real precision. `games.release_date` is set to the first day of the period (`"2011"` → 2011-01-01) and `release_date_precision` to `year` or `month` (null is a day). Its `platform`, `region` and `edition` are ignored. A day `first_release` must equal `release_date` when both are sent. When another source of the same result reports a day inside the same year or month, or the game already holds one, that more precise date is kept. Only a `full` or `early_access` first release is a release date; another category is ignored. |
+| `MetadataPatch.releases` | up to **5** releases, unique on `(platform, region, edition, category)` | Stored as `games.releases`, replaced by each refresh that reports releases. |
+| `MetadataPatch.identity` | `{match, previous_ids}` | `match` is `id`, `redirect`, `crosswalk`, `exact`, `conflict` or `ambiguous`; `previous_ids` maps up to 8 namespaces to ids the provider no longer uses for this record. See the identity rules below. |
+| `MetadataAchievement.aliases` | up to 32 ids | Earlier ids of the same achievement. A stored catalogue row listed here keeps its id instead of being replaced (re-key step 3), so manual progress stays attached. |
+| `MetadataAchievement.tier` | adds `platinum` | Stored as the achievement's medal. |
+| `MetadataPatch.relations[].relation` | a `relation_type` value | Game relations, see below. Other relation types stay with the anime, film and TV relation views as before. |
+
+A **release** is `{date, precision, platform?, region?, edition?, category}`:
+
+- `date` is `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, and `precision` (`year`, `month` or `day`) must
+  match its shape; a day must be a real calendar date. Years and months fall between 1950 and
+  2100; a day keeps the host's general 1800–3000 range. Quarters are reserved and refused.
+- `platform` is up to 128 characters, `edition` up to 100.
+- `region` is `ww`, `eu`, `na`, `asia`, `oce`, `latam` or a lowercase two-letter country code.
+- `category` is `full` (default), `early_access`, `beta`, `rerelease`, `port` or `demo`.
+
+`release_date` keeps its day-only meaning, so older plugins and clients are unaffected. The
+`release_date` field lock covers the date and its precision; `releases` has its own lock key, and
+the **save release date** scan setting covers all three. Editing a game's release date by hand
+makes it a day again. The game API returns `release_date_precision` and `releases`. A library
+sync stores the same date, precision and releases as a refresh, and a library import keeps a
+precision only when the date is the first day of that year or month. The calendar, its feeds and
+release notifications show a game on its release day only when the day is known: a game known
+only to the year or the month is left out of them.
+
+**Identity rules.** A refresh still matches by the provider ids the sources reported themselves
+(rule 1). With 1.1.20 it also:
+
+- follows a merge or redirect (rule 2): when a provider's `identity.match` is `id`, `redirect` or
+  `crosswalk` and its `previous_ids` holds the id the game has saved in that namespace, the
+  result is the game, and the saved id is rewritten to the one live id the provider reported.
+  The response lists it under `followed_ids`, and the game's history keeps the id it held. If
+  another game already holds the live id, the
+  saved id is kept and the refresh says so. The duplicate review then lists the two games (as a
+  provider identity match) until the person merges them or keeps both; they are never merged
+  automatically. A provider can only move ids in its own namespaces;
+- refuses a result any provider called `conflict` (rule 4): the response is `status: "conflict"`
+  with what that provider reported beside the saved ids, and nothing is applied;
+- ignores everything a provider that answered `ambiguous` reported (its ids, fields, dates,
+  releases and relations): an ambiguous lookup named several games.
+
+**Game relations.** Relations are read only from plugins that declare Plugin API 1.1.20 or later,
+only from entries in the `related` group, and never from a provider that answered `ambiguous` or
+`conflict`. A relation whose `relation` is one of `version_of`, `remake_of`,
+`remaster_of`, `port_of`, `dlc_of`, `expansion_of`, `standalone_expansion_of`, `mod_of`,
+`modpack_of`, `total_conversion_of`, `series_member` or `collection_member` runs **from the
+refreshed game to the related one**. The related game is named by the candidate's
+`provider_ids` and, when the candidate is the provider's own record (`provider` is the provider
+or its namespace), by `external_id` in the provider's namespace. When exactly one game in the
+library holds one of those ids, the refresh adds a relationship with origin `ingest`. When none
+does, the reference waits (at most 200 per game) and becomes a relationship on a later refresh of
+either game, once exactly one game in the library holds the id and the referring game is not in
+the trash. The host never adds an edge between two games the person already related, never
+re-adds one the person ended, never ends one because a provider stopped reporting it, and never
+lets a provider make a relationship circular. Series and collection membership point at an
+umbrella, which ids cannot name yet, so those references only wait. The refresh response reports
+`relations_added` and `relations_pending`.
+
+#### Crossplay is three-state (host 1.1.20)
+
+`play_compatibility.crossplay` is stored as `yes`, `partial`, `no` or `null` (unknown). The
+upgrade turns a saved `true` into `yes` and a saved `false` into unknown, because the old
+checkbox could not tell "no" from "not set"; a downgrade turns `yes` and `partial` back into
+`true` and anything else into `false`. The game API keeps `crossplay` as the yes/no flag older
+clients read (`yes` and `partial` are true) and adds `crossplay_status` with the stored value.
+A client that saves only the flag keeps a stored `partial` or `no` it agrees with; a client that
+sends `crossplay_status` (one of the three values, or `null`) sets it exactly.
+
+### Plugin API 1.1.20: books
+
+The book additions are part of the same **1.1.20** contract as releases (one constant,
+`UNIFIED_CONTRACT` in `plugin_api/base_contracts.py`, gates both). Each is accepted **only** from
+a plugin whose contract is 1.1.20 or later; from an older plugin the field is refused even
+when it is `null`, so the call fails with `invalid_response`.
+
+| Where | Addition | Rules |
+|---|---|---|
+| `MetadataProviderRegistration.media_types` | `book` | At most one of each media type (now five). A registration listing `book` is refused below 1.1.20 when the plugin registers the provider (the registration is validated against the contract the plugin declares). |
+| `MetadataProviderRequest.media_type` | `book` | |
+| `MetadataProviderRequest.options.isbn` | a normalised ISBN-13 | Sent only on a book search whose text is a valid ISBN-10 or ISBN-13 (hyphens and spaces allowed; an ISBN-10 is converted). Refused on any other media type and on a wrong check digit. Not sent to older plugins, which never register `book`. |
+| `MetadataCandidate.authors` | up to 30 names (200 characters) | Shown in results; the add-book search also matches them. |
+| `MetadataCandidate.isbn_13` | a valid ISBN-13 | The ISBN the provider matched. It is not a `provider_ids` namespace: provider ids stay confined to the provider's own namespaces. |
+| `MetadataPatch.book` | `MetadataBook` (below) | The work's book details. |
+| `ProviderOperations.resolve` | an action id | The batched identifier lookup (below). Its action declares the `metadata_providers.search` capability. A registration with `resolve` is refused below 1.1.20. |
+| `MetadataResolveRequest` | `{request_id, user_id, media_type, policy, items}` | Sent to the `resolve` action as `request`. `items` are 1–200 `{key, isbn_13, title, authors, year}`, each with an `isbn_13` (books only) or a `title`; keys are unique. |
+| `ProviderResponse.resolved` | up to 200 `{key, matched_by, candidate}` | The rows the provider identified; `matched_by` is `identifier` or `title`. A row it cannot identify is left out. Refused below 1.1.20. |
+
+`MetadataBook` is `{authors, subtitle, isbn_13, isbn_10, page_count, series_name,
+series_position, original_language, first_published, editions}`:
+
+- `authors`: up to 30 `{name, role}`; `role` is a `book_creator_role` value (`author`, `editor`,
+  `translator`, `illustrator`, `narrator`, `contributor`), default `author`.
+- `first_published` and an edition's `publish_date` are `{date, precision}` partial dates
+  (`YYYY`, `YYYY-MM` or `YYYY-MM-DD`, precision matching the shape), years 1000–2100: older than
+  a release's 1950 floor, because books are.
+- `editions`: up to 50 `{key, name, isbn_13, isbn_10, format, publisher, publish_date,
+  page_count, language}`. `format` is a `book_format` value (`paperback`, `hardcover`, `ebook`,
+  `audiobook`, `other`). An edition's ISBN-10 and ISBN-13 must name the same book, and two
+  editions may not repeat an ISBN-13.
+- ISBNs are normalised digits with a valid check digit (`X` only as the last ISBN-10 digit);
+  page counts are 1–100000.
+
+`book_format` and `book_creator_role` are in `contracts/vocab-v1.json` with the other shared
+vocabularies.
+
+**What the host does with it.** Nothing is stored by a provider on its own: the person chooses.
+*Add book* searches the book providers (title, author or ISBN), shows the chosen result (its cover
+through the host's artwork preview, which fetches only the selected result's own asset URLs) and,
+with **Use these details**, fills the form; saving keeps the `provider_ids` of the result used
+last (they replace, never merge with, those of an earlier result) and, only when the search text
+was an ISBN equal to the result's `isbn_13`, also adds that edition. An ISBN a provider reports
+for a title or author search adds nothing. On a book with provider ids,
+**Find editions** asks the providers for that work again and lists their `editions`; **Add this
+edition** copies one into the work's editions (an edition whose ISBN the work already holds is
+marked *In your editions*). Dates are shown through the shared partial-date formatter, at their
+precision.
+
+**Book list imports and the batched lookup.** *Settings → Export / Import → Import → Import books*
+reads a Goodreads CSV, a StoryGraph CSV or a list of ISBNs, shows what the file holds and what is
+already in the library, and only then adds the new books. With matching on, the host identifies the
+new rows through the account's book providers in their saved order: ISBN rows first, then the rest
+by title and authors. A provider that declares `resolve` gets them in batches of at most 200 rows
+per call (`metadata-atlas` maps one call to one Atlas `POST /resolve`, whose `max_resolve` is 200).
+A provider without `resolve` is searched row by row (the ISBN as the `isbn` option, then
+"title author"), at most 100 lookups per import (each search counts, so a row searched by ISBN
+and then by title costs two); an import makes at most 20 `resolve` calls and
+spends at most 120 seconds matching in all. A call cut short by that limit ends matching and is
+not counted as the provider's failure. The host checks every answer again: an identifier
+answer must not name a different ISBN, and a title answer must have the same title (case, accents,
+punctuation and a leading article aside; a subtitle only when one side has none, so different
+subtitles never agree) and share an author surname when both sides name authors. An answer for a row the host did not send, or a candidate of another
+media type, makes the whole answer an `invalid_response`. A matched book keeps the file's data and
+gains the candidate's `provider_ids` in the namespaces that provider owns (its provider id and
+`identifier_namespace`; the `provider`/`external_id` fallback only when `provider` is one of them)
+(and its title, authors and year where the file has none); a
+row no provider identifies is still imported from the file. Tests:
+`src/backend/tests/test_plugin_api_book_resolve.py`, `test_book_imports.py`,
+`test_book_imports_routes.py`.
+
+**Permissions and enforcement (AGENTS.md §6.3).** Books need no new permission: a book provider
+is an ordinary `metadata_providers.register` registration with the same permission, credential
+and account opt-out handling as the other media. The host enforces the contract in three places:
+the registration (refused below 1.1.20), each request it builds (`isbn` only on books) and each
+response (validated against the plugin's negotiated contract, so a 1.1.19 plugin cannot send
+book data). Tests: `src/backend/tests/test_plugin_api_books_contract.py`. Plugin-repository
+examples (an optional Open Library plugin and the `metadata-atlas` book mapping) belong in their
+own repositories (#265 §7, phase 3).
+
+**Contract range (C16 §22.6).** A plugin built for 1.1.20 can declare `api_contract_max`
+([manifest](plugin-manifest.md#compatibility)). The host runs it at `min(api_contract_max,
+host maximum)` and validates its output against that contract.
+
 ### Achievement catalogues (API 1.1.15)
 
-A provider can offer a game's achievement **definitions** by declaring `achievements` in `metadata_resources` and answering the `metadata` operation when the request's `resource` is `achievements`, with `achievements` in the patch: up to 2,000 items. Each item has `external_id` (the provider's id, unique per game), `name` (200), optional `description` (2,000), `hidden`, `kind` (`progression`, `missable` or `win_condition`), `tier` (`bronze`, `silver` or `gold`), `points` (0 to 100000), `global_percent` (0-100), `icon_url` and `locked_icon_url` (absolute `http(s)` URLs, resolved by the plugin) and `source_ids` (up to 8 platform ids such as `{"steam": "ACH_X"}`). Unknown fields, non-finite numbers and non-HTTP URLs are rejected. Definitions never carry progress. A provider that hides a secret achievement sends a placeholder with `hidden: true`; no per-player data exists in the contract.
+A provider can offer a game's achievement **definitions** by declaring `achievements` in `metadata_resources` and answering the `metadata` operation when the request's `resource` is `achievements`, with `achievements` in the patch: up to 2,000 items. Each item has `external_id` (the provider's id, unique per game), `name` (200), optional `description` (2,000), `hidden`, `kind` (`progression`, `missable` or `win_condition`), `tier` (`bronze`, `silver` or `gold`; `platinum` from API 1.1.20), `points` (0 to 100000), `global_percent` (0-100), `icon_url` and `locked_icon_url` (absolute `http(s)` URLs, resolved by the plugin) and `source_ids` (up to 8 platform ids such as `{"steam": "ACH_X"}`). Unknown fields, non-finite numbers and non-HTTP URLs are rejected. Definitions never carry progress. A provider that hides a secret achievement sends a placeholder with `hidden: true`; no per-player data exists in the contract.
 
 The host asks for a catalogue in two places: **Import / refresh achievements** in Library settings (`POST /api/library-sync/games/{id}/achievements`) checks every game, including games with no saved achievement rows, and a metadata refresh can request one for a game with no catalogue yet. For Steam, PlayStation and RetroAchievements games, the host refreshes platform progress and also asks metadata providers for definitions. If progress is temporarily unavailable but a catalogue is returned, the definitions are still saved and the UI reports the progress warning. Games without a matching catalogue count as checked with zero results; provider lookup errors are reported as failures. The action never syncs the library or changes game status, notes or pins.
 

@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     ForeignKey,
     Index,
@@ -20,11 +21,13 @@ from sqlalchemy import (
 from sqlalchemy import (
     Enum as SAEnum,
 )
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from src.database.base import Base
+from src.plugin_api.vocab import CROSSPLAY
 
 if TYPE_CHECKING:
     from src.database.models.user import User
@@ -76,6 +79,10 @@ class Game(Base):
         # target of the identity model's composite foreign keys, which make a
         # reference to another user's game impossible (see models/game_identity.py)
         UniqueConstraint("user_id", "id", name="uq_games_user_id_id"),
+        CheckConstraint(
+            "release_date_precision IS NULL OR release_date_precision IN ('year', 'month', 'day')",
+            name="ck_games_release_date_precision",
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -147,10 +154,17 @@ class Game(Base):
         default=list,
     )
 
+    # The first day of the release period ("2011" is stored as 2011-01-01), so sorting and the
+    # release-year statistics keep working; ``release_date_precision`` says how much of it is known.
     release_date: Mapped[date | None] = mapped_column(
         Date,
         nullable=True,
     )
+    # "year", "month" or "day"; NULL is a legacy value, which is a day (Plugin API 1.1.20, C5.4).
+    release_date_precision: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    # Up to five provider-reported releases (MetadataRelease objects: date, precision, platform,
+    # region, edition, category). Provider-owned like provider_custom: replaced by a refresh.
+    releases: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
 
     developer: Mapped[str | None] = mapped_column(
         String(200),
@@ -417,6 +431,62 @@ class Game(Base):
         onupdate=lambda: int(time.time()),
     )
 
+    @validates("release_date")
+    def _new_day_is_a_day(self, _key: str, value: date | None) -> date | None:
+        """A different date from an editor, import or sync is a day; a refresh that knows a
+        coarser precision sets ``release_date_precision`` after the date. A new row keeps
+        whatever precision it was built with."""
+        if sa_inspect(self).has_identity and value != self.release_date:
+            self.release_date_precision = None
+        return value
+
+    @validates("play_compatibility")
+    def _store_crossplay(self, _key: str, value: dict | None) -> dict | None:
+        return stored_play_compatibility(value, self.play_compatibility)
+
+
+def crossplay_value(raw: object) -> str | None:
+    """A stored crossplay value: "yes", "partial", "no" or None (unknown).
+
+    Before Plugin API 1.1.20 the value was a boolean; ``true`` was a "yes", while ``false`` could
+    not tell "no" from "nobody said", so it is unknown (CONTRACTS-v1 C7.2, decision H3)."""
+    if raw is True:
+        return "yes"
+    if isinstance(raw, str) and raw in CROSSPLAY:
+        return raw
+    return None
+
+
+def crossplay_projection(value: str | None) -> bool:
+    """The yes/no flag older API clients read: "yes" and "partial" are true, the rest false."""
+    return value in {"yes", "partial"}
+
+
+def stored_play_compatibility(value: dict | None, previous: object) -> dict | None:
+    """The group-play details as stored: ``crossplay`` holds the tri-state value, never a bool.
+
+    A write may name the value (``crossplay_status``, or a vocabulary string in ``crossplay``),
+    or send only the old yes/no flag. A flag that agrees with what is stored keeps the stored
+    detail (a "partial" stays partial when an older client saves "true"; a "no" stays "no" on
+    "false"); otherwise "true" is "yes" and "false" is unknown."""
+    if not isinstance(value, dict):
+        return value
+    stored = dict(value)
+    has_status = "crossplay_status" in stored
+    status = stored.pop("crossplay_status", None)
+    raw = stored.get("crossplay")
+    if has_status:
+        stored["crossplay"] = crossplay_value(status)
+    elif isinstance(raw, bool):
+        before = crossplay_value(previous.get("crossplay")) if isinstance(previous, dict) else None
+        if before is not None and crossplay_projection(before) == raw:
+            stored["crossplay"] = before
+        else:
+            stored["crossplay"] = "yes" if raw else None
+    elif "crossplay" in stored:
+        stored["crossplay"] = crossplay_value(raw)
+    return stored
+
 
 ##########################
 #          Links         #
@@ -432,7 +502,7 @@ class GameLink(Base):
 
     game_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("games.id"),
+        ForeignKey("games.id", ondelete="CASCADE"),
         nullable=False,
     )
 

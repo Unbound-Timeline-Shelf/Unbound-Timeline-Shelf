@@ -62,6 +62,30 @@ describe("game launch links", () => {
     expect(defaultTarget(noPlaynite, { source: null }, null)?.id).toBe("steam");
   });
 
+  it("puts the account's launch client first when the game can use it (#319)", () => {
+    const targets = launchTargets({ ...OWNED, status: "backlog" });
+    expect(
+      defaultTarget(targets, { source: "steam" }, "playnite", "gog")?.id,
+    ).toBe("gog");
+    // a client this game cannot be opened with falls back to the automatic choice
+    const steamOnly = launchTargets({
+      providerIds: { steam: "620" },
+      status: "backlog",
+    });
+    expect(defaultTarget(steamOnly, { source: null }, null, "gog")?.id).toBe(
+      "steam",
+    );
+    // "Automatic" (no account choice) keeps the browser's own last pick
+    expect(defaultTarget(targets, { source: null }, "steam", null)?.id).toBe(
+      "steam",
+    );
+    // a wishlist game still only offers its store page
+    const wishlisted = launchTargets({ ...OWNED, status: "wishlist" });
+    expect(defaultTarget(wishlisted, { source: null }, null, "steam")?.id).toBe(
+      "steam-store",
+    );
+  });
+
   it("makes a store page the default only when nothing can be launched", () => {
     const wishlisted = launchTargets({ ...OWNED, status: "wishlist" });
     expect(defaultTarget(wishlisted, { source: null }, null)?.id).toBe(

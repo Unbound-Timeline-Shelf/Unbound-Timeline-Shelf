@@ -77,12 +77,16 @@ class FieldValueOrigin(StrEnum):
 
 
 class FieldValueState(StrEnum):
-    """Closed set: one current value per field; proposals await a user choice."""
+    """Closed set: one current value per field; proposals await a user choice.
+
+    A `candidate` is a metadata provider's value that lost a refresh's merge, kept (one per
+    provider and field) so a field preference can choose it (D2); it is never the game's value."""
 
     CURRENT = "current"
     PROPOSED = "proposed"
     SUPERSEDED = "superseded"
     REJECTED = "rejected"
+    CANDIDATE = "candidate"
 
 
 class FieldQuality(StrEnum):
@@ -347,6 +351,14 @@ class GameFieldValue(Base):
             postgresql_where=text("state = 'current' AND umbrella_id IS NOT NULL"),
         ),
         Index(
+            "uq_game_field_values_candidate",
+            "game_id",
+            "field",
+            "source_label",
+            unique=True,
+            postgresql_where=text("state = 'candidate'"),
+        ),
+        Index(
             "uq_game_field_values_open_proposal",
             "game_id",
             "umbrella_id",
@@ -502,3 +514,34 @@ class GameManualAchievement(Base):
         BigInteger, nullable=False, default=unix_timestamp, onupdate=unix_timestamp
     )
     archived_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+
+class GamePlayEvent(Base):
+    """One explicit "I played this" from the user (#467).
+
+    Activity is recorded only by a deliberate log, never inferred from a larger lifetime
+    total, a provider catch-up or a status edit. `played_at` is the moment the user says they
+    played (now, or an earlier time they chose); the game's `last_played_at` projection moves
+    forward to it and never backwards. `request_id` makes a retried log idempotent."""
+
+    __tablename__ = "game_play_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "game_id"],
+            ["games.user_id", "games.id"],
+            ondelete="CASCADE",
+            name="fk_game_play_events_game",
+        ),
+        UniqueConstraint("user_id", "request_id", name="uq_game_play_events_request"),
+        CheckConstraint("played_at >= 0", name="ck_game_play_events_played_at"),
+        Index("ix_game_play_events_game_played", "game_id", "played_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    game_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    played_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    recorded_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=unix_timestamp)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

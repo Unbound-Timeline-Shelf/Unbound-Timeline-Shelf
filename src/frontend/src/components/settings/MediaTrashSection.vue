@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDayMonth } from "../../utils/dates";
 import { useConfirm } from "../../state/dialog";
 import { ref, computed, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
@@ -27,6 +28,13 @@ import {
 } from "../../services/anime";
 import type { TrashedAnime } from "../../services/anime";
 import {
+  fetchBookTrash,
+  restoreBook,
+  purgeBook,
+  emptyBookTrash,
+} from "../../services/books";
+import type { TrashedBook } from "../../services/books";
+import {
   RETENTION_CHOICES,
   countOf,
   emptyTrashMessage,
@@ -39,6 +47,7 @@ import type { RetentionDays, TrashNoun } from "../../utils/mediaTrash";
 const movieTrash = ref<TrashedMovie[]>([]);
 const tvTrash = ref<TrashedTVShow[]>([]);
 const animeTrash = ref<TrashedAnime[]>([]);
+const bookTrash = ref<TrashedBook[]>([]);
 const loading = ref(false);
 // the list stays on screen while it reloads after a restore or delete
 const loadedOnce = ref(false);
@@ -51,9 +60,10 @@ const limits = ref<Record<Kind, number>>({
   movie: PAGE,
   tv: PAGE,
   anime: PAGE,
+  book: PAGE,
 });
 
-type Kind = "movie" | "tv" | "anime";
+type Kind = "movie" | "tv" | "anime" | "book";
 interface TrashRow {
   id: string;
   title: string;
@@ -93,6 +103,14 @@ const KINDS: Record<
     hasEpisodes: true,
     empty: emptyAnimeTrash,
   },
+  // a book takes its editions and reads with it
+  book: {
+    label: "Books",
+    trash: "book",
+    noun: { one: "book", many: "books" },
+    hasEpisodes: false,
+    empty: emptyBookTrash,
+  },
 };
 const groups = computed<
   {
@@ -122,6 +140,7 @@ const groups = computed<
     build("movie", movieTrash.value),
     build("tv", tvTrash.value),
     build("anime", animeTrash.value),
+    build("book", bookTrash.value),
   ];
 });
 
@@ -129,11 +148,13 @@ async function loadAll() {
   loading.value = true;
   error.value = null;
   try {
-    [movieTrash.value, tvTrash.value, animeTrash.value] = await Promise.all([
-      fetchMovieTrash(),
-      fetchTVShowTrash(),
-      fetchAnimeTrash(),
-    ]);
+    [movieTrash.value, tvTrash.value, animeTrash.value, bookTrash.value] =
+      await Promise.all([
+        fetchMovieTrash(),
+        fetchTVShowTrash(),
+        fetchAnimeTrash(),
+        fetchBookTrash(),
+      ]);
   } catch (e) {
     error.value =
       e instanceof Error ? e.message : "Could not load deleted media.";
@@ -178,7 +199,12 @@ async function chooseRetention(value: string) {
   if (days === previous) return;
   // turning deletion on, or shortening it, deletes sooner: confirm it first
   if (days && (!previous || days < previous)) {
-    const all = [...movieTrash.value, ...tvTrash.value, ...animeTrash.value];
+    const all = [
+      ...movieTrash.value,
+      ...tvTrash.value,
+      ...animeTrash.value,
+      ...bookTrash.value,
+    ];
     // unknown while the trash has not loaded
     const due =
       loadedOnce.value && !error.value
@@ -188,8 +214,8 @@ async function chooseRetention(value: string) {
     const ok = await confirm({
       title: "Delete trashed titles automatically?",
       message:
-        `Movies, TV shows and anime that have been in the trash for ${days} days ` +
-        "will be deleted permanently, with their seasons and episodes. " +
+        `Movies, TV shows, anime and books that have been in the trash for ${days} days ` +
+        "will be deleted permanently, with their seasons, episodes, editions and reads. " +
         (due === null
           ? "Titles already older than that will be deleted at the next clean-up. "
           : due
@@ -229,10 +255,7 @@ async function chooseRetention(value: string) {
 }
 
 function formatDate(epochSeconds: number): string {
-  return new Date(epochSeconds * 1000).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+  return formatDayMonth(new Date(epochSeconds * 1000));
 }
 
 function deadlineText(deletedAt: number): string {
@@ -249,7 +272,8 @@ async function restore(kind: Kind, id: string) {
   try {
     if (kind === "movie") await restoreMovie(id);
     else if (kind === "tv") await restoreTVShow(id);
-    else await restoreAnime(id);
+    else if (kind === "anime") await restoreAnime(id);
+    else await restoreBook(id);
     await loadAll();
   } catch (e) {
     error.value =
@@ -272,7 +296,8 @@ async function purge(kind: Kind, id: string, title: string) {
   try {
     if (kind === "movie") await purgeMovie(id);
     else if (kind === "tv") await purgeTVShow(id);
-    else await purgeAnime(id);
+    else if (kind === "anime") await purgeAnime(id);
+    else await purgeBook(id);
     await loadAll();
   } catch (e) {
     error.value =
@@ -331,7 +356,7 @@ async function emptyKind(kind: Kind, rows: TrashRow[]) {
   <section class="settings-section">
     <h2>Media Trash</h2>
     <p class="section-hint">
-      A deleted movie, show, or anime entry moves here first. Restore it to
+      A deleted movie, show, anime entry or book moves here first. Restore it to
       bring it back, or delete it for good: one title at a time, or a whole kind
       with Empty trash. Nothing is deleted automatically unless you choose a
       period below.
@@ -353,10 +378,11 @@ async function emptyKind(kind: Kind, rows: TrashRow[]) {
         </div>
         <p class="section-hint retention-hint">
           <template v-if="retentionDays">
-            Movies, TV shows and anime are deleted permanently, with their
-            seasons and episodes, {{ retentionDays }} days after they were moved
-            to the trash. The server's clean-up runs every six hours, so a title
-            can stay a little past its date.
+            Movies, TV shows, anime and books are deleted permanently, with
+            their seasons, episodes, editions and reads,
+            {{ retentionDays }} days after they were moved to the trash. The
+            server's clean-up runs every six hours, so a title can stay a little
+            past its date.
             <strong>This can't be undone.</strong>
           </template>
           <template v-else>

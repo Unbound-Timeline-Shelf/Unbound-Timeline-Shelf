@@ -8,12 +8,16 @@
 // wraps onto more lines on a narrow window.
 import AccountChip from "./AccountChip.vue";
 import { effectiveSidebarMode, navigationViewport } from "../state/sidebarMode";
+// oneRow: on a phone the switchers stay on one line instead of stacking,
+// so less chrome sits above the page heading (UX-AUDIT-APP A12)
+defineProps<{ oneRow?: boolean }>();
 </script>
 
 <template>
   <div
     class="media-topbar"
     :class="{
+      'one-row': oneRow,
       'with-menu-toggle':
         effectiveSidebarMode === 'overlay' && navigationViewport !== 'phone',
     }"
@@ -116,6 +120,26 @@ import { effectiveSidebarMode, navigationViewport } from "../state/sidebarMode";
   }
   .media-topbar-actions :deep(.seg-tab svg) {
     display: none;
+  }
+  .media-topbar.one-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .one-row .topbar-left {
+    flex: none;
+  }
+  .one-row .media-topbar-actions {
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-end;
+  }
+  .one-row .media-topbar-actions :deep(.seg) {
+    flex: 0 1 auto;
+  }
+  .one-row .media-topbar-actions :deep(.seg-tab) {
+    flex: 0 1 auto;
+    padding-inline: 8px;
   }
 }
 </style>
