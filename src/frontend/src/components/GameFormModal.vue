@@ -844,7 +844,7 @@ function onShellClose() {
 // Opened from the library or Home it has to close before the page changes,
 // which would unmount it before that guard runs, so it asks here instead.
 const router = inject(routerKey, null);
-const SOURCES_SETTINGS = "/settings?section=sources";
+const SOURCES_SETTINGS = "/settings/preferences/metadata?tab=sources";
 const sourcesSettingsHref = computed(
   () => router?.resolve(SOURCES_SETTINGS).href ?? SOURCES_SETTINGS,
 );
