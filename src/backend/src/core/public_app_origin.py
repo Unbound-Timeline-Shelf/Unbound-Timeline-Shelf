@@ -16,7 +16,8 @@ def hostname(value: str) -> str:
         return ""
 
 
-class PublicAppOriginMiddleware:
+# An ASGI middleware is a callable with one entry point, so it has no other public methods.
+class PublicAppOriginMiddleware:  # pylint: disable=too-few-public-methods
     """A dedicated public-app hostname exposes only participant-token APIs.
 
     This is enforced behind the reverse proxy too. Public pages cannot read a

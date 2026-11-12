@@ -150,7 +150,7 @@ def _is_own_api_url(url: str) -> bool:
     path = unquote(target.path) or "/"
     # The API at the root, and under the deployment's own path prefix when it has one.
     return any(
-        path == api or path.startswith(api + "/") for api in {"/api", own.path.rstrip("/") + "/api"}
+        path == api or path.startswith(api + "/") for api in ("/api", own.path.rstrip("/") + "/api")
     )
 
 
