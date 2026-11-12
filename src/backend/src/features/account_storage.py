@@ -17,8 +17,9 @@ other writers keep equal constants, which a test pins so they cannot drift apart
 
 Cleanup is best effort and idempotent: a missing directory counts as done, a failure on
 one path never stops the others, and a second run removes whatever is left. Paths are
-built only from a parsed UUID, are never resolved through a symbolic link, and a symlink
-at the owned location is unlinked rather than followed.
+built only from a parsed UUID, are never resolved through a symbolic link (neither the root
+nor, for game trash, the game root above it), and a symlink at the owned location is
+unlinked rather than followed.
 """
 
 from __future__ import annotations
@@ -60,10 +61,17 @@ def _owned_path(root: Path, name: UUID) -> Path:
     return path
 
 
-def _remove(root: Path, name: UUID, label: str, result: StorageCleanup) -> None:
+def _remove(
+    root: Path,
+    name: UUID,
+    label: str,
+    result: StorageCleanup,
+    ancestors: tuple[Path, ...] = (),
+) -> None:
     try:
-        if root.is_symlink():
-            # A redirected root could point at another user's data; leave it for the operator.
+        if root.is_symlink() or any(ancestor.is_symlink() for ancestor in ancestors):
+            # A redirected root (or a redirected root above it, such as the game root above
+            # its _trash folder) could point at another user's data; leave it for the operator.
             raise OSError("storage root is a symbolic link")
         path = _owned_path(root, name)
         try:
@@ -105,7 +113,8 @@ def cleanup_account_storage_sync(user_id: UUID, game_ids: Iterable[UUID] = ()) -
     # Same location as game_trash.game_trash_dir(game_root, game_id).
     trash_root = game_root / "_trash"
     for game_id in sorted(set(game_ids), key=str):
-        _remove(trash_root, game_id, f"game-trash:{game_id}", result)
+        # The trash folder lives under the game root: a symlinked game root must stop it too.
+        _remove(trash_root, game_id, f"game-trash:{game_id}", result, ancestors=(game_root,))
     if result.failed:
         logger.error(
             "Account %s storage cleanup incomplete (removed=%s failed=%s); retry the deletion.",
