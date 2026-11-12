@@ -14,6 +14,10 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from .handler import Provider, Source
 
+# identity verdicts (Plugin API 1.1.20, C4.4) that stand in for a held-id namespace match:
+# the provider itself found this record by id, not by an unreliable title fallback (#492).
+CORROBORATING_MATCHES = frozenset({"id", "redirect", "crosswalk"})
+
 
 def provider_id_claims(
     sources: Mapping[str, Source], group: Iterable[str], providers: Iterable[Provider]
@@ -73,10 +77,30 @@ def unverified_providers(
     none at all, may have fallen back to a title lookup and found another game, so a
     refresh must not apply its fields or ids without the person's confirmation (#492
     review). A provider without a namespace (artwork-only sources) is looked up by the held
-    ids and cannot report an identity either way, so it is not counted here."""
+    ids and cannot report an identity either way, so it is not counted here.
+
+    A provider's own identity verdict (Plugin API 1.1.20, C4.4) is also confirmation: a
+    ``match`` of ``id``, ``redirect`` or ``crosswalk`` is identity evidence even when the
+    provider's own id claim sits in a namespace the game does not hold yet (an Atlas patch
+    matched by Steam id but reporting only its own ``atlas`` id, for one)."""
     namespaces = {provider.id: provider.declaration.identifier_namespace for provider in providers}
     group = tuple(group)
     asset_providers = asset_providers or {}
+    verdicts = {
+        provider_id: patch.identity.match
+        for key in group
+        for provider_id, patch in sources[key].metadata.items()
+        if patch.identity is not None
+    }
+
+    def confirms(provider_id: str) -> bool:
+        if verdicts.get(provider_id) in CORROBORATING_MATCHES:
+            return True
+        return any(
+            held.get(namespace) in values
+            for namespace, values in claims.get(provider_id, {}).items()
+        )
+
     contributed = set(claims)
     contributed.update(provider_id for key in group for provider_id in sources[key].metadata)
     for asset in assets:
@@ -99,11 +123,7 @@ def unverified_from_evidence(
     return {
         provider_id
         for provider_id in contributed
-        if namespaces.get(provider_id)
-        and not any(
-            held.get(namespace) in values
-            for namespace, values in claims.get(provider_id, {}).items()
-        )
+        if namespaces.get(provider_id) and not confirms(provider_id)
     }
 
 

@@ -54,6 +54,8 @@ def atlas_for(steam_id: str, **fields) -> StandInProvider:
         if candidate is None or candidate.provider_ids.get("steam") != steam_id:
             return None
         fields.setdefault("provider_ids", {"atlas": ATLAS_ID})
+        # This stand-in only ever answers an exact Steam id match: a real id verdict (#492).
+        fields.setdefault("identity", MetadataIdentity(match="id"))
         return MetadataPatch(**fields)
 
     return StandInProvider(ATLAS, "atlas", respond, priority=10)
