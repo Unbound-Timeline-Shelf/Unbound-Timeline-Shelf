@@ -11,11 +11,25 @@ import type { Game } from "../types/game";
 // played forward. Adding a just-played session also adds its minutes to the
 // total. Editing the total elsewhere is a correction and never counts as
 // playing today.
+//
+// A failed attempt may still have been recorded (the response was lost), so a
+// retry of the same play (same game, date and minutes) reuses its request id
+// and the server returns the first play instead of recording another. Once the
+// play is recorded, a retry only repeats the playtime update, to the same
+// total.
+type PendingPlay = {
+  key: string;
+  requestId: string;
+  logged?: { playedAt: number; lastPlayedAt: number | null };
+  playtimeSeconds?: number;
+};
+
 export function useGamePlayLog(game: Ref<Game | null>) {
   const loggingPlaytime = ref(false);
   const playLogMessage = ref<string | null>(null);
   const playLogError = ref<string | null>(null);
   const playedOn = ref("");
+  let pending: PendingPlay | null = null;
 
   function playLogTime(): number | undefined {
     if (!playedOn.value) return undefined;
@@ -25,34 +39,43 @@ export function useGamePlayLog(game: Ref<Game | null>) {
     return Math.min(chosen, Math.floor(Date.now() / 1000));
   }
 
+  function finish(attempt: PendingPlay) {
+    if (pending === attempt) pending = null;
+  }
+
   async function recordPlay(minutes = 0) {
     if (!game.value || loggingPlaytime.value) return;
     const id = game.value.id;
     const playedAt = playLogTime();
+    const key = JSON.stringify([id, playedOn.value, minutes]);
+    if (pending?.key !== key) pending = { key, requestId: newPlayRequestId() };
+    const attempt = pending;
     loggingPlaytime.value = true;
     playLogMessage.value = playLogError.value = null;
     try {
-      const logged = await logPlay(id, {
-        playedAt,
-        requestId: newPlayRequestId(),
-      });
-      if (game.value?.id !== id) return;
+      const logged =
+        attempt.logged ??
+        (await logPlay(id, { playedAt, requestId: attempt.requestId }));
+      attempt.logged = logged;
+      // the play is recorded; leaving the game ends this attempt as before
+      if (game.value?.id !== id) return finish(attempt);
       if (logged.lastPlayedAt !== null)
         game.value.lastPlayedAt = new Date(
           logged.lastPlayedAt * 1000,
         ).toISOString();
       if (minutes > 0) {
-        const currentSeconds = game.value.platforms.reduce(
-          (sum, p) => sum + p.playtimeMinutes * 60,
-          0,
-        );
-        const updated = await setPlaytimeSeconds(
-          id,
-          currentSeconds + minutes * 60,
-        );
-        if (game.value?.id !== id) return;
+        // the total is fixed once, so a retried update cannot add twice
+        attempt.playtimeSeconds ??=
+          game.value.platforms.reduce(
+            (sum, p) => sum + p.playtimeMinutes * 60,
+            0,
+          ) +
+          minutes * 60;
+        const updated = await setPlaytimeSeconds(id, attempt.playtimeSeconds);
+        if (game.value?.id !== id) return finish(attempt);
         game.value.platforms = updated.platforms;
       }
+      finish(attempt);
       const day = new Date(logged.playedAt * 1000).toLocaleDateString();
       playLogMessage.value =
         minutes > 0
