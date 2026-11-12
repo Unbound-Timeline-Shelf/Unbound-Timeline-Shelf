@@ -290,6 +290,9 @@ def _refresh_outcome(
         "candidate": None,
         "conflicts": decision.conflict_candidates() if decision else [],
         "rejected_ids": dict(decision.rejected) if decision else {},
+        # id match only: providers that confirmed nothing, with the ids each reported. Their
+        # fields and ids were left out; confirming the candidate applies them as well.
+        "unverified_sources": {},
         **(details or {}),
     }
 
@@ -397,6 +400,25 @@ async def refresh_game_metadata(
         )
     preview_only = payload.dry_run or needs_confirmation
 
+    # An id match applies only what the confirming sources reported. A provider that confirmed
+    # nothing may have fallen back to a title lookup and found a different game; its fields and
+    # ids wait until the person confirms this very candidate (#492 review).
+    unverified: set[str] = set()
+    if decision.tier == "id" and payload.confirm_candidate != decision.offered:
+        unverified = set(record.get("unverified_providers", ()))
+    trusted_ids = decision.offered
+    unverified_sources: dict[str, dict] = {}
+    if unverified:
+        match = game_result(
+            {
+                **record,
+                "metadata": record.get("verified_metadata", {}),
+                "assets": record.get("verified_assets", []),
+            }
+        )
+        trusted_ids = refresh_match.vouched_ids(decision.offered, claims, unverified)
+        unverified_sources = {source: dict(claims.get(source, {})) for source in sorted(unverified)}
+
     field_values: dict[str, object] = {
         "title": match.get("title"),
         "description": match.get("description"),
@@ -474,7 +496,7 @@ async def refresh_game_metadata(
         skipped_locked.append("provider_ids")
     else:
         # only ids the sources reported themselves; the record also echoes the request's ids
-        offered_provider_ids = decision.offered
+        offered_provider_ids = trusted_ids
         provider_ids_to_add = {
             namespace: identity
             for namespace, identity in offered_provider_ids.items()
@@ -527,6 +549,7 @@ async def refresh_game_metadata(
         "skipped_locked_fields": sorted(set(skipped_locked)),
         "would_add_key_art": would_add_key_art,
         "would_add_banner": would_add_banner,
+        "unverified_sources": unverified_sources,
     }
     if preview_only:
         # A preview records no game changes, but the existing provider-last-used

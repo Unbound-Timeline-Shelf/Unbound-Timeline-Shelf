@@ -21,6 +21,12 @@ candidate's data. Forgetting that one rejection lets the next refresh apply agai
 
 A title-only match is confirmed by the candidate's ids, not by a flag: the route applies it only
 when the person's confirmation equals `offered` for the lookup it just ran.
+
+Within an id match, a provider that reported only ids the game does not hold (or none) may
+have looked the game up by title and found another game. Its fields and ids are not applied
+automatically: only the confirming sources' fields and the ids one of them reported
+(`vouched_ids`) are. The same confirmation as a title-only match (`offered`) applies the
+whole result.
 """
 
 from __future__ import annotations
@@ -135,6 +141,25 @@ def classify(
     ):
         return RefreshMatch("title", offered)
     return RefreshMatch("none", offered)
+
+
+def vouched_ids(
+    offered: Mapping[str, str],
+    claims: Mapping[str, Mapping[str, Claim]],
+    unverified: Iterable[str],
+) -> dict[str, str]:
+    """The offered ids that at least one source outside ``unverified`` reported itself."""
+    excluded = set(unverified)
+    vouched: dict[str, str] = {}
+    for namespace, value in offered.items():
+        for source, ids in claims.items():
+            claim = ids.get(namespace)
+            if source in excluded or not claim:
+                continue
+            if value in ([claim] if isinstance(claim, str) else claim):
+                vouched[namespace] = value
+                break
+    return vouched
 
 
 async def rejected_ids(db: AsyncSession, game_id: UUID) -> set[tuple[str, str]]:

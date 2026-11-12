@@ -8,7 +8,7 @@ import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Iterable, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
@@ -630,6 +630,64 @@ class MetadataHandler:
             for provider_id, ids in claims.items()
         }
 
+    @staticmethod
+    def unverified_providers(
+        session: SearchSession,
+        group_id: str | None,
+        held: dict[str, str],
+        claims: dict[str, dict[str, list[str]]],
+    ) -> set[str]:
+        """Identity-bearing providers that reached this result without confirming the game.
+
+        A provider confirms the game when an id it reported itself is one the lookup held. A
+        provider with an identifier namespace that reported only ids the game does not hold, or
+        none at all, may have fallen back to a title lookup and found another game, so a
+        refresh must not apply its fields or ids without the person's confirmation (#492
+        review). A provider without a namespace (artwork-only sources) is looked up by the held
+        ids and cannot report an identity either way, so it is not counted here."""
+        namespaces = {
+            provider.id: provider.declaration.identifier_namespace for provider in session.providers
+        }
+        group = session.groups.get(group_id or "", ())
+        contributed = set(claims)
+        contributed.update(
+            provider_id for key in group for provider_id in session.sources[key].metadata
+        )
+        for asset in session.candidates.get(group_id or "", {}).get("assets", []):
+            contributed.update(session.asset_providers.get((asset["kind"], asset["url"]), ()))
+        return {
+            provider_id
+            for provider_id in contributed
+            if namespaces.get(provider_id)
+            and not any(
+                held.get(namespace) in values
+                for namespace, values in claims.get(provider_id, {}).items()
+            )
+        }
+
+    def verified_record(
+        self, session: SearchSession, group_id: str | None, unverified: set[str]
+    ) -> dict[str, Any]:
+        """The result's metadata and artwork without what the unverified providers supplied."""
+        group = session.groups.get(group_id or "", ())
+        members = [
+            replace(
+                session.sources[key],
+                metadata={
+                    provider_id: patch
+                    for provider_id, patch in session.sources[key].metadata.items()
+                    if provider_id not in unverified
+                },
+            )
+            for key in group
+        ]
+        assets = []
+        for asset in session.candidates.get(group_id or "", {}).get("assets", []):
+            sources = set(session.asset_providers.get((asset["kind"], asset["url"]), ()))
+            if not sources or sources - unverified:
+                assets.append(asset)
+        return {"verified_metadata": self._metadata(session, members), "verified_assets": assets}
+
     def _rank(self, session: SearchSession) -> None:
         previous, previous_groups = session.candidates, session.groups
         session.candidates, session.groups = {}, {}
@@ -911,11 +969,18 @@ class MetadataHandler:
             session.emit("provider_failed", message="Metadata providers are unavailable")
         record = session.candidates.get(session.selected or "", {})
         if record:
+            claims = self.provider_id_claims(session, session.selected)
+            unverified = self.unverified_providers(
+                session, session.selected, dict(candidate.provider_ids), claims
+            )
             record = {
                 **record,
                 "contributors": self.contributors(session, session.selected),
-                "provider_id_claims": self.provider_id_claims(session, session.selected),
+                "provider_id_claims": claims,
+                "unverified_providers": sorted(unverified),
             }
+            if unverified:
+                record.update(self.verified_record(session, session.selected, unverified))
         failures = list(
             dict.fromkeys(
                 event["message"] for event in session.events if event["event"] == "provider_failed"
