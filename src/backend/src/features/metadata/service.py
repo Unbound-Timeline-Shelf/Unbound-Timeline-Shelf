@@ -20,6 +20,8 @@ from src.plugin_api.metadata_contracts import (
 from .game_releases import release_source
 from .handler import handler
 from .health import monitor
+from .provider_reports import source_labels
+from .refresh_identity import reverify_providers
 from .identity import normalized_title
 from .providers import discover_providers
 
@@ -266,9 +268,22 @@ async def resolve_owned_record(
 def reverify_record(record: dict[str, Any], held: Mapping[str, str]) -> dict[str, Any]:
     """Redo a record's id-match verification against ``held`` (review finding 4): a route that
     locks the game row after this record's lookup ran must check providers' claims against the
-    ids that row actually has, not the ones the lookup started with. See
-    ``MetadataHandler.reverify``."""
-    return handler.reverify(record, held)
+    ids that row actually has, not the ones the lookup started with."""
+    context = record.get("_reverify")
+    if not context:
+        return {}
+    session, group, assets = context
+    return reverify_providers(
+        session.sources,
+        group,
+        session.providers,
+        record.get("provider_id_claims", {}),
+        held,
+        merged_of=lambda members: handler._merged(session, members),  # pylint: disable=protected-access
+        provider_names=source_labels(session.providers),
+        asset_providers=session.asset_providers,
+        assets=assets,
+    )
 
 
 def media_result(record: dict[str, Any], media_type: MediaType) -> dict[str, Any]:

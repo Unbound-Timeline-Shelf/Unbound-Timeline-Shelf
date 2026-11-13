@@ -26,7 +26,15 @@ from src.database.session import SessionLocal
 from src.features.game_identity import decisions, field_provenance
 from src.features.game_identity.field_provenance import PROVENANCE_FIELDS
 from src.features.imports.library_games import get_or_create_game
-from src.plugin_api.metadata_contracts import MetadataIdentity, MetadataPatch, MetadataRelease
+from src.features.metadata.handler import Source
+from src.features.metadata.refresh_identity import verified_record
+from src.plugin_api.metadata_contracts import (
+    MediaType,
+    MetadataCandidate,
+    MetadataIdentity,
+    MetadataPatch,
+    MetadataRelease,
+)
 from tests.test_game_metadata_refresh_identity import (
     ATLAS_ID,
     StandInProvider,
@@ -776,3 +784,50 @@ async def test_a_provider_that_stops_reporting_a_field_loses_its_candidate(
 
     read = (await client.get(f"/api/game/{game_id}/field-sources")).json()["developer"]
     assert [s["source_key"] for s in read["sources"]] == ["provider:core.igdb"]
+
+
+def test_verified_record_attributes_each_field_to_the_filtered_merge_not_the_full_one():
+    """When an unverified, higher-priority provider and a verified, lower-priority provider both
+    report the same field, the value correctly comes from the verified source once the
+    unverified one is filtered out - but field_providers was always built from the full,
+    unfiltered merge, so the persisted record showed the verified provider's value attributed to
+    the unverified one (review finding 6)."""
+    candidate = MetadataCandidate(
+        external_id="x", title="T", provider="a", media_type=MediaType.GAME
+    )
+    source = Source(
+        candidate=candidate,
+        priority=0,
+        position=0,
+        metadata={
+            "a": MetadataPatch(description="A's description"),
+            "b": MetadataPatch(description="B's description"),
+        },
+    )
+    sources = {"s1": source}
+
+    def merged_of(members):
+        priorities = {"a": 0, "b": 50}  # "a" outranks "b"
+        patches = sorted(
+            ((priorities[pid], pid, patch) for m in members for pid, patch in m.metadata.items()),
+            key=lambda item: (item[0], item[1]),
+        )
+        metadata: dict = {}
+        origins: dict = {}
+        for _, pid, patch in patches:
+            if "description" not in metadata and patch.description:
+                metadata["description"] = patch.description
+                origins["description"] = pid
+        return metadata, origins
+
+    # "a" is unverified: its value is excluded, so "b"'s is both the value and its true source
+    result = verified_record(
+        sources,
+        ["s1"],
+        unverified={"a"},
+        merged_of=merged_of,
+        provider_names={"a": "Provider A", "b": "Provider B"},
+    )
+
+    assert result["verified_metadata"]["description"] == "B's description"
+    assert result["verified_field_providers"]["description"] == "Provider B"

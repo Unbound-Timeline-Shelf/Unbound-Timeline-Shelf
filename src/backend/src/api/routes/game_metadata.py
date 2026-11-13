@@ -514,11 +514,15 @@ async def refresh_game_metadata(
     trusted_ids = decision.offered
     unverified_sources: dict[str, dict] = {}
     if unverified:
+        # field_providers must come from the same filtered merge as the value (review finding
+        # 6): otherwise a verified lower-priority provider's value, correctly filled in, still
+        # shows as attributed to the unverified provider that lost the merge.
         match = game_result(
             {
                 **record,
                 "metadata": record.get("verified_metadata", {}),
                 "assets": record.get("verified_assets", []),
+                "field_providers": record.get("verified_field_providers", {}),
             }
         )
         trusted_ids = refresh_match.vouched_ids(decision.offered, claims, unverified)
