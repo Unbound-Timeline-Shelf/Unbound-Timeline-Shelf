@@ -8,7 +8,10 @@ import {
 } from "../composables/useConnections";
 import type { ConnectionConfig } from "../composables/useConnections";
 import { usePluginConnections } from "../composables/usePluginConnections";
-import { pluginConnectionKey } from "../services/pluginConnections";
+import {
+  canContinueSync,
+  pluginConnectionKey,
+} from "../services/pluginConnections";
 import {
   pluginConnections,
   refreshPluginExtensions,
@@ -48,6 +51,14 @@ async function syncPlugin(connection: PluginConnectionContribution) {
   }
   await pluginState.sync(key, connection.label);
   emit("synced");
+}
+// A run that stopped with saved work left reads "Continue"; it never turns autosync on (#466).
+function pluginActionLabel(connection: PluginConnectionContribution): string {
+  const state = pluginState.states[pluginKey(connection)];
+  if (!state?.connected) return "Connect";
+  return state.sync && canContinueSync(state.sync)
+    ? "Continue syncing"
+    : "Sync";
 }
 function onToggle() {
   if (!menu.value?.open) return;
@@ -96,11 +107,7 @@ function onToggle() {
         "
         @click="syncPlugin(connection)"
       >
-        {{
-          pluginState.states[pluginKey(connection)]?.connected
-            ? "Sync"
-            : "Connect"
-        }}
+        {{ pluginActionLabel(connection) }}
         {{ connection.label }}
       </button>
       <RouterLink to="/settings?section=background-tasks"
