@@ -20,10 +20,10 @@ from src.plugin_api.metadata_contracts import (
 from .game_releases import release_source
 from .handler import handler
 from .health import monitor
-from .provider_reports import source_labels
-from .refresh_identity import reverify_providers
 from .identity import normalized_title
+from .provider_reports import source_labels
 from .providers import discover_providers
+from .refresh_identity import reverify_providers
 
 
 async def search_records(
