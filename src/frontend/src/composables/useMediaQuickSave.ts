@@ -98,6 +98,10 @@ export function useMediaQuickSave<T extends { id: string }>(
     const fields = (Object.keys(next) as (keyof T)[]).filter(
       (key) => !Object.is(next[key], target[key]),
     );
+    // Nothing to save is not a failed save: a caller that asked to save the value
+    // already showing (an unchanged note, for one) must not be told it could not
+    // be saved (review finding on #536).
+    if (fields.length === 0) return true;
     for (const key of fields) {
       target[key] = next[key];
       current.fields.add(key);
@@ -147,5 +151,53 @@ export function useMediaQuickSave<T extends { id: string }>(
     return saved;
   }
 
-  return { saveError, quickSave };
+  // Lets a writer outside this composable (the full editor, a progress save) take part in the
+  // same per-id ordering as quickSave: it waits for anything already queued, builds its own
+  // full-record update from the latest confirmed state (via `write`), and anything queued after
+  // it then builds from its result in turn. Without this, an editor or progress save issues its
+  // own independent full-record request with no relation to quickSave's queue, so whichever
+  // request a slow network delivers to the server last wins - even the one the person made
+  // first (review finding on #536).
+  async function reconcile(
+    id: string,
+    write: (confirmed: T) => Promise<T>,
+  ): Promise<T> {
+    let queue = queues.get(id);
+    if (!queue) {
+      const base = record.value?.id === id ? record.value : null;
+      if (!base) throw new Error("reconcile: no record loaded for this id");
+      queue = {
+        tail: Promise.resolve(),
+        confirmed: { ...base },
+        wanted: new Map(),
+        pending: 0,
+        replaced: new Map(),
+        fields: new Set(),
+        errors: new Map(),
+      };
+      queues.set(id, queue);
+    }
+    const current = queue;
+    current.pending += 1;
+    let result: T | undefined;
+    let failure: unknown;
+    current.tail = current.tail.then(async () => {
+      try {
+        result = await write({ ...current.confirmed });
+        for (const key of Object.keys(result) as (keyof T)[]) {
+          current.confirmed[key] = result[key];
+        }
+      } catch (err) {
+        failure = err;
+      }
+    });
+    await current.tail;
+    current.pending -= 1;
+    if (current.pending === 0) queues.delete(id);
+    if (failure !== undefined) throw failure;
+    if (record.value?.id === id) record.value = result as T;
+    return result as T;
+  }
+
+  return { saveError, quickSave, reconcile };
 }
