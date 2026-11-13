@@ -47,6 +47,10 @@ EXPORTERS = (
 IGNORED = frozenset({"description", "title", "examples", "$schema", VERSION_KEY})
 # Keys the host may add without narrowing what an older plugin may send or receive.
 ADDITIVE = IGNORED | {"default"}
+# Numeric bounds the host may relax: an older plugin's data still fits a larger upper bound or a
+# smaller lower bound.
+UPPER_BOUNDS = frozenset({"maxItems", "maxLength", "maxProperties", "maximum"})
+LOWER_BOUNDS = frozenset({"minItems", "minLength", "minProperties", "minimum"})
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -87,11 +91,21 @@ def classify(host_version: str, declared: str | None) -> str:
     return "skew" if plugins < host else "ahead"
 
 
+def _relaxed_bound(key: str, old: object, new: object) -> bool:
+    """True when `key` is a numeric bound that the host only relaxed (never tightened)."""
+    for item in (old, new):
+        if isinstance(item, bool) or not isinstance(item, int | float):
+            return False
+    if key in UPPER_BOUNDS:
+        return new >= old  # type: ignore[operator]
+    return key in LOWER_BOUNDS and new <= old  # type: ignore[operator]
+
+
 def schema_problems(old: object, new: object, path: str = "$") -> list[str]:
     """Ways the host schema `new` is not a backward-compatible evolution of the snapshot `old`.
 
-    Allowed: new optional properties, new `$defs`, wider `enum`/`anyOf`/`oneOf`, new defaults and
-    changed prose. Everything else is a problem: a removed or changed property, a newly required
+    Allowed: new optional properties, new `$defs`, wider `enum`/`anyOf`/`oneOf`, relaxed numeric
+    bounds (a larger `maxItems`, a smaller `minItems`), new defaults and changed prose. Everything else is a problem: a removed or changed property, a newly required
     property, a removed enum value, or a constraint that was added or altered.
     """
     problems: list[str] = []
@@ -115,6 +129,8 @@ def schema_problems(old: object, new: object, path: str = "$") -> list[str]:
                 dropped = [item for item in value if item not in new[key]]
                 if dropped:
                     problems.append(f"{path}: enum lost {dropped!r}")
+            elif _relaxed_bound(key, value, new[key]):
+                continue
             elif key in ("anyOf", "oneOf"):
                 for index, branch in enumerate(value):
                     if all(
