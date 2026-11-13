@@ -1,0 +1,103 @@
+{
+  "preview": {
+    "source": "goodreads",
+    "total": 5,
+    "new": 4,
+    "already_here": 1,
+    "repeated": 0,
+    "with_isbn": 2,
+    "invalid_isbn": 1,
+    "invalid_entries": [],
+    "providers": [
+      {
+        "name": "Atlas",
+        "batched": false
+      }
+    ],
+    "rows": [
+      {
+        "line": 2,
+        "title": "The Glass Orchard",
+        "authors": [
+          "Ada Quill",
+          "Ben Marsh"
+        ],
+        "isbn_13": "9781111111113",
+        "invalid_isbn": null,
+        "status": "READ",
+        "last_read": "2021-03-14",
+        "already_here": false,
+        "repeated": false
+      },
+      {
+        "line": 3,
+        "title": "Salt and Ember",
+        "authors": [
+          "Cora Vale"
+        ],
+        "isbn_13": null,
+        "invalid_isbn": null,
+        "status": "WISHLIST",
+        "last_read": null,
+        "already_here": false,
+        "repeated": false
+      },
+      {
+        "line": 4,
+        "title": "Tidewater Letters",
+        "authors": [
+          "Dov Pike"
+        ],
+        "isbn_13": null,
+        "invalid_isbn": "0000000018",
+        "status": "IN_PROGRESS",
+        "last_read": null,
+        "already_here": false,
+        "repeated": false
+      },
+      {
+        "line": 5,
+        "title": "Quiet Harbour",
+        "authors": [
+          "Fen Lo"
+        ],
+        "isbn_13": null,
+        "invalid_isbn": null,
+        "status": "DROPPED",
+        "last_read": null,
+        "already_here": false,
+        "repeated": false
+      },
+      {
+        "line": 6,
+        "title": "Ninth Lantern",
+        "authors": [
+          "Eli Ford"
+        ],
+        "isbn_13": "9782222222224",
+        "invalid_isbn": null,
+        "status": "READ",
+        "last_read": "2023-08-02",
+        "already_here": true,
+        "repeated": false
+      }
+    ]
+  },
+  "result": {
+    "source": "goodreads",
+    "total": 5,
+    "created": 4,
+    "kept": 1,
+    "repeated": 0,
+    "matched_by_isbn": 1,
+    "matched_by_title": 1,
+    "manual": 2,
+    "resolve_calls": 0,
+    "row_lookups": 4,
+    "not_looked_up": 0,
+    "failed_providers": [],
+    "invalid_isbn": 1,
+    "invalid_entries": [],
+    "errors": []
+  }
+}

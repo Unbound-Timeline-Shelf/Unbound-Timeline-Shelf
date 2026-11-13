@@ -3,7 +3,9 @@
 Plugin API 1.1.20 adds partial and regional release dates (``first_release``, ``releases``),
 the identity verdict of a lookup (``identity``), achievement ``aliases``, the ``platinum``
 tier, and books: the ``book`` media type, ``MetadataPatch.book``, a candidate's ``authors`` and
-``isbn_13``, and the reserved request option ``isbn``. Every one of them is gated on the single
+``isbn_13``, the reserved request option ``isbn``, and the batched identifier lookup (the
+``resolve`` operation, ``MetadataResolveRequest`` and ``ProviderResponse.resolved``, used by book
+imports). Every one of them is gated on the single
 ``UNIFIED_CONTRACT`` (C15 6.4). A plugin whose manifest declares an older contract is held to the
 older shape: the host
 validates its responses with ``api_contract`` in the validation context (see
@@ -220,6 +222,64 @@ class MetadataCandidate(MetadataModel):
             used.insert(0, "media_type book")
         _require_unified_contract(info, used)
         return self
+
+
+# Plugin API 1.1.20, the batched identifier lookup (C15 6.2): a book import sends many rows in
+# one call instead of one search per row. One call carries at most Atlas's ``max_resolve``.
+MAX_RESOLVE_ITEMS = 200
+ResolveKey = Annotated[
+    str, Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+]
+
+
+class MetadataResolveItem(MetadataModel):
+    """One row to identify: an ISBN-13 (an identifier lookup) or a title with its authors."""
+
+    key: ResolveKey
+    isbn_13: Isbn13 | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=512)
+    authors: tuple[Annotated[str, Field(min_length=1, max_length=200)], ...] = Field(
+        default=(), max_length=30
+    )
+    year: int | None = Field(default=None, ge=1000, le=3000)
+
+    @model_validator(mode="after")
+    def something_to_match(self) -> "MetadataResolveItem":
+        _checked_isbn13(self.isbn_13)
+        if self.isbn_13 is None and self.title is None:
+            raise ValueError("a resolve item needs an isbn_13 or a title")
+        return self
+
+
+class MetadataResolveRequest(MetadataModel):
+    """A batch of rows the host wants identified, sent to a provider's ``resolve`` action.
+
+    The provider answers with ``ProviderResponse.resolved``: one entry per row it identified,
+    keyed by the item's ``key``; a row it could not identify is simply absent."""
+
+    request_id: UUID
+    user_id: UUID
+    media_type: MediaType = MediaType.BOOK
+    policy: Literal["interactive", "background"] = "background"
+    items: tuple[MetadataResolveItem, ...] = Field(min_length=1, max_length=MAX_RESOLVE_ITEMS)
+
+    @model_validator(mode="after")
+    def unique_keys(self, info: ValidationInfo) -> "MetadataResolveRequest":
+        keys = [item.key for item in self.items]
+        if len(keys) != len(set(keys)):
+            raise ValueError("resolve items repeat a key")
+        if self.media_type != MediaType.BOOK and any(item.isbn_13 for item in self.items):
+            raise ValueError("isbn_13 is only an identifier for a book")
+        _require_unified_contract(info, ["resolve request"])
+        return self
+
+
+class MetadataResolution(MetadataModel):
+    """A row the provider identified: by the identifier it was given, or by title and author."""
+
+    key: ResolveKey
+    matched_by: Literal["identifier", "title"]
+    candidate: MetadataCandidate
 
 
 class MetadataLink(MetadataModel):
@@ -606,15 +666,29 @@ class ProviderResponse(MetadataModel):
     health: ProviderHealth | None = None
     failure: ProviderFailure | None = None
     next_cursor: Identifier | None = None
+    # Plugin API 1.1.20: the answer to a ``resolve`` call (one entry per identified row).
+    resolved: tuple[MetadataResolution, ...] = Field(default=(), max_length=MAX_RESOLVE_ITEMS)
+
+    @model_validator(mode="after")
+    def declared_contract(self, info: ValidationInfo) -> "ProviderResponse":
+        keys = [resolution.key for resolution in self.resolved]
+        if len(keys) != len(set(keys)):
+            raise ValueError("resolved repeats a key")
+        _require_unified_contract(info, ["resolved"] if "resolved" in self.model_fields_set else [])
+        return self
 
 
 class ProviderOperations(MetadataModel):
-    """Independent optional capabilities, implemented by existing runtime actions."""
+    """Independent optional capabilities, implemented by existing runtime actions.
+
+    ``resolve`` (Plugin API 1.1.20) is the batched identifier lookup; its action declares the
+    ``metadata_providers.search`` capability, because it is a search of many rows at once."""
 
     search: ActionId | None = None
     metadata: ActionId | None = None
     media: ActionId | None = None
     health: ActionId
+    resolve: ActionId | None = None
 
 
 class ProviderConfigurationField(MetadataModel):
@@ -648,9 +722,10 @@ class MetadataProviderRegistration(MetadataModel):
         """A registration from an older plugin may not declare ``book``. The host validates a
         declaration with the plugin's contract where it enters the host (registration); a stored
         row is read without one, so it never becomes unreadable."""
-        _require_unified_contract(
-            info, ["media_types book"] if MediaType.BOOK in self.media_types else []
-        )
+        used = ["media_types book"] if MediaType.BOOK in self.media_types else []
+        if self.operations.resolve is not None:
+            used.append("operations resolve")
+        _require_unified_contract(info, used)
         return self
 
     @model_validator(mode="after")
