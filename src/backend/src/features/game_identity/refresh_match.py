@@ -38,6 +38,8 @@ whole result.
 
 from __future__ import annotations
 
+import re
+import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
@@ -49,6 +51,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.titles import normalize_metadata_title
 from src.database.models.game import Game
+from src.database.models.game_field_change import GameFieldChange
 from src.database.models.game_metadata_rejection import GameMetadataRejection
 
 ATLAS = "atlas"
@@ -302,3 +305,50 @@ async def forget_rejections(
         )
     result = await db.execute(statement)
     return int(getattr(result, "rowcount", 0) or 0)
+
+
+# rule 2's own audit entry: "<namespace>: <to> (moved by <provider>)" (see _record_followed_ids).
+_FOLLOW_RECORD = re.compile(r"^(?P<namespace>[^:]+): (?P<value>.+) \(moved by [^)]+\)$")
+
+
+async def revert_followed_id(db: AsyncSession, game: Game, namespace: str) -> str | None:
+    """Undo the most recent rule-2 rewrite of ``namespace`` (C4.2).
+
+    A followed merge or redirect is applied without confirmation (rule 2 is by design, not a
+    bug), but Atlas can later undo the merge it followed; a subsequent refresh then asks for the
+    live id, which may no longer mean what it did, and the game stays misattached with nothing
+    to flag it. ``GameFieldChange`` already records the id a rewrite replaced, which is a manual
+    recovery clue but not, by itself, a way to act on it. This restores that prior id and rejects
+    the one it is reverting away from, so a refresh does not immediately re-adopt it even if the
+    provider still reports the same (now stale) redirect. Returns the restored id, or ``None``
+    when the game's current id for this namespace was never adopted through a followed rewrite.
+    """
+    current = (game.provider_ids or {}).get(namespace)
+    if current is None:
+        return None
+    rows = await db.scalars(
+        select(GameFieldChange)
+        .where(GameFieldChange.game_id == game.id, GameFieldChange.field_name == "provider_ids")
+        .order_by(GameFieldChange.changed_at.desc(), GameFieldChange.id.desc())
+    )
+    for row in rows:
+        match = _FOLLOW_RECORD.match(row.new_value or "")
+        if not match or match["namespace"] != namespace or match["value"] != current:
+            continue
+        old_namespace, _, old_value = (row.old_value or "").partition(": ")
+        if old_namespace != namespace or not old_value:
+            return None
+        # restore the id first: reject() only remembers an id the game does not currently hold.
+        game.provider_ids = {**(game.provider_ids or {}), namespace: old_value}
+        await reject(db, game, {namespace: current})
+        db.add(
+            GameFieldChange(
+                game_id=game.id,
+                field_name="provider_ids",
+                old_value=f"{namespace}: {current}",
+                new_value=f"{namespace}: {old_value} (reverted)",
+                changed_at=int(time.time()),
+            )
+        )
+        return old_value
+    return None

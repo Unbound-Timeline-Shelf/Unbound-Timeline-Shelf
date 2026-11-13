@@ -429,6 +429,69 @@ async def test_a_followed_merge_clears_the_remembered_duplicate(owner, providers
     assert await pending(user_id) == []
 
 
+async def test_undoing_a_followed_merge_restores_the_id_and_lets_a_refresh_correct_the_data(
+    owner, providers, client
+):
+    """Atlas can later undo a merge a refresh followed (#500 review): the game is left holding
+    the live id, whose data may no longer be this game's. The revert-follow endpoint restores the
+    id the rewrite replaced and rejects the one reverted away from, so once the person notices
+    and acts, a further refresh applies the restored id's own (correct) data instead of staying
+    stuck on the wrong one."""
+    user_id, _ = owner
+    answers = {
+        OTHER_ATLAS_ID: MetadataPatch(
+            title="Portal 2",
+            developer="Valve",
+            provider_ids={"atlas": ATLAS_ID},
+            identity=MetadataIdentity(match="id", previous_ids={"atlas": OTHER_ATLAS_ID}),
+        )
+    }
+    providers(atlas_by_id(answers))
+    game_id = await add_game(
+        user_id, title="Portal 2 (old)", provider_ids={"atlas": OTHER_ATLAS_ID}
+    )
+
+    merged = await refresh(client, game_id)
+    assert (merged["status"], merged["match"]) == ("updated", "id")
+    after_merge = await stored(game_id)
+    assert (after_merge.provider_ids, after_merge.developer) == (
+        {"atlas": ATLAS_ID},
+        "Valve",
+    )
+
+    # Atlas undoes the merge: nothing left asking for OTHER_ATLAS_ID yet, so a refresh right
+    # now would just ask Atlas about ATLAS_ID again and find nothing new (no stand-in for it).
+    reverted = await client.post(
+        f"/api/game/{game_id}/metadata/provider-ids/atlas/revert-follow"
+    )
+    assert reverted.status_code == 200, reverted.text
+    assert reverted.json() == {"namespace": "atlas", "provider_ids": {"atlas": OTHER_ATLAS_ID}}
+    after_revert = await stored(game_id)
+    assert after_revert.provider_ids == {"atlas": OTHER_ATLAS_ID}
+    # the live id is rejected, so a provider that still redirects there is refused, not reapplied
+    rejections = (await client.get(f"/api/game/{game_id}/metadata/rejections")).json()
+    assert rejections == {"rejected": [{"namespace": "atlas", "identity": ATLAS_ID}]}
+
+    # Atlas, post-unmerge, now answers OTHER_ATLAS_ID directly with its own (different) data
+    answers.clear()
+    answers[OTHER_ATLAS_ID] = MetadataPatch(
+        title="Portal 2 (old)",
+        developer="Sierra",
+        provider_ids={"atlas": OTHER_ATLAS_ID},
+        identity=MetadataIdentity(match="id"),
+    )
+    corrected = await refresh(client, game_id)
+    assert (corrected["status"], corrected["match"]) == ("updated", "id")
+    final = await stored(game_id)
+    assert (final.provider_ids, final.developer) == ({"atlas": OTHER_ATLAS_ID}, "Sierra")
+
+    # reverting again with nothing left to undo is refused, not a silent no-op
+    nothing_to_revert = await client.post(
+        f"/api/game/{game_id}/metadata/provider-ids/atlas/revert-follow"
+    )
+    assert nothing_to_revert.status_code == 422
+
+
 # --- C4.4 rule 4: a conflict verdict applies nothing ------------------------------------------
 
 
