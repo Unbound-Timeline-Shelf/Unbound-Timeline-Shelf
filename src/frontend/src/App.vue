@@ -16,6 +16,9 @@ import AppDialog from "./components/AppDialog.vue";
 const AppearanceWelcome = defineAsyncComponent(
   () => import("./components/AppearanceWelcome.vue"),
 );
+const DateFormatOffer = defineAsyncComponent(
+  () => import("./components/DateFormatOffer.vue"),
+);
 import QuickTour from "./components/QuickTour.vue";
 import { authChecked, currentUser } from "./state/auth";
 import { mediaUnread } from "./state/notifications";
@@ -26,7 +29,10 @@ import {
   preferencesError,
   loadSharedPreferences,
   resetSharedPreferences,
+  dateOfferHiddenFor,
 } from "./state/preferences";
+import { quickTourActive } from "./state/quickTour";
+import { shouldOfferDateFormat } from "./utils/dates";
 import {
   effectiveSidebarMode,
   sidebarWidth,
@@ -275,6 +281,19 @@ const KEPT_ALIVE = [
         !preferences.ui_welcome_completed
       "
       :key="currentUser.id"
+    />
+    <DateFormatOffer
+      v-else-if="
+        sidebarShown &&
+        currentUser &&
+        preferencesLoaded &&
+        !preferencesError &&
+        shouldOfferDateFormat(preferences, {
+          tourActive: quickTourActive,
+          hidden: dateOfferHiddenFor === currentUser.id,
+        })
+      "
+      :key="`date-${currentUser.id}`"
     />
   </template>
   <main v-else-if="startupState === 'unavailable'" class="app-loading">

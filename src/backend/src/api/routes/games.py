@@ -155,7 +155,11 @@ from src.features.game_ingestion.legacy import (
     record_manual_fields,
     record_playnite_fields,
 )
-from src.features.metadata.locked_fields import apply_updates_with_locking, authorize_title_update
+from src.features.metadata.locked_fields import (
+    apply_updates_with_locking,
+    authorize_title_update,
+    lock_release_precision_edit,
+)
 from src.features.trash import game_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.save_game_asset import (
@@ -716,6 +720,7 @@ async def update_game(
 
     _record_field_changes(game, updates, db)
     edited = field_provenance.changed_values(game, updates)
+    lock_release_precision_edit(game, updates, edited)
     apply_updates_with_locking(game, updates, frozenset(_GAME_METADATA_FIELDS), actor=actor)
     await field_provenance.record_field_sources(db, game, edited, origin=FieldValueOrigin.USER)
     playnite.restore_locks(game, kept_locks)

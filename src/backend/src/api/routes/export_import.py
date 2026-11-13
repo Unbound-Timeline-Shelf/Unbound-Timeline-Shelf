@@ -9,7 +9,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -110,6 +110,12 @@ class ImportedGame(GameCreate):
     # date stays a year instead of becoming a known 1 January. Older exports have neither.
     release_date_precision: Literal["year", "month", "day"] | None = None
     releases: list[GameReleaseRead] | None = Field(default=None, max_length=5)
+
+    @model_validator(mode="after")
+    def _release_precision(self) -> "ImportedGame":
+        """Replaces the typed-entry check of ``GameCreate``: an export is restored leniently, a
+        precision that does not fit its date being dropped by the import itself (the date wins)."""
+        return self
 
 
 class LibraryImport(BaseModel):

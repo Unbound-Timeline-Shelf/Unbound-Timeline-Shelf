@@ -1,3 +1,4 @@
+import { formatInstant } from "../utils/dates";
 import { computed, ref, watch } from "vue";
 import type { Achievement, Game } from "../types/game";
 import type { SegmentOption } from "../components/SegmentedTabs.vue";
@@ -409,7 +410,7 @@ export function useGameAchievements(game: Ref<Game | null>) {
       const last = times.reduce((m, t) => (t > m ? t : m));
       stats.push({
         label: "last unlock",
-        value: new Date(last).toLocaleDateString(),
+        value: formatInstant(last, { time: false }),
       });
       const weekAgo = Date.now() - 7 * 86_400_000;
       const week = times.filter((t) => new Date(t).getTime() >= weekAgo).length;

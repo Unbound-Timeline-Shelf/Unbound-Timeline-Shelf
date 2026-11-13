@@ -1,4 +1,5 @@
 // Small helpers shared by the Achievements tab and an achievement's own page.
+import { formatInstant, formatTime } from "./dates";
 import type {
   Achievement,
   AchievementKind,
@@ -61,10 +62,9 @@ export function formatPercent(percent: number): string {
 }
 
 export function unlockedOn(iso: string): { date: string; time: string } {
-  const d = new Date(iso);
   return {
-    date: d.toLocaleDateString(),
-    time: d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    date: formatInstant(iso, { time: false }),
+    time: formatTime(iso),
   };
 }
 
@@ -97,4 +97,13 @@ export function visibleMedal(
 
 export function isPlatinum(a: Achievement): boolean {
   return a.tierOverride === "platinum";
+}
+
+// The game's platinum trophy for the header summary, unless it is a hidden
+// one still locked (then nothing about it is shown).
+export function platinumOf(
+  achievements: readonly Achievement[],
+  hiddenLocked: (a: Achievement) => boolean,
+): Achievement | null {
+  return achievements.find((a) => isPlatinum(a) && !hiddenLocked(a)) ?? null;
 }

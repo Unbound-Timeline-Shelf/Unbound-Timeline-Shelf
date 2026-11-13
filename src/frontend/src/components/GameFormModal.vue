@@ -9,6 +9,7 @@ import {
   useId,
 } from "vue";
 import EditorShell from "./EditorShell.vue";
+import PartialDateInput from "./PartialDateInput.vue";
 import GamePlayFields from "./game/GamePlayFields.vue";
 import GameArtPicker from "./game/GameArtPicker.vue";
 import GameCollectionsField from "./game/GameCollectionsField.vue";
@@ -32,9 +33,10 @@ import type { PageOverrides, PageSettings } from "../utils/gamePage";
 import { fetchMetadataProviders } from "../services/metadata";
 import type { MetadataProviderStatus } from "../services/metadata";
 import {
-  formatPartialDate,
   localDateInputToUnixSeconds,
+  releaseInput,
   toLocalDateInput,
+  type DatePrecision,
 } from "../utils/dates";
 import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
 import { PLATFORM_SUGGESTIONS } from "../utils/platforms";
@@ -280,17 +282,14 @@ const achievementsProvider = ref<AchievementsProvider>(
   props.game?.achievementsProvider ?? null,
 );
 const releaseDate = ref(props.game?.releaseDate ?? "");
-// a provider knew only the year or month; the date field shows the period's
-// first day, and a date typed here is saved as a day (C5.5)
-const partialRelease = computed(() => {
-  const precision = props.game?.releaseDatePrecision;
-  if (
-    (precision !== "year" && precision !== "month") ||
-    releaseDate.value !== props.game?.releaseDate
-  )
-    return "";
-  return formatPartialDate(releaseDate.value, precision, preferences.value);
-});
+// how much of the release date is known (C5.5): a year or a month can be
+// typed on its own, and is saved as the first day of that period
+const releasePrecision = ref<DatePrecision | null>(
+  props.game?.releaseDatePrecision ?? null,
+);
+// false while the typed release date reads two ways or is not a date
+const releaseValid = ref(true);
+const releaseFieldId = `${useId()}-release`;
 // the local calendar day (what <input type="date"> shows), the stored value
 // is a full timestamp; only sent back if it was actually changed, so saving
 // the form doesn't reset the time a game was added to midnight
@@ -637,7 +636,7 @@ function buildInput() {
     relationshipType: parentGameId.value
       ? relationshipType.value || null
       : null,
-    releaseDate: releaseDate.value || null,
+    ...releaseInput(releaseDate.value, releasePrecision.value),
     dateAdded: dateAdded.value || null,
     createdAt:
       dateAdded.value && dateAdded.value !== initialDateAdded
@@ -733,6 +732,10 @@ let createdGame: Game | null = null;
 
 async function submit() {
   if (progressiveSearch.selected.value) return;
+  if (!releaseValid.value) {
+    error.value = "Choose which release date you meant.";
+    return;
+  }
   if (saving.value || selectingMetadata.value) return;
   if (compact.value) suggestFolderFromTitle();
   if (!validateBasics()) return;
@@ -1051,14 +1054,15 @@ async function submit() {
             <span>Series</span>
             <input v-model="series" type="text" />
           </label>
-          <label class="field">
-            <span>Release date</span>
-            <input v-model="releaseDate" type="date" />
-            <small v-if="partialRelease" class="field-hint"
-              >Only {{ partialRelease }} is known. A date you pick is saved as
-              that day.</small
-            >
-          </label>
+          <div class="field">
+            <label :for="releaseFieldId"><span>Release date</span></label>
+            <PartialDateInput
+              :id="releaseFieldId"
+              v-model:date="releaseDate"
+              v-model:precision="releasePrecision"
+              @update:valid="releaseValid = $event"
+            />
+          </div>
         </div>
         <p class="editor-section">Release details</p>
         <div class="editor-grid">
@@ -1467,6 +1471,7 @@ async function submit() {
         :disabled="
           saving ||
           selectingMetadata ||
+          !releaseValid ||
           !!progressiveSearch.selected.value ||
           (compact && !title.trim())
         "

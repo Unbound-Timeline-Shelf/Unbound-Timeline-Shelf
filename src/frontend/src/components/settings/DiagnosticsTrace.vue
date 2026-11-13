@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import type { TraceStage } from "../../services/notificationDiagnostics";
 
 defineProps<{ stages: TraceStage[]; heading: string }>();
@@ -21,7 +22,7 @@ function summary(stage: TraceStage): string[] {
   if (typeof d.projection === "string") out.push(`content ${d.projection}`);
   if (typeof d.trust === "string") out.push(`trust ${d.trust}`);
   if (typeof d.release_at === "number")
-    out.push(`released ${new Date(d.release_at * 1000).toLocaleString()}`);
+    out.push(`released ${formatInstant(d.release_at)}`);
   if (typeof d.renderer === "string") out.push(`renderer ${d.renderer}`);
   if (Array.isArray(d.attempts))
     out.push(

@@ -1,0 +1,1026 @@
+{
+  "version": 1,
+  "description": "Shared date-display vectors (SPEC-UI-POLISH-PASS 6.7). Instants are UTC; the backend appends ' UTC'. Relative rows use style dmy, time_format null and now = relative_now.",
+  "days": [
+    {
+      "style": "dmy",
+      "input": "2020-09-17",
+      "precision": null,
+      "expected": "17/09/2020"
+    },
+    {
+      "style": "dmy",
+      "input": "2020-09-17",
+      "precision": "day",
+      "expected": "17/09/2020"
+    },
+    {
+      "style": "dmy",
+      "input": "2020-09-01",
+      "precision": "month",
+      "expected": "September 2020"
+    },
+    {
+      "style": "dmy",
+      "input": "2020-01-01",
+      "precision": "year",
+      "expected": "2020"
+    },
+    {
+      "style": "dmy",
+      "input": "2020-09",
+      "precision": "month",
+      "expected": "September 2020"
+    },
+    {
+      "style": "dmy",
+      "input": "2020",
+      "precision": null,
+      "expected": "2020"
+    },
+    {
+      "style": "dmy",
+      "input": "0001-01-01",
+      "precision": null,
+      "expected": "01/01/0001"
+    },
+    {
+      "style": "dmy",
+      "input": "0999-12-31",
+      "precision": null,
+      "expected": "31/12/0999"
+    },
+    {
+      "style": "dmy",
+      "input": "9999-12-31",
+      "precision": null,
+      "expected": "31/12/9999"
+    },
+    {
+      "style": "dmy",
+      "input": "2024-02-29",
+      "precision": null,
+      "expected": "29/02/2024"
+    },
+    {
+      "style": "dmy",
+      "input": "2023-02-28",
+      "precision": null,
+      "expected": "28/02/2023"
+    },
+    {
+      "style": "dmy",
+      "input": "2021-01-31",
+      "precision": null,
+      "expected": "31/01/2021"
+    },
+    {
+      "style": "dmy",
+      "input": "2021-04-30",
+      "precision": null,
+      "expected": "30/04/2021"
+    },
+    {
+      "style": "dmy",
+      "input": "2021-06-30",
+      "precision": null,
+      "expected": "30/06/2021"
+    },
+    {
+      "style": "dmy",
+      "input": "2021-11-30",
+      "precision": null,
+      "expected": "30/11/2021"
+    },
+    {
+      "style": "dmy",
+      "input": "2021-12-31",
+      "precision": null,
+      "expected": "31/12/2021"
+    },
+    {
+      "style": "dmy",
+      "input": "0999-03",
+      "precision": "month",
+      "expected": "March 0999"
+    },
+    {
+      "style": "dmy",
+      "input": "0001",
+      "precision": "year",
+      "expected": "0001"
+    },
+    {
+      "style": "long",
+      "input": "2020-09-17",
+      "precision": null,
+      "expected": "17 September 2020"
+    },
+    {
+      "style": "long",
+      "input": "2020-09-17",
+      "precision": "day",
+      "expected": "17 September 2020"
+    },
+    {
+      "style": "long",
+      "input": "2020-09-01",
+      "precision": "month",
+      "expected": "September 2020"
+    },
+    {
+      "style": "long",
+      "input": "2020-01-01",
+      "precision": "year",
+      "expected": "2020"
+    },
+    {
+      "style": "long",
+      "input": "2020-09",
+      "precision": "month",
+      "expected": "September 2020"
+    },
+    {
+      "style": "long",
+      "input": "2020",
+      "precision": null,
+      "expected": "2020"
+    },
+    {
+      "style": "long",
+      "input": "0001-01-01",
+      "precision": null,
+      "expected": "1 January 0001"
+    },
+    {
+      "style": "long",
+      "input": "0999-12-31",
+      "precision": null,
+      "expected": "31 December 0999"
+    },
+    {
+      "style": "long",
+      "input": "9999-12-31",
+      "precision": null,
+      "expected": "31 December 9999"
+    },
+    {
+      "style": "long",
+      "input": "2024-02-29",
+      "precision": null,
+      "expected": "29 February 2024"
+    },
+    {
+      "style": "long",
+      "input": "2023-02-28",
+      "precision": null,
+      "expected": "28 February 2023"
+    },
+    {
+      "style": "long",
+      "input": "2021-01-31",
+      "precision": null,
+      "expected": "31 January 2021"
+    },
+    {
+      "style": "long",
+      "input": "2021-04-30",
+      "precision": null,
+      "expected": "30 April 2021"
+    },
+    {
+      "style": "long",
+      "input": "2021-06-30",
+      "precision": null,
+      "expected": "30 June 2021"
+    },
+    {
+      "style": "long",
+      "input": "2021-11-30",
+      "precision": null,
+      "expected": "30 November 2021"
+    },
+    {
+      "style": "long",
+      "input": "2021-12-31",
+      "precision": null,
+      "expected": "31 December 2021"
+    },
+    {
+      "style": "long",
+      "input": "0999-03",
+      "precision": "month",
+      "expected": "March 0999"
+    },
+    {
+      "style": "long",
+      "input": "0001",
+      "precision": "year",
+      "expected": "0001"
+    },
+    {
+      "style": "mdy",
+      "input": "2020-09-17",
+      "precision": null,
+      "expected": "09/17/2020"
+    },
+    {
+      "style": "mdy",
+      "input": "2020-09-17",
+      "precision": "day",
+      "expected": "09/17/2020"
+    },
+    {
+      "style": "mdy",
+      "input": "2020-09-01",
+      "precision": "month",
+      "expected": "September 2020"
+    },
+    {
+      "style": "mdy",
+      "input": "2020-01-01",
+      "precision": "year",
+      "expected": "2020"
+    },
+    {
+      "style": "mdy",
+      "input": "2020-09",
+      "precision": "month",
+      "expected": "September 2020"
+    },
+    {
+      "style": "mdy",
+      "input": "2020",
+      "precision": null,
+      "expected": "2020"
+    },
+    {
+      "style": "mdy",
+      "input": "0001-01-01",
+      "precision": null,
+      "expected": "01/01/0001"
+    },
+    {
+      "style": "mdy",
+      "input": "0999-12-31",
+      "precision": null,
+      "expected": "12/31/0999"
+    },
+    {
+      "style": "mdy",
+      "input": "9999-12-31",
+      "precision": null,
+      "expected": "12/31/9999"
+    },
+    {
+      "style": "mdy",
+      "input": "2024-02-29",
+      "precision": null,
+      "expected": "02/29/2024"
+    },
+    {
+      "style": "mdy",
+      "input": "2023-02-28",
+      "precision": null,
+      "expected": "02/28/2023"
+    },
+    {
+      "style": "mdy",
+      "input": "2021-01-31",
+      "precision": null,
+      "expected": "01/31/2021"
+    },
+    {
+      "style": "mdy",
+      "input": "2021-04-30",
+      "precision": null,
+      "expected": "04/30/2021"
+    },
+    {
+      "style": "mdy",
+      "input": "2021-06-30",
+      "precision": null,
+      "expected": "06/30/2021"
+    },
+    {
+      "style": "mdy",
+      "input": "2021-11-30",
+      "precision": null,
+      "expected": "11/30/2021"
+    },
+    {
+      "style": "mdy",
+      "input": "2021-12-31",
+      "precision": null,
+      "expected": "12/31/2021"
+    },
+    {
+      "style": "mdy",
+      "input": "0999-03",
+      "precision": "month",
+      "expected": "March 0999"
+    },
+    {
+      "style": "mdy",
+      "input": "0001",
+      "precision": "year",
+      "expected": "0001"
+    },
+    {
+      "style": "iso",
+      "input": "2020-09-17",
+      "precision": null,
+      "expected": "2020-09-17"
+    },
+    {
+      "style": "iso",
+      "input": "2020-09-17",
+      "precision": "day",
+      "expected": "2020-09-17"
+    },
+    {
+      "style": "iso",
+      "input": "2020-09-01",
+      "precision": "month",
+      "expected": "2020-09"
+    },
+    {
+      "style": "iso",
+      "input": "2020-01-01",
+      "precision": "year",
+      "expected": "2020"
+    },
+    {
+      "style": "iso",
+      "input": "2020-09",
+      "precision": "month",
+      "expected": "2020-09"
+    },
+    {
+      "style": "iso",
+      "input": "2020",
+      "precision": null,
+      "expected": "2020"
+    },
+    {
+      "style": "iso",
+      "input": "0001-01-01",
+      "precision": null,
+      "expected": "0001-01-01"
+    },
+    {
+      "style": "iso",
+      "input": "0999-12-31",
+      "precision": null,
+      "expected": "0999-12-31"
+    },
+    {
+      "style": "iso",
+      "input": "9999-12-31",
+      "precision": null,
+      "expected": "9999-12-31"
+    },
+    {
+      "style": "iso",
+      "input": "2024-02-29",
+      "precision": null,
+      "expected": "2024-02-29"
+    },
+    {
+      "style": "iso",
+      "input": "2023-02-28",
+      "precision": null,
+      "expected": "2023-02-28"
+    },
+    {
+      "style": "iso",
+      "input": "2021-01-31",
+      "precision": null,
+      "expected": "2021-01-31"
+    },
+    {
+      "style": "iso",
+      "input": "2021-04-30",
+      "precision": null,
+      "expected": "2021-04-30"
+    },
+    {
+      "style": "iso",
+      "input": "2021-06-30",
+      "precision": null,
+      "expected": "2021-06-30"
+    },
+    {
+      "style": "iso",
+      "input": "2021-11-30",
+      "precision": null,
+      "expected": "2021-11-30"
+    },
+    {
+      "style": "iso",
+      "input": "2021-12-31",
+      "precision": null,
+      "expected": "2021-12-31"
+    },
+    {
+      "style": "iso",
+      "input": "0999-03",
+      "precision": "month",
+      "expected": "0999-03"
+    },
+    {
+      "style": "iso",
+      "input": "0001",
+      "precision": "year",
+      "expected": "0001"
+    }
+  ],
+  "instants": [
+    {
+      "style": "dmy",
+      "time_format": null,
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "17/09/2020 14:05"
+    },
+    {
+      "style": "dmy",
+      "time_format": null,
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "17/09/2020 00:00"
+    },
+    {
+      "style": "dmy",
+      "time_format": null,
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "17/09/2020 12:00"
+    },
+    {
+      "style": "dmy",
+      "time_format": null,
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "17/09/2020 00:30"
+    },
+    {
+      "style": "dmy",
+      "time_format": null,
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "17/09/2020 12:59"
+    },
+    {
+      "style": "dmy",
+      "time_format": null,
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "29/02/2024 23:59"
+    },
+    {
+      "style": "dmy",
+      "time_format": "24h",
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "17/09/2020 14:05"
+    },
+    {
+      "style": "dmy",
+      "time_format": "24h",
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "17/09/2020 00:00"
+    },
+    {
+      "style": "dmy",
+      "time_format": "24h",
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "17/09/2020 12:00"
+    },
+    {
+      "style": "dmy",
+      "time_format": "24h",
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "17/09/2020 00:30"
+    },
+    {
+      "style": "dmy",
+      "time_format": "24h",
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "17/09/2020 12:59"
+    },
+    {
+      "style": "dmy",
+      "time_format": "24h",
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "29/02/2024 23:59"
+    },
+    {
+      "style": "dmy",
+      "time_format": "12h",
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "17/09/2020 2:05 PM"
+    },
+    {
+      "style": "dmy",
+      "time_format": "12h",
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "17/09/2020 12:00 AM"
+    },
+    {
+      "style": "dmy",
+      "time_format": "12h",
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "17/09/2020 12:00 PM"
+    },
+    {
+      "style": "dmy",
+      "time_format": "12h",
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "17/09/2020 12:30 AM"
+    },
+    {
+      "style": "dmy",
+      "time_format": "12h",
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "17/09/2020 12:59 PM"
+    },
+    {
+      "style": "dmy",
+      "time_format": "12h",
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "29/02/2024 11:59 PM"
+    },
+    {
+      "style": "long",
+      "time_format": null,
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "17 September 2020, 14:05"
+    },
+    {
+      "style": "long",
+      "time_format": null,
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "17 September 2020, 00:00"
+    },
+    {
+      "style": "long",
+      "time_format": null,
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "17 September 2020, 12:00"
+    },
+    {
+      "style": "long",
+      "time_format": null,
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "17 September 2020, 00:30"
+    },
+    {
+      "style": "long",
+      "time_format": null,
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "17 September 2020, 12:59"
+    },
+    {
+      "style": "long",
+      "time_format": null,
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "29 February 2024, 23:59"
+    },
+    {
+      "style": "long",
+      "time_format": "24h",
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "17 September 2020, 14:05"
+    },
+    {
+      "style": "long",
+      "time_format": "24h",
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "17 September 2020, 00:00"
+    },
+    {
+      "style": "long",
+      "time_format": "24h",
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "17 September 2020, 12:00"
+    },
+    {
+      "style": "long",
+      "time_format": "24h",
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "17 September 2020, 00:30"
+    },
+    {
+      "style": "long",
+      "time_format": "24h",
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "17 September 2020, 12:59"
+    },
+    {
+      "style": "long",
+      "time_format": "24h",
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "29 February 2024, 23:59"
+    },
+    {
+      "style": "long",
+      "time_format": "12h",
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "17 September 2020, 2:05 PM"
+    },
+    {
+      "style": "long",
+      "time_format": "12h",
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "17 September 2020, 12:00 AM"
+    },
+    {
+      "style": "long",
+      "time_format": "12h",
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "17 September 2020, 12:00 PM"
+    },
+    {
+      "style": "long",
+      "time_format": "12h",
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "17 September 2020, 12:30 AM"
+    },
+    {
+      "style": "long",
+      "time_format": "12h",
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "17 September 2020, 12:59 PM"
+    },
+    {
+      "style": "long",
+      "time_format": "12h",
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "29 February 2024, 11:59 PM"
+    },
+    {
+      "style": "mdy",
+      "time_format": null,
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "09/17/2020 2:05 PM"
+    },
+    {
+      "style": "mdy",
+      "time_format": null,
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "09/17/2020 12:00 AM"
+    },
+    {
+      "style": "mdy",
+      "time_format": null,
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "09/17/2020 12:00 PM"
+    },
+    {
+      "style": "mdy",
+      "time_format": null,
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "09/17/2020 12:30 AM"
+    },
+    {
+      "style": "mdy",
+      "time_format": null,
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "09/17/2020 12:59 PM"
+    },
+    {
+      "style": "mdy",
+      "time_format": null,
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "02/29/2024 11:59 PM"
+    },
+    {
+      "style": "mdy",
+      "time_format": "24h",
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "09/17/2020 14:05"
+    },
+    {
+      "style": "mdy",
+      "time_format": "24h",
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "09/17/2020 00:00"
+    },
+    {
+      "style": "mdy",
+      "time_format": "24h",
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "09/17/2020 12:00"
+    },
+    {
+      "style": "mdy",
+      "time_format": "24h",
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "09/17/2020 00:30"
+    },
+    {
+      "style": "mdy",
+      "time_format": "24h",
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "09/17/2020 12:59"
+    },
+    {
+      "style": "mdy",
+      "time_format": "24h",
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "02/29/2024 23:59"
+    },
+    {
+      "style": "mdy",
+      "time_format": "12h",
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "09/17/2020 2:05 PM"
+    },
+    {
+      "style": "mdy",
+      "time_format": "12h",
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "09/17/2020 12:00 AM"
+    },
+    {
+      "style": "mdy",
+      "time_format": "12h",
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "09/17/2020 12:00 PM"
+    },
+    {
+      "style": "mdy",
+      "time_format": "12h",
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "09/17/2020 12:30 AM"
+    },
+    {
+      "style": "mdy",
+      "time_format": "12h",
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "09/17/2020 12:59 PM"
+    },
+    {
+      "style": "mdy",
+      "time_format": "12h",
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "02/29/2024 11:59 PM"
+    },
+    {
+      "style": "iso",
+      "time_format": null,
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "2020-09-17 14:05"
+    },
+    {
+      "style": "iso",
+      "time_format": null,
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "2020-09-17 00:00"
+    },
+    {
+      "style": "iso",
+      "time_format": null,
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "2020-09-17 12:00"
+    },
+    {
+      "style": "iso",
+      "time_format": null,
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "2020-09-17 00:30"
+    },
+    {
+      "style": "iso",
+      "time_format": null,
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "2020-09-17 12:59"
+    },
+    {
+      "style": "iso",
+      "time_format": null,
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "2024-02-29 23:59"
+    },
+    {
+      "style": "iso",
+      "time_format": "24h",
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "2020-09-17 14:05"
+    },
+    {
+      "style": "iso",
+      "time_format": "24h",
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "2020-09-17 00:00"
+    },
+    {
+      "style": "iso",
+      "time_format": "24h",
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "2020-09-17 12:00"
+    },
+    {
+      "style": "iso",
+      "time_format": "24h",
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "2020-09-17 00:30"
+    },
+    {
+      "style": "iso",
+      "time_format": "24h",
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "2020-09-17 12:59"
+    },
+    {
+      "style": "iso",
+      "time_format": "24h",
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "2024-02-29 23:59"
+    },
+    {
+      "style": "iso",
+      "time_format": "12h",
+      "unix": 1600351509,
+      "iso": "2020-09-17T14:05:09Z",
+      "expected": "2020-09-17 2:05 PM"
+    },
+    {
+      "style": "iso",
+      "time_format": "12h",
+      "unix": 1600300800,
+      "iso": "2020-09-17T00:00:00Z",
+      "expected": "2020-09-17 12:00 AM"
+    },
+    {
+      "style": "iso",
+      "time_format": "12h",
+      "unix": 1600344000,
+      "iso": "2020-09-17T12:00:00Z",
+      "expected": "2020-09-17 12:00 PM"
+    },
+    {
+      "style": "iso",
+      "time_format": "12h",
+      "unix": 1600302600,
+      "iso": "2020-09-17T00:30:00Z",
+      "expected": "2020-09-17 12:30 AM"
+    },
+    {
+      "style": "iso",
+      "time_format": "12h",
+      "unix": 1600347540,
+      "iso": "2020-09-17T12:59:00Z",
+      "expected": "2020-09-17 12:59 PM"
+    },
+    {
+      "style": "iso",
+      "time_format": "12h",
+      "unix": 1709251199,
+      "iso": "2024-02-29T23:59:59Z",
+      "expected": "2024-02-29 11:59 PM"
+    }
+  ],
+  "placeholders": [
+    {
+      "style": "dmy",
+      "partial": true,
+      "expected": "dd/mm/yyyy, mm/yyyy or yyyy"
+    },
+    {
+      "style": "long",
+      "partial": true,
+      "expected": "17 September 2020, September 2020 or 2020"
+    },
+    {
+      "style": "mdy",
+      "partial": true,
+      "expected": "mm/dd/yyyy, mm/yyyy or yyyy"
+    },
+    {
+      "style": "iso",
+      "partial": true,
+      "expected": "yyyy-mm-dd, yyyy-mm or yyyy"
+    },
+    {
+      "style": "dmy",
+      "partial": false,
+      "expected": "dd/mm/yyyy"
+    },
+    {
+      "style": "long",
+      "partial": false,
+      "expected": "17 September 2020"
+    },
+    {
+      "style": "mdy",
+      "partial": false,
+      "expected": "mm/dd/yyyy"
+    },
+    {
+      "style": "iso",
+      "partial": false,
+      "expected": "yyyy-mm-dd"
+    }
+  ],
+  "relative_now": "2020-09-17T12:00:00Z",
+  "relative_now_unix": 1600344000,
+  "relative": [
+    {
+      "ago": 0,
+      "expected": "just now"
+    },
+    {
+      "ago": 59,
+      "expected": "just now"
+    },
+    {
+      "ago": 60,
+      "expected": "1 min ago"
+    },
+    {
+      "ago": 3599,
+      "expected": "59 min ago"
+    },
+    {
+      "ago": 3600,
+      "expected": "1 h ago"
+    },
+    {
+      "ago": 43140,
+      "expected": "11 h ago"
+    },
+    {
+      "ago": 43201,
+      "expected": "yesterday"
+    },
+    {
+      "ago": 129600,
+      "expected": "yesterday"
+    },
+    {
+      "ago": 129601,
+      "expected": "15/09/2020 23:59"
+    }
+  ]
+}

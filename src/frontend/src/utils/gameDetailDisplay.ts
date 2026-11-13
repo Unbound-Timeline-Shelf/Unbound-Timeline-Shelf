@@ -1,3 +1,4 @@
+import { formatInstant } from "./dates";
 import type { Achievement, AchievementTier } from "../types/game";
 
 export function displayFileName(filename: string): string {
@@ -25,8 +26,7 @@ export function deriveTier(achievement: Achievement): AchievementTier {
 }
 
 export function formatUnlockedAt(dateStr: string) {
-  const d = new Date(dateStr);
-  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  return formatInstant(dateStr);
 }
 
 export function formatPlaytime(minutes: number) {

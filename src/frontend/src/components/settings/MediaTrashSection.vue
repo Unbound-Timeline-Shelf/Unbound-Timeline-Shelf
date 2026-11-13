@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDayMonth } from "../../utils/dates";
 import { useConfirm } from "../../state/dialog";
 import { ref, computed, onMounted } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
@@ -229,10 +230,7 @@ async function chooseRetention(value: string) {
 }
 
 function formatDate(epochSeconds: number): string {
-  return new Date(epochSeconds * 1000).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+  return formatDayMonth(new Date(epochSeconds * 1000));
 }
 
 function deadlineText(deletedAt: number): string {
