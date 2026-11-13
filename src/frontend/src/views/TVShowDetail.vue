@@ -47,8 +47,9 @@ const router = useRouter();
 const showId = computed(() => route.params.id as string);
 
 const show = ref<TVShow | null>(null);
-const { saveError, quickSave } = useMediaQuickSave(show, (id, next) =>
-  updateTVShow(id, tvShowToInput(next)),
+const { saveError, quickSave, reconcile } = useMediaQuickSave(
+  show,
+  (id, next) => updateTVShow(id, tvShowToInput(next)),
 );
 usePageTitle(() => show.value?.title);
 const loading = ref(true);
@@ -119,6 +120,12 @@ function saveNote(note: string | null): Promise<boolean> {
   return quickSave(
     (target) => (target.note = note),
     "Could not save your note. Try again.",
+  );
+}
+
+function saveEdit(id: string, input: Record<string, unknown>) {
+  return reconcile(id, (confirmed) =>
+    updateTVShow(id, { ...tvShowToInput(confirmed), ...input }),
   );
 }
 
@@ -218,10 +225,12 @@ async function confirmMoveToWatching(move: boolean) {
   const previous = show.value.status;
   show.value.status = "in progress";
   try {
-    show.value = await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      status: "in progress",
-    });
+    await reconcile(show.value.id, (confirmed) =>
+      updateTVShow(show.value!.id, {
+        ...tvShowToInput(confirmed),
+        status: "in progress",
+      }),
+    );
   } catch {
     if (show.value) show.value.status = previous;
   }
@@ -259,10 +268,12 @@ async function confirmMoveToCompleted(move: boolean) {
   const previous = show.value.status;
   show.value.status = "watched";
   try {
-    show.value = await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      status: "watched",
-    });
+    await reconcile(show.value.id, (confirmed) =>
+      updateTVShow(show.value!.id, {
+        ...tvShowToInput(confirmed),
+        status: "watched",
+      }),
+    );
   } catch {
     if (show.value) show.value.status = previous;
   }
@@ -324,10 +335,12 @@ async function onCadenceChange(event: Event) {
   if (!show.value) return;
   const days = Number((event.target as HTMLSelectElement).value);
   try {
-    show.value = await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      airingIntervalDays: days === 7 ? null : days,
-    });
+    await reconcile(show.value.id, (confirmed) =>
+      updateTVShow(show.value!.id, {
+        ...tvShowToInput(confirmed),
+        airingIntervalDays: days === 7 ? null : days,
+      }),
+    );
   } catch (e) {
     episodesError.value =
       e instanceof Error ? e.message : "Failed to save the schedule.";
@@ -665,6 +678,7 @@ async function onRatingChange(value: number | null) {
     <TVShowFormModal
       v-if="showEditModal"
       :show="show"
+      :persist-edit="saveEdit"
       @saved="onSaved"
       @deleted="onDeleted"
       @closed="showEditModal = false"

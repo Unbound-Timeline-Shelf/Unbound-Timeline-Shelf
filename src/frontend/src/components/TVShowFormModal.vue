@@ -39,6 +39,11 @@ import { numberOrNull } from "../utils/numberInput";
 
 const props = defineProps<{
   show?: TVShow | null;
+  // Saves an edit to an existing show through the parent page's quick-save queue, so
+  // this does not settle out of order with a quick save made while this form was open
+  // (review finding on #536). Falls back to a direct update when the caller has not
+  // supplied one yet.
+  persistEdit?: (id: string, input: Record<string, unknown>) => Promise<TVShow>;
 }>();
 
 const emit = defineEmits<{
@@ -283,11 +288,13 @@ async function submit() {
       seasons: !props.show || applySeasons ? stagedSeasons.value : undefined,
     };
     const saved = props.show
-      ? await updateTVShow(props.show.id, {
-          // keep the fields this form doesn't show
-          ...tvShowToInput(props.show),
-          ...input,
-        })
+      ? props.persistEdit
+        ? await props.persistEdit(props.show.id, input)
+        : await updateTVShow(props.show.id, {
+            // keep the fields this form doesn't show
+            ...tvShowToInput(props.show),
+            ...input,
+          })
       : await createTVShow(input);
     emit("saved", saved);
   } catch (e) {

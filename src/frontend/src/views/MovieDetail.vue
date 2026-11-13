@@ -45,8 +45,9 @@ const router = useRouter();
 const movieId = computed(() => route.params.id as string);
 
 const movie = ref<Movie | null>(null);
-const { saveError, quickSave } = useMediaQuickSave(movie, (id, next) =>
-  updateMovie(id, movieToInput(next)),
+const { saveError, quickSave, reconcile } = useMediaQuickSave(
+  movie,
+  (id, next) => updateMovie(id, movieToInput(next)),
 );
 usePageTitle(() => movie.value?.title);
 const loading = ref(true);
@@ -165,17 +166,28 @@ async function saveProgress() {
   savingProgress.value = true;
   progressError.value = null;
   try {
-    movie.value = await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      status,
-      progressMinutes: minutes || null,
-    });
+    // Goes through the same per-id order as quickSave, so this does not settle
+    // out of order with a quick save and overwrite it with stale data, or vice
+    // versa (review finding on #536).
+    await reconcile(movie.value.id, (confirmed) =>
+      updateMovie(movie.value!.id, {
+        ...movieToInput(confirmed as Movie),
+        status,
+        progressMinutes: minutes || null,
+      }),
+    );
   } catch (e) {
     progressError.value =
       e instanceof Error ? e.message : "Couldn't save where you left off.";
   } finally {
     savingProgress.value = false;
   }
+}
+
+function saveEdit(id: string, input: Record<string, unknown>) {
+  return reconcile(id, (confirmed) =>
+    updateMovie(id, { ...movieToInput(confirmed as Movie), ...input }),
+  );
 }
 
 function onSaved(saved: Movie) {
@@ -473,6 +485,7 @@ async function onRatingChange(value: number | null) {
     <MovieFormModal
       v-if="showEditModal"
       :movie="movie"
+      :persist-edit="saveEdit"
       @saved="onSaved"
       @deleted="onDeleted"
       @closed="showEditModal = false"

@@ -88,6 +88,25 @@ it("keeps the note editor and its text open when the save fails", async () => {
   expect(wrapper.find("textarea").exists()).toBe(false);
 });
 
+// olie-ob's review of #536: reopening and saving an unchanged note must be a no-op success,
+// through a saveNote wired to quickSave exactly as the movie/TV/anime pages wire it.
+it("reopening and saving an unchanged note reports success, not a failure", async () => {
+  const record = ref<Row | null>(row({ note: "Already here" }));
+  const persist = vi.fn();
+  const { quickSave } = useMediaQuickSave(record, persist);
+  const saveNote = (note: string | null) =>
+    quickSave((r) => (r.note = note), "Could not save your note. Try again.");
+  const wrapper = mount(MyNote, {
+    props: { note: "Already here", saveNote },
+  });
+  await wrapper.find("button").trigger("click"); // Edit
+  await wrapper.find(".btn-solid").trigger("click"); // Save, unchanged
+  await flushPromises();
+  expect(persist).not.toHaveBeenCalled();
+  expect(wrapper.find("[role=alert]").exists()).toBe(false);
+  expect(wrapper.find("textarea").exists()).toBe(false);
+});
+
 it("retains a newer note typed while an earlier save succeeds", async () => {
   const slow = deferred<boolean>();
   const wrapper = mount(MyNote, {
@@ -135,6 +154,18 @@ it("keeps an independent confirmed rename out of later quick patches", async () 
     favorite: true,
     rating: 7,
   });
+});
+
+// olie-ob's review of #536: saving a value that already matches has no changed fields, so
+// `sending.length === 0` returned `saved === false` - a no-op was reported as a failure.
+it("reports a quick save that changes nothing as saved, not failed", async () => {
+  const record = ref<Row | null>(row({ note: "Same" }));
+  const persist = vi.fn();
+  const { quickSave, saveError } = useMediaQuickSave(record, persist);
+  const result = await quickSave((r) => (r.note = "Same"), "note failed");
+  expect(result).toBe(true);
+  expect(persist).not.toHaveBeenCalled();
+  expect(saveError.value).toBeNull();
 });
 
 // Review of 2447a586 (olie-ob): an editor response that replaces the record but
@@ -297,6 +328,68 @@ it("does not report a superseded failure while the request is in flight", async 
   expect(await note).toBe(false);
   expect(record.value).toMatchObject({ note: "editor" });
   expect(saveError.value).toBeNull();
+});
+
+// olie-ob's review of #536: useMediaQuickSave only serialized quick saves with one another;
+// the full editor and progress saves issued their own independent full-record writes, so one
+// delayed quick save could still commit last and overwrite an edit it never knew about.
+it("serializes an editor save behind an in-flight quick save, so neither overwrites the other", async () => {
+  type Wide = Row & { title: string };
+  const record = ref<Wide | null>({ ...row(), title: "Old" });
+  const favSlow = deferred<Wide>();
+  const persist = vi.fn(() => favSlow.promise);
+  const { quickSave, reconcile } = useMediaQuickSave(record, persist);
+
+  const favorite = quickSave((r) => (r.favorite = true), "fav failed");
+  await flushPromises();
+  expect(persist).toHaveBeenCalledTimes(1);
+
+  // The editor starts saving a rename while the favourite save is still in flight.
+  const editorWrite = vi.fn(async (confirmed: Wide) => ({
+    ...confirmed,
+    title: "New",
+  }));
+  const editorSave = reconcile("a", editorWrite);
+  await Promise.resolve();
+  await Promise.resolve();
+  // It must not run - let alone commit - until the quick save ahead of it settles.
+  expect(editorWrite).not.toHaveBeenCalled();
+
+  favSlow.resolve({ ...row({ favorite: true }), title: "Old" });
+  expect(await favorite).toBe(true);
+  const saved = await editorSave;
+
+  // The editor's write was built from the quick save's own confirmed result, never a stale
+  // read from before the favourite save settled, and nothing is lost either way.
+  expect(editorWrite).toHaveBeenCalledWith(
+    expect.objectContaining({ favorite: true, title: "Old" }),
+  );
+  expect(saved).toMatchObject({ favorite: true, title: "New" });
+  expect(record.value).toMatchObject({ favorite: true, title: "New" });
+});
+
+it("serializes a quick save behind an in-flight editor save, using its result as the base", async () => {
+  type Wide = Row & { title: string };
+  const record = ref<Wide | null>({ ...row(), title: "Old" });
+  const editorSlow = deferred<Wide>();
+  const persist = vi.fn(async (_id: string, next: Wide) => next);
+  const { quickSave, reconcile } = useMediaQuickSave(record, persist);
+
+  const editorSave = reconcile("a", () => editorSlow.promise);
+  const favorite = quickSave((r) => (r.favorite = true), "fav failed");
+  await flushPromises();
+  // The quick save's request must not go out until the editor's save ahead of it settles.
+  expect(persist).not.toHaveBeenCalled();
+
+  editorSlow.resolve({ ...row(), title: "New" });
+  await editorSave;
+  expect(await favorite).toBe(true);
+
+  expect(persist).toHaveBeenCalledWith(
+    "a",
+    expect.objectContaining({ favorite: true, title: "New" }),
+  );
+  expect(record.value).toMatchObject({ favorite: true, title: "New" });
 });
 
 it("keeps the newest draft when serialized answers resolve out of order", async () => {
