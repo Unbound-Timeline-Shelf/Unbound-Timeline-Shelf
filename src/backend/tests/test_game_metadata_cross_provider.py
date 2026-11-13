@@ -26,7 +26,7 @@ from src.database.session import SessionLocal
 from src.features.game_identity import decisions, field_provenance
 from src.features.game_identity.field_provenance import PROVENANCE_FIELDS
 from src.features.imports.library_games import get_or_create_game
-from src.plugin_api.metadata_contracts import MetadataPatch, MetadataRelease
+from src.plugin_api.metadata_contracts import MetadataIdentity, MetadataPatch, MetadataRelease
 from tests.test_game_metadata_refresh_identity import (
     ATLAS_ID,
     StandInProvider,
@@ -46,11 +46,19 @@ RAWG = "community.metadata-rawg.rawg"
 
 
 def _linked(provider_id: str, namespace: str, priority: int, **fields) -> StandInProvider:
-    """A provider that answers for the game's Steam id and reports its own id back."""
+    """A provider that answers for the game's Steam id, reporting its own id back.
+
+    A real provider in this situation looked the game up itself and found its own record for
+    it, so it reports a genuine identity verdict (Plugin API 1.1.20, C4.4): `match="id"`. Without
+    one, reporting only its own namespace's id (never the game's held Steam id) looks exactly
+    like a provider that fell back to a title search and found a different game, and the id
+    match's verification rules correctly withhold its fields and id pending confirmation (#492,
+    #500 reviews) rather than merging it into the one record these tests expect."""
 
     def respond(candidate):
         if candidate is None or candidate.provider_ids.get("steam") != STEAM_ID:
             return None
+        fields.setdefault("identity", MetadataIdentity(match="id"))
         return MetadataPatch(**fields)
 
     return StandInProvider(provider_id, namespace, respond, priority=priority)
