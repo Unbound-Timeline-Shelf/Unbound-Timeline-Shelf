@@ -134,12 +134,22 @@ def verified_record(
     group: Iterable[str],
     unverified: set[str],
     *,
-    metadata_of: Callable[[Sequence[Any]], dict[str, Any]],
+    merged_of: Callable[[Sequence[Any]], tuple[dict[str, Any], dict[str, str]]],
+    provider_names: Mapping[str, str] | None = None,
     asset_providers: Mapping[tuple[str, str], Iterable[str]] | None = None,
     assets: Iterable[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
-    """The result's metadata and artwork without what the unverified providers supplied."""
+    """The result's metadata, artwork and field attribution without what the unverified
+    providers supplied.
+
+    A value an unverified provider contributed is already excluded from ``members``, but a
+    merged record's ``field_providers`` (who gets credit for each field) was, until review
+    finding 6, always built from the full, unfiltered merge: a verified lower-priority provider
+    agreeing with an unverified higher-priority one on a field's value then had that field
+    correctly filled from the verified source, but still attributed to the unverified one. The
+    attribution is recomputed from the same filtered ``members`` the value came from."""
     asset_providers = asset_providers or {}
+    provider_names = provider_names or {}
     members = [
         replace(
             cast(Any, sources[key]),
@@ -156,4 +166,53 @@ def verified_record(
         contributing = set(asset_providers.get((asset["kind"], asset["url"]), ()))
         if not contributing or contributing - unverified:
             verified_assets.append(asset)
-    return {"verified_metadata": metadata_of(members), "verified_assets": verified_assets}
+    metadata, origins = merged_of(members)
+    return {
+        "verified_metadata": metadata,
+        "verified_assets": verified_assets,
+        "verified_field_providers": {
+            name: provider_names[provider_id]
+            for name, provider_id in origins.items()
+            if provider_id in provider_names
+        },
+    }
+
+
+def reverify_providers(
+    sources: Mapping[str, Source],
+    group: Iterable[str],
+    providers: Iterable[Provider],
+    claims: Mapping[str, Mapping[str, list[str]]],
+    held: Mapping[str, str],
+    *,
+    merged_of: Callable[[Sequence[Any]], tuple[dict[str, Any], dict[str, str]]],
+    provider_names: Mapping[str, str] | None = None,
+    asset_providers: Mapping[tuple[str, str], Iterable[str]] | None = None,
+    assets: Iterable[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    """Recompute ``unverified_providers``/``verified_record`` against a fresh ``held``: a route
+    that locked the game row after the lookup ran must check providers' claims against the ids
+    that row actually has, not the ones the lookup started with (review finding 4)."""
+    unverified = unverified_providers(
+        sources,
+        group,
+        providers,
+        dict(held),
+        claims,
+        asset_providers=asset_providers,
+        assets=assets,
+    )
+    result: dict[str, Any] = {"unverified_providers": sorted(unverified)}
+    if unverified:
+        result.update(
+            verified_record(
+                sources,
+                group,
+                unverified,
+                merged_of=merged_of,
+                provider_names=provider_names,
+                asset_providers=asset_providers,
+                assets=assets,
+            )
+        )
+    return result
