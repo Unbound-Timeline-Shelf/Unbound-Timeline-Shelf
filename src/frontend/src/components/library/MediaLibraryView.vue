@@ -26,11 +26,11 @@ import { PHONE_CARD_COLUMNS } from "../../utils/libraryLayout";
 import { numberOrNull, requiredNumber } from "../../utils/numberInput";
 import { quickTourActive } from "../../state/quickTour";
 import {
-  STATUS_BUCKETS,
-  statusBucket,
-  statusBucketLabel,
-  bucketToReal,
-  resolveStatus,
+  statusBuckets,
+  statusBucket as bucketOf,
+  statusBucketLabel as bucketLabelOf,
+  bucketToReal as realOf,
+  resolveStatus as resolveFor,
   mediaBucketCounts,
 } from "../../utils/mediaStatus";
 
@@ -45,13 +45,8 @@ import type {
 } from "../../types/mediaLibrary";
 export type { LibraryCardVM, EditForm } from "../../types/mediaLibrary";
 
-// The pill/tab labels shown everywhere in this view come from the shared
-// 5-value bucket set in utils/mediaStatus.ts — the pill's CSS modifier
-// class is just the bucket key itself (see .pill.watching etc below).
-const STATUSES = STATUS_BUCKETS;
-
 const props = defineProps<{
-  kind: "movie" | "tv" | "anime";
+  kind: "movie" | "tv" | "anime" | "book";
   addLabel: string;
   items: LibraryCardVM[];
   total: number;
@@ -67,7 +62,20 @@ const props = defineProps<{
   ) => Promise<{ failedIds: string[]; error: string | null }>;
 }>();
 
+// The pill/tab labels shown everywhere in this view come from the shared
+// 5-value bucket set in utils/mediaStatus.ts (books read them as reading
+// statuses) — the pill's CSS modifier class is just the bucket key itself
+// (see .pill.watching etc below).
+const STATUSES = statusBuckets(props.kind);
+const statusBucket = (real: string) => bucketOf(real, props.kind);
+const statusBucketLabel = (real: string) => bucketLabelOf(real, props.kind);
+const bucketToReal = (bucket: string) => realOf(bucket, props.kind);
+const resolveStatus = (bucket: string, current?: string) =>
+  resolveFor(bucket, current, props.kind);
+
 const emit = defineEmits<{
+  // books are added with their own form, not the provider search
+  (e: "add"): void;
   (e: "toggle-favorite", id: string): void;
   (e: "advance-episode", id: string): void;
   (e: "save-note", id: string, note: string | null): void;
@@ -118,6 +126,7 @@ watch(
 const typeLabel = computed(() => {
   if (props.kind === "movie") return "Movie";
   if (props.kind === "tv") return "TV Series";
+  if (props.kind === "book") return "Book";
   return "Anime";
 });
 
@@ -308,6 +317,7 @@ const BASE_PATH: Record<string, string> = {
   movie: "/movies",
   tv: "/tv",
   anime: "/anime",
+  book: "/books",
 };
 function applyLinkedFilter() {
   if (route.path !== BASE_PATH[props.kind]) return;
@@ -401,7 +411,9 @@ function computedRank(it: LibraryCardVM): number | null {
   return rankByItemId.value.get(it.id) ?? null;
 }
 
-const statusCounts = computed(() => mediaBucketCounts(props.statusCounts));
+const statusCounts = computed(() =>
+  mediaBucketCounts(props.statusCounts, props.kind),
+);
 
 function progressPct(it: LibraryCardVM): number {
   if (!it.isEpisodic) return it.watched > 0 ? 100 : 0;
@@ -847,6 +859,10 @@ function saveEdit() {
 // All three libraries share the progressive search page. The type is only a
 // local display filter; every provider search still covers movies, TV and anime.
 function openQuickAdd() {
+  if (props.kind === "book") {
+    emit("add");
+    return;
+  }
   void router.push({
     path: "/media/search",
     query: { type: props.kind === "tv" ? "tv_show" : props.kind },
@@ -874,7 +890,13 @@ defineExpose({ openQuickAdd });
         <div>
           <h1>
             {{
-              kind === "movie" ? "Movies" : kind === "tv" ? "TV Shows" : "Anime"
+              kind === "movie"
+                ? "Movies"
+                : kind === "tv"
+                  ? "TV Shows"
+                  : kind === "book"
+                    ? "Books"
+                    : "Anime"
             }}
           </h1>
           <div class="sub">
@@ -1219,6 +1241,7 @@ defineExpose({ openQuickAdd });
                     <img
                       v-if="it.poster"
                       v-viewport-image="it.poster"
+                      referrerpolicy="no-referrer"
                       :alt="it.title"
                       loading="lazy"
                       decoding="async"
@@ -1377,6 +1400,7 @@ defineExpose({ openQuickAdd });
                   <img
                     v-if="it.poster"
                     v-viewport-image="it.poster"
+                    referrerpolicy="no-referrer"
                     :alt="it.title"
                     loading="lazy"
                     decoding="async"
@@ -1570,6 +1594,7 @@ defineExpose({ openQuickAdd });
                     <img
                       v-if="it.poster"
                       v-viewport-image="it.poster"
+                      referrerpolicy="no-referrer"
                       :alt="it.title"
                       loading="lazy"
                       decoding="async"

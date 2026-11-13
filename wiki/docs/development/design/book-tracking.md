@@ -1,6 +1,7 @@
 # Design proposal: book tracking
 
-Status: accepted design, confirmed on 19 October 2026; nothing in this page is implemented. It
+Status: accepted design, confirmed on 19 October 2026. Phase 1 (works, editions, reads, trash, library
+views and export format 3) is implemented; see "Deviations in phase 1" in §9. It
 answers [#265](https://github.com/Unbound-Timeline-Shelf/Unbound-Timeline-Shelf/issues/265)
 (part of #248; upstream Rosefall #57). Confirmed scope and implementation phases appear below.
 
@@ -240,6 +241,43 @@ additive book metadata contract in phase 3. There is no new hardcoded provider. 
 provider integrations are deferred until needed. Series remain plain fields; work merging is deferred.
 These decisions complete the design, not book CRUD or provider support. Each phase needs its own implementation,
 regression coverage and migration/contract review.
+
+### Deviations in phase 1 (M9, `programme/m9-books-phase1`)
+
+- **Routes** follow the host's media convention (`/api/book/list|create|get|update|delete`, `/trash`,
+  `/{id}/restore|purge`, `/trash/empty`) instead of the REST shape sketched in §4. Editions and reads
+  are `POST /api/book/{id}/editions|reads` and `PATCH|DELETE .../{edition_id|read_id}`; each answers
+  with the whole work.
+- **Field names:** `rating` is `rating_overall` (as on the other media). `first_publish_year` became the
+  C5 partial date `first_published` + `first_published_precision` (C15 §6.2/§6.5), and an edition's
+  publish date is a partial date too. Typed book dates accept years 1000-2100.
+- **ISBN uniqueness** is also a partial unique index (`book_id`, `isbn_13`), not only an API check.
+- **Statuses** fill the five library tabs: Wishlist and Backlog are *Plan to Read*, On hold is *On Hold*.
+- **Export** is `LibraryExport` format 3 with `books` (editions and reads nested). An import of format > 3
+  is refused with a 400 saying to update the app; formats 1-2 import as before.
+- **Older builds do not refuse format 3 (gap against §4.4).** Releases before this change have no
+  `format_version` check in `/api/import/media` or `/api/import/library`, so importing a format-3
+  export into one of them silently drops the books. That cannot be fixed retroactively: only builds
+  from this change onward refuse a format newer than the one they know.
+- **Restore keeps the read rules.** A restored read that breaks the API's rules (page progress past
+  its edition's page count, percent over 100, a finish before its start) is dropped with an error
+  naming the work; the work, its editions and its other reads are still restored. The read routes
+  and the restore share one check (`reading_problem`).
+- **Restore keeps the response limits and reports every loss.** A restored work is checked against the
+  limits the book responses validate (authors, genres and tags, rating, text lengths, provider ids);
+  one that breaks them is skipped with an error, so a hand-edited export cannot break the Books
+  library, the export or the daily backup. An edition over a limit, or repeating another edition's
+  ISBN, is dropped on its own with an error; an invalid ISBN is left out with an error; editions past
+  50 and reads past 200 are cut with an error.
+- **Status follows a read's outcome only when it changes.** Adding a read, or changing a read's
+  outcome, applies the rule above; editing an older read's dates or progress leaves the work's status
+  as the person set it. A reread of a work already Read keeps it Read until the person changes it.
+- **Backups:** the daily JSON backup includes a library that holds only books.
+- **Tags:** book tags are part of the tag catalogue (counts, discovery and alias suggestions).
+- **Not in phase 1:** the activity log, the media-image proxy (covers load from the typed `cover_url`
+  with `referrerpolicy=no-referrer`, on the book page and on the List/Shelf/Board library tiles), the
+  plugin contract, the CSV export, the command palette, and any metadata provider. The book page has
+  its own hero rather than `MediaDetailHero`.
 
 ## 10. Acceptance mapping
 

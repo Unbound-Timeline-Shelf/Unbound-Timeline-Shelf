@@ -5,7 +5,7 @@ import SegmentedTabs from "./SegmentedTabs.vue";
 import type { SegmentOption } from "./SegmentedTabs.vue";
 
 defineProps<{
-  active: "movie" | "tv" | "anime" | "lists" | "search";
+  active: "movie" | "tv" | "anime" | "book" | "lists" | "search";
 }>();
 
 // Icons are the sidebar's own Movies / TV / Anime icons, and the same
@@ -34,6 +34,12 @@ const OPTIONS: SegmentOption[] = [
     label: "Anime",
     to: "/anime",
     icon: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 15l0.7 2 2 0.7-2 0.7-0.7 2-0.7-2-2-0.7 2-0.7z" />',
+  },
+  {
+    value: "book",
+    label: "Books",
+    to: "/books",
+    icon: '<path d="M4 4h11a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3V4z" /><path d="M4 17a3 3 0 0 1 3-3h11" />',
   },
   {
     value: "lists",

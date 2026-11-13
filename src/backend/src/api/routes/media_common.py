@@ -125,12 +125,13 @@ class LibraryFilters:
         year_column: Any,
         progress_column: Any = None,
         search_columns: tuple[Any, ...] = (),
+        status_buckets: dict[str, set[str]] | None = None,
     ) -> "LibraryFilters":
         return cls(
             status_filter=query.status,
             favorite=query.favorite,
             search_clause=search_clause,
-            status_values=_status_bucket(status_type, query.status_bucket),
+            status_values=_status_bucket(status_type, query.status_bucket, status_buckets),
             genres=query.genre,
             genre_match_all=query.genre_match_all,
             formats=query.format,
@@ -149,16 +150,23 @@ class LibraryFilters:
 
 # Parallel routes/models intentionally share this shape.
 # pylint: disable=duplicate-code
-def _status_bucket(status_type: type[Enum], bucket: str | None) -> set[Enum] | None:
+# The five status tabs of the movie, TV show and anime libraries. A kind whose statuses mean
+# something else (books: Backlog is a to-read pile, not a paused read) passes its own.
+WATCH_STATUS_BUCKETS: dict[str, set[str]] = {
+    "plan": {"WISHLIST", "WATCHLIST"},
+    "hold": {"BACKLOG"},
+    "watching": {"IN_PROGRESS", "REWATCH"},
+    "completed": {"WATCHED", "FAVORITE"},
+    "dropped": {"DROPPED"},
+}
+
+
+def _status_bucket(
+    status_type: type[Enum], bucket: str | None, buckets: dict[str, set[str]] | None = None
+) -> set[Enum] | None:
     if not bucket or bucket == "all":
         return None
-    values = {
-        "plan": {"WISHLIST", "WATCHLIST"},
-        "hold": {"BACKLOG"},
-        "watching": {"IN_PROGRESS", "REWATCH"},
-        "completed": {"WATCHED", "FAVORITE"},
-        "dropped": {"DROPPED"},
-    }.get(bucket)
+    values = (buckets or WATCH_STATUS_BUCKETS).get(bucket)
     if values is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid status bucket.")
     return {status_type(value) for value in values}
