@@ -881,9 +881,7 @@ async def test_an_id_edited_during_the_lookup_un_verifies_the_now_mismatched_pro
     slow_atlas = atlas(ATLAS_ID, description="Old Atlas record")
     slow_atlas.gate = gate
     providers(steam(), slow_atlas)
-    game_id = await add_game(
-        user_id, provider_ids={"steam": "12345", "atlas": ATLAS_ID}
-    )
+    game_id = await add_game(user_id, provider_ids={"steam": "12345", "atlas": ATLAS_ID})
 
     pending = asyncio.create_task(refresh(client, game_id))
     async with asyncio.timeout(5):
