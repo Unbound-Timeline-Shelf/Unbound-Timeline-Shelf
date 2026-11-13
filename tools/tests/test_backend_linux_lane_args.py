@@ -80,10 +80,58 @@ class LaneArgumentHandoff(unittest.TestCase):
             self.assertEqual(out, "0")
 
 
+@unittest.skipIf(BASH is None or sys.platform == "win32", "needs a POSIX bash")
+class ShardSelectorFailure(unittest.TestCase):
+    """An invalid shard (e.g. `--shard 7/6`) must fail the lane, not silently run the full suite.
+
+    `select_shard_files` used to read the selector's output through `mapfile < <(cmd)`, a process
+    substitution whose own exit status `mapfile` ignores, so a failing `backend_test_shards.py`
+    (for example an out-of-range `--shard`) left `files` empty and the caller fell through to
+    running every test file as if the shard had matched nothing to skip.
+    """
+
+    FAKE_SELECTOR_FAILS = "#!/usr/bin/env python3\nimport sys\nprint('error: boom', file=sys.stderr)\nsys.exit(1)\n"
+    FAKE_SELECTOR_EMPTY = "#!/usr/bin/env python3\n"
+
+    def _run(self, fake_selector: str) -> subprocess.CompletedProcess[str]:
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            shards_script = tmp_path / "backend_test_shards.py"
+            shards_script.write_text(fake_selector)
+            shards_script.chmod(0o755)
+            script = (
+                f"{_shard_selector_reader()}\n"
+                f'SHARDS_SCRIPT="{shards_script}"\n'
+                'LANE_SHARD=7 LANE_SHARDS=6 select_shard_files || exit 1\n'
+                'echo "files=${#files[@]}"'
+            )
+            return subprocess.run(
+                [BASH, "-c", script], capture_output=True, text=True, cwd=tmp
+            )
+
+    def test_a_failing_selector_fails_the_lane_instead_of_running_the_full_suite(self):
+        result = self._run(self.FAKE_SELECTOR_FAILS)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("files=", result.stdout)
+
+    def test_an_empty_selection_fails_the_lane_instead_of_running_the_full_suite(self):
+        result = self._run(self.FAKE_SELECTOR_EMPTY)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("files=", result.stdout)
+
+
 def _entrypoint_reader() -> str:
     """The entrypoint's `read_pytest_args` function, exactly as the container runs it."""
     lines = ENTRYPOINT.read_text().splitlines()
     start = lines.index("read_pytest_args() {")
+    end = lines.index("}", start)
+    return "\n".join(lines[start : end + 1])
+
+
+def _shard_selector_reader() -> str:
+    """The entrypoint's `select_shard_files` function, exactly as the container runs it."""
+    lines = ENTRYPOINT.read_text().splitlines()
+    start = lines.index("select_shard_files() {")
     end = lines.index("}", start)
     return "\n".join(lines[start : end + 1])
 

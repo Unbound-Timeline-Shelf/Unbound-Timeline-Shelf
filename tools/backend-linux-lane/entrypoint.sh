@@ -56,11 +56,33 @@ read_pytest_args() {
   if [ -f "$1" ]; then mapfile -d '' -t extra < "$1"; fi
 }
 read_pytest_args /out/lane-pytest-args
-files=()
-if [ -n "${LANE_SHARD:-}" ]; then
-  mapfile -t files < <(python3 "$WORK/tools/backend_test_shards.py" files --shard "$LANE_SHARD" --shards "${LANE_SHARDS:?LANE_SHARDS required with LANE_SHARD}")
+
+# Selects the test files for one shard. Runs the selector into a file rather than a process
+# substitution, so its exit status is not lost: `mapfile < <(cmd)` ignores `cmd`'s failure and can
+# leave `files` silently empty, which would fall through to running pytest over the whole suite
+# instead of the requested shard. An empty selection is also treated as a failure, never as "run
+# everything". Sets the `files` array; returns non-zero (via the caller's `exit`) on failure.
+select_shard_files() {
+  files=()
+  if [ -z "${LANE_SHARD:-}" ]; then return 0; fi
+  local shard_list
+  shard_list="$(mktemp)"
+  if ! python3 "$SHARDS_SCRIPT" files --shard "$LANE_SHARD" \
+      --shards "${LANE_SHARDS:?LANE_SHARDS required with LANE_SHARD}" >"$shard_list"; then
+    echo "== shard selector failed for shard $LANE_SHARD of $LANE_SHARDS" >&2
+    rm -f "$shard_list"
+    return 1
+  fi
+  mapfile -t files <"$shard_list"
+  rm -f "$shard_list"
+  if [ "${#files[@]}" -eq 0 ]; then
+    echo "== shard $LANE_SHARD of $LANE_SHARDS selected no test files" >&2
+    return 1
+  fi
   echo "== shard $LANE_SHARD of $LANE_SHARDS: ${#files[@]} test files"
-fi
+}
+SHARDS_SCRIPT="$WORK/tools/backend_test_shards.py"
+select_shard_files || exit 1
 
 set +e
 # -rA lists every test outcome; cache_dir keeps pytest's cache out of the tree.
