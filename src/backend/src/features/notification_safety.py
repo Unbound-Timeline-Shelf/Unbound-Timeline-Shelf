@@ -7,7 +7,9 @@ make a producer's mistake visible instead of shipping a mangled message.
 
 import re
 from collections.abc import Iterator
-from urllib.parse import parse_qsl, urlsplit
+from contextlib import contextmanager
+from contextvars import ContextVar
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -23,6 +25,21 @@ from src.plugin_api.notification_story_contracts import (
 
 _HTTPS_URL: TypeAdapter[str] = TypeAdapter(PublicHttpsUrl)
 _APP_PATH: TypeAdapter[str] = TypeAdapter(ApplicationPath)
+_PUBLIC_APP_URL: ContextVar[str | None] = ContextVar("notification_public_app_url", default=None)
+
+
+@contextmanager
+def notification_origin(public_app_url: str) -> Iterator[None]:
+    """Use the effective deployment URL for one acceptance/rendering operation.
+
+    Context-local state keeps pure nested renderers consistent without sharing
+    one account/request configuration with another asynchronous operation.
+    """
+    token = _PUBLIC_APP_URL.set(public_app_url)
+    try:
+        yield
+    finally:
+        _PUBLIC_APP_URL.reset(token)
 
 
 class UnsafeContentError(ValueError):
@@ -117,16 +134,27 @@ def _names_own_api(url: str) -> bool:
 
     An application path to `/api/...` is already refused; the same address written as
     `https://<this app>/api/...` must not pass as an "external" link either. Plugin pages under
-    `/api/plugins/.../frontend/` are sandboxed, but a notification has no reason to link there."""
-    own = urlsplit(settings.PUBLIC_APP_URL.strip()).hostname if settings.PUBLIC_APP_URL else None
+    `/api/plugins/.../frontend/` are sandboxed, but a notification has no reason to link there.
+
+    The host is the effective deployment URL (the saved setting, with the environment taking
+    precedence) when a caller supplied it through `notification_origin`, else the environment
+    value."""
+    configured = _PUBLIC_APP_URL.get()
+    if configured is None:
+        configured = settings.PUBLIC_APP_URL
+    if not configured:
+        return False
     try:
-        parts = urlsplit(url)
+        own, target = urlsplit(configured), urlsplit(url)
     except ValueError:
         return True
-    if not own or not parts.hostname or parts.hostname.lower() != own.lower():
+    if (target.hostname or "").rstrip(".").lower() != (own.hostname or "").rstrip(".").lower():
         return False
-    path = parts.path or "/"
-    return path == "/api" or path.startswith("/api/")
+    path = unquote(target.path) or "/"
+    # The API at the root, and under the deployment's own path prefix when it has one.
+    return any(
+        path == api or path.startswith(api + "/") for api in ("/api", own.path.rstrip("/") + "/api")
+    )
 
 
 def _has_secret_query(url: str) -> bool:

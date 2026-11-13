@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { latestRequest } from "../utils/latestRequest";
+import { useMediaQuickSave } from "../composables/useMediaQuickSave";
 import RetryMessage from "../components/RetryMessage.vue";
 import { localMediaImage } from "../utils/mediaImages";
 import { usePageTitle } from "../state/pageTitle";
@@ -44,6 +45,10 @@ const router = useRouter();
 const movieId = computed(() => route.params.id as string);
 
 const movie = ref<Movie | null>(null);
+const { saveError, quickSave, reconcile } = useMediaQuickSave(
+  movie,
+  (id, next) => updateMovie(id, movieToInput(next)),
+);
 usePageTitle(() => movie.value?.title);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -52,8 +57,11 @@ const activeTab = ref<"overview" | "related" | "recommended">("overview");
 const statusBucketModel = computed({
   get: () => statusBucket(movie.value?.status ?? "wishlist"),
   set: (bucket: string) => {
-    if (!movie.value) return;
-    movie.value.status = bucketToReal(bucket) as MovieStatus;
+    const next = bucketToReal(bucket) as MovieStatus;
+    void quickSave(
+      (target) => (target.status = next),
+      "Could not change the status. Try again.",
+    );
   },
 });
 
@@ -97,42 +105,18 @@ async function load() {
 async function toggleFavorite() {
   if (!movie.value) return;
   const next = !movie.value.favorite;
-  movie.value.favorite = next;
-  try {
-    await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      favorite: next,
-    });
-  } catch {
-    movie.value.favorite = !next;
-  }
+  await quickSave(
+    (target) => (target.favorite = next),
+    "Could not update the favourite. Try again.",
+  );
 }
 
-async function saveNote(note: string | null) {
-  if (!movie.value) return;
-  const previous = movie.value.note;
-  movie.value.note = note;
-  try {
-    movie.value = await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      note,
-    });
-  } catch {
-    movie.value.note = previous;
-  }
-}
-
-async function onStatusChange() {
-  if (!movie.value) return;
-  const previous = movie.value.status;
-  try {
-    movie.value = await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      status: movie.value.status,
-    });
-  } catch {
-    movie.value.status = previous;
-  }
+// The note editor stays open with the typed text when this returns false.
+function saveNote(note: string | null): Promise<boolean> {
+  return quickSave(
+    (target) => (target.note = note),
+    "Could not save your note. Try again.",
+  );
 }
 
 // "Left off at" (#191): where you stopped in a movie you haven't finished
@@ -182,17 +166,28 @@ async function saveProgress() {
   savingProgress.value = true;
   progressError.value = null;
   try {
-    movie.value = await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      status,
-      progressMinutes: minutes || null,
-    });
+    // Goes through the same per-id order as quickSave, so this does not settle
+    // out of order with a quick save and overwrite it with stale data, or vice
+    // versa (review finding on #536).
+    await reconcile(movie.value.id, (confirmed) =>
+      updateMovie(movie.value!.id, {
+        ...movieToInput(confirmed as Movie),
+        status,
+        progressMinutes: minutes || null,
+      }),
+    );
   } catch (e) {
     progressError.value =
       e instanceof Error ? e.message : "Couldn't save where you left off.";
   } finally {
     savingProgress.value = false;
   }
+}
+
+function saveEdit(id: string, input: Record<string, unknown>) {
+  return reconcile(id, (confirmed) =>
+    updateMovie(id, { ...movieToInput(confirmed as Movie), ...input }),
+  );
 }
 
 function onSaved(saved: Movie) {
@@ -440,17 +435,10 @@ watch(
   { immediate: true },
 );
 async function onRatingChange(value: number | null) {
-  if (!movie.value) return;
-  const previous = movie.value.ratingOverall;
-  movie.value.ratingOverall = value;
-  try {
-    movie.value = await updateMovie(movie.value.id, {
-      ...movieToInput(movie.value),
-      ratingOverall: value,
-    });
-  } catch {
-    if (movie.value) movie.value.ratingOverall = previous;
-  }
+  await quickSave(
+    (target) => (target.ratingOverall = value),
+    "Could not save the rating. Try again.",
+  );
 }
 </script>
 
@@ -475,6 +463,7 @@ async function onRatingChange(value: number | null) {
         @retry="load"
       />
     </p>
+    <p v-if="saveError" class="empty-state error-text">{{ saveError }}</p>
     <PluginExtensionSlot
       slot-id="media.detail.after-header"
       :context="{
@@ -496,6 +485,7 @@ async function onRatingChange(value: number | null) {
     <MovieFormModal
       v-if="showEditModal"
       :movie="movie"
+      :persist-edit="saveEdit"
       @saved="onSaved"
       @deleted="onDeleted"
       @closed="showEditModal = false"
@@ -520,7 +510,6 @@ async function onRatingChange(value: number | null) {
         ...(releaseYear ? [{ text: releaseYear }] : []),
         ...(runtimeLabel ? [{ text: runtimeLabel }] : []),
       ]"
-      @status-change="onStatusChange"
       @rating-change="onRatingChange"
       @edit="showEditModal = true"
       @toggle-favorite="toggleFavorite"
@@ -616,7 +605,7 @@ async function onRatingChange(value: number | null) {
           v-if="movie.description"
           :text="movie.description"
         />
-        <MyNote :note="movie.note" @save="saveNote" />
+        <MyNote :note="movie.note" :save-note="saveNote" />
         <MediaProviderPanel media-type="movie" :media-id="movie.id" />
       </div>
 

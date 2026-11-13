@@ -73,10 +73,11 @@ Fixed since the first pass:
 | A notification link to the app's own `/api/...` counted as an external link | Refused on the server (`url_is_safe`, against `PUBLIC_APP_URL`) and in the browser (`namesOwnApi`, against the page's own host). `test_plugin_content_followups.py`, `notificationStory.test.ts` |
 | Browser push previews showed Markdown source (`**Now** streaming`) | The preview renders the summary and turns it into plain text. `test_notification_browser_story.py` |
 | A plugin frame could ask the host to save a secret or settings without a click | `plugin.save-secret` and `plugin.save-settings` now need transient user activation, like external navigation. `pluginExternalNavigation.test.ts` |
+| A notification link to the host's own API under a deployment path prefix was not refused | `url_is_safe` resolves the effective deployment URL (the saved setting, with the environment taking precedence) through `notification_origin`, and refuses both `/api/...` at the root and `<prefix>/api/...` under it. `test_notification_rich_content.py` |
+| Public-app files (`/api/public-apps/{id}/app/...`) were served unauthenticated on the main origin, with `connect-src 'self'` and no sandbox | `PUBLIC_APPS_ORIGIN` requires a separate HTTPS hostname. Main-origin asset requests are refused (503 with setup instructions, or if it matches the main hostname); the public hostname exposes only public-app APIs, strips incoming/outgoing cookies, and refuses calls from its Origin to ordinary host APIs. `test_public_app_origin.py` |
 
 Still open, each needing an owner decision rather than a code fix:
 
-* **Public-app files** (`/api/public-apps/{id}/app/...`) are served unauthenticated with `connect-src 'self'` and no sandbox, because the app talks to the host. Sandboxing them needs a separate origin (the `PUBLIC_APPS_ORIGIN` option in the plugin platform design) or a design change for the Discord embed; checking `Sec-Fetch-Dest` alone would break the embed in some clients.
 * **Native plugin frontends** run on the host origin by design (they are reviewed, admin-installed code); a CSP for them and blocking direct navigation to their files would change what native plugins can do and needs the plugin platform owner's agreement.
 * **Plugin page files** are served to any signed-in user of the host, not only users with a grant for that plugin. They contain no user data, but whether that is intended should be confirmed.
 

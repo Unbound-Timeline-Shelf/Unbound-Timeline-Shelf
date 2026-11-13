@@ -39,6 +39,11 @@ import { numberOrNull } from "../utils/numberInput";
 
 const props = defineProps<{
   show?: Anime | null;
+  // Saves an edit to an existing anime through the parent page's quick-save queue, so
+  // this does not settle out of order with a quick save made while this form was open
+  // (review finding on #536). Falls back to a direct update when the caller has not
+  // supplied one yet.
+  persistEdit?: (id: string, input: Record<string, unknown>) => Promise<Anime>;
 }>();
 
 const emit = defineEmits<{
@@ -296,11 +301,13 @@ async function submit() {
       ),
     };
     const saved = props.show
-      ? await updateAnime(props.show.id, {
-          // keep the fields this form doesn't show
-          ...animeToInput(props.show),
-          ...input,
-        })
+      ? props.persistEdit
+        ? await props.persistEdit(props.show.id, input)
+        : await updateAnime(props.show.id, {
+            // keep the fields this form doesn't show
+            ...animeToInput(props.show),
+            ...input,
+          })
       : await createAnime(input);
     emit("saved", saved);
   } catch (e) {

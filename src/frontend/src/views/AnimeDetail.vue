@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { latestRequest } from "../utils/latestRequest";
+import { useMediaQuickSave } from "../composables/useMediaQuickSave";
 import RetryMessage from "../components/RetryMessage.vue";
 import { localMediaImage } from "../utils/mediaImages";
 import { usePageTitle } from "../state/pageTitle";
@@ -59,6 +60,10 @@ const router = useRouter();
 const showId = computed(() => route.params.id as string);
 
 const show = ref<Anime | null>(null);
+const { saveError, quickSave, reconcile } = useMediaQuickSave(
+  show,
+  (id, next) => updateAnime(id, animeToInput(next)),
+);
 usePageTitle(() => show.value?.title);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -69,8 +74,11 @@ const activeTab = ref<"overview" | "episodes" | "related" | "recommended">(
 const statusBucketModel = computed({
   get: () => statusBucket(show.value?.status ?? "wishlist"),
   set: (bucket: string) => {
-    if (!show.value) return;
-    show.value.status = bucketToReal(bucket) as AnimeStatus;
+    const next = bucketToReal(bucket) as AnimeStatus;
+    void quickSave(
+      (target) => (target.status = next),
+      "Could not change the status. Try again.",
+    );
   },
 });
 
@@ -128,42 +136,24 @@ async function load() {
 async function toggleFavorite() {
   if (!show.value) return;
   const next = !show.value.favorite;
-  show.value.favorite = next;
-  try {
-    await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      favorite: next,
-    });
-  } catch {
-    show.value.favorite = !next;
-  }
+  await quickSave(
+    (target) => (target.favorite = next),
+    "Could not update the favourite. Try again.",
+  );
 }
 
-async function saveNote(note: string | null) {
-  if (!show.value) return;
-  const previous = show.value.note;
-  show.value.note = note;
-  try {
-    show.value = await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      note,
-    });
-  } catch {
-    show.value.note = previous;
-  }
+// The note editor stays open with the typed text when this returns false.
+function saveNote(note: string | null): Promise<boolean> {
+  return quickSave(
+    (target) => (target.note = note),
+    "Could not save your note. Try again.",
+  );
 }
 
-async function onStatusChange() {
-  if (!show.value) return;
-  const previous = show.value.status;
-  try {
-    show.value = await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      status: show.value.status,
-    });
-  } catch {
-    show.value.status = previous;
-  }
+function saveEdit(id: string, input: Record<string, unknown>) {
+  return reconcile(id, (confirmed) =>
+    updateAnime(id, { ...animeToInput(confirmed), ...input }),
+  );
 }
 
 function onSaved(saved: Anime) {
@@ -279,10 +269,12 @@ async function confirmMoveToWatching(move: boolean) {
   const previous = show.value.status;
   show.value.status = "in progress";
   try {
-    show.value = await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      status: "in progress",
-    });
+    await reconcile(show.value.id, (confirmed) =>
+      updateAnime(show.value!.id, {
+        ...animeToInput(confirmed),
+        status: "in progress",
+      }),
+    );
   } catch {
     if (show.value) show.value.status = previous;
   }
@@ -320,10 +312,12 @@ async function confirmMoveToCompleted(move: boolean) {
   const previous = show.value.status;
   show.value.status = "watched";
   try {
-    show.value = await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      status: "watched",
-    });
+    await reconcile(show.value.id, (confirmed) =>
+      updateAnime(show.value!.id, {
+        ...animeToInput(confirmed),
+        status: "watched",
+      }),
+    );
   } catch {
     if (show.value) show.value.status = previous;
   }
@@ -385,10 +379,12 @@ async function onCadenceChange(event: Event) {
   if (!show.value) return;
   const days = Number((event.target as HTMLSelectElement).value);
   try {
-    show.value = await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      airingIntervalDays: days === 7 ? null : days,
-    });
+    await reconcile(show.value.id, (confirmed) =>
+      updateAnime(show.value!.id, {
+        ...animeToInput(confirmed),
+        airingIntervalDays: days === 7 ? null : days,
+      }),
+    );
   } catch (e) {
     episodesError.value =
       e instanceof Error ? e.message : "Failed to save the schedule.";
@@ -923,17 +919,10 @@ watch(
   { immediate: true },
 );
 async function onRatingChange(value: number | null) {
-  if (!show.value) return;
-  const previous = show.value.ratingOverall;
-  show.value.ratingOverall = value;
-  try {
-    show.value = await updateAnime(show.value.id, {
-      ...animeToInput(show.value),
-      ratingOverall: value,
-    });
-  } catch {
-    if (show.value) show.value.ratingOverall = previous;
-  }
+  await quickSave(
+    (target) => (target.ratingOverall = value),
+    "Could not save the rating. Try again.",
+  );
 }
 </script>
 
@@ -958,6 +947,7 @@ async function onRatingChange(value: number | null) {
         @retry="load"
       />
     </p>
+    <p v-if="saveError" class="empty-state error-text">{{ saveError }}</p>
     <PluginExtensionSlot
       slot-id="media.detail.after-header"
       :context="{
@@ -979,6 +969,7 @@ async function onRatingChange(value: number | null) {
     <AnimeFormModal
       v-if="showEditModal"
       :show="show"
+      :persist-edit="saveEdit"
       @saved="onSaved"
       @deleted="onDeleted"
       @closed="showEditModal = false"
@@ -1010,7 +1001,6 @@ async function onRatingChange(value: number | null) {
           : []),
       ]"
       bright-native-title
-      @status-change="onStatusChange"
       @rating-change="onRatingChange"
       @edit="showEditModal = true"
       @toggle-favorite="toggleFavorite"
@@ -1074,7 +1064,7 @@ async function onRatingChange(value: number | null) {
           v-if="show.description"
           :text="show.description"
         />
-        <MyNote :note="show.note" @save="saveNote" />
+        <MyNote :note="show.note" :save-note="saveNote" />
         <MediaProviderPanel media-type="anime" :media-id="show.id" />
 
         <div v-if="allSeasons.length > 1" class="seasons-section">
