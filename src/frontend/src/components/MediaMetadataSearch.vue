@@ -13,6 +13,8 @@ const props = defineProps<{
   label: string;
   // "movie", "show" or "anime", for the placeholder
   noun: string;
+  // replaces "Search by <noun> title" (books also search by author or ISBN)
+  placeholder?: string;
   results: { key: string; title: string; provider: string; detail?: string }[];
   searching: boolean;
   enrichingMedia?: boolean;
@@ -42,8 +44,8 @@ const emit = defineEmits<{
         v-model="query"
         type="search"
         class="text-input"
-        :placeholder="`Search by ${noun} title`"
-        :aria-label="`Search by ${noun} title`"
+        :placeholder="placeholder ?? `Search by ${noun} title`"
+        :aria-label="placeholder ?? `Search by ${noun} title`"
         :aria-describedby="block ? noteId : undefined"
         @keydown.enter.prevent="!block && emit('search')"
       />

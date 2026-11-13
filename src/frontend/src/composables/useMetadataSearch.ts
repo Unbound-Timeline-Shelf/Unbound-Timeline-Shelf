@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from "vue";
 import type { Ref } from "vue";
 import { preferences } from "../state/preferences";
+import { normalizeIsbn13 } from "../utils/isbn";
 import {
   cancelMetadataSearch,
   metadataEvents,
@@ -24,9 +25,16 @@ export function matchesMetadataQuery(
   query: string,
 ): boolean {
   const normalized = normalizedMetadataQuery(query);
-  return [candidate.title, ...candidate.alternate_titles].some((title) =>
-    normalizedMetadataQuery(title).includes(normalized),
-  );
+  // A book is also found by its authors. A valid ISBN in a book search is an
+  // identifier lookup (the server sends it as the isbn option), so its answer
+  // stands unless it names another ISBN.
+  const isbn = candidate.media_type === "book" ? normalizeIsbn13(query) : null;
+  if (isbn) return !candidate.isbn_13 || candidate.isbn_13 === isbn;
+  return [
+    candidate.title,
+    ...candidate.alternate_titles,
+    ...(candidate.authors ?? []),
+  ].some((title) => normalizedMetadataQuery(title).includes(normalized));
 }
 
 function retainMetadata(

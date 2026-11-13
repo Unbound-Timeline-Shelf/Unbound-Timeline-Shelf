@@ -1,6 +1,7 @@
 # Progressive metadata and Plugin API 1.1.1
 
-The host owns one metadata handler for games, movies, TV and anime. Its core
+The host owns one metadata handler for games, movies, TV, anime and (from Plugin API 1.1.20)
+books. Books have no core provider: they come only from optional plugins. Its core
 providers are **hardcoded inside the host application** and invoke their APIs
 directly through cancellable asynchronous HTTP. They are not installed plugins,
 packages, runtime workers or catalogue downloads. No plugin runtime or manual
@@ -151,6 +152,65 @@ checkbox could not tell "no" from "not set"; a downgrade turns `yes` and `partia
 clients read (`yes` and `partial` are true) and adds `crossplay_status` with the stored value.
 A client that saves only the flag keeps a stored `partial` or `no` it agrees with; a client that
 sends `crossplay_status` (one of the three values, or `null`) sets it exactly.
+
+### Plugin API 1.1.20: books
+
+The book additions are part of the same **1.1.20** contract as releases (one constant,
+`UNIFIED_CONTRACT` in `plugin_api/base_contracts.py`, gates both). Each is accepted **only** from
+a plugin whose contract is 1.1.20 or later; from an older plugin the field is refused even
+when it is `null`, so the call fails with `invalid_response`.
+
+| Where | Addition | Rules |
+|---|---|---|
+| `MetadataProviderRegistration.media_types` | `book` | At most one of each media type (now five). A registration listing `book` is refused below 1.1.20 when the plugin registers the provider (the registration is validated against the contract the plugin declares). |
+| `MetadataProviderRequest.media_type` | `book` | |
+| `MetadataProviderRequest.options.isbn` | a normalised ISBN-13 | Sent only on a book search whose text is a valid ISBN-10 or ISBN-13 (hyphens and spaces allowed; an ISBN-10 is converted). Refused on any other media type and on a wrong check digit. Not sent to older plugins, which never register `book`. |
+| `MetadataCandidate.authors` | up to 30 names (200 characters) | Shown in results; the add-book search also matches them. |
+| `MetadataCandidate.isbn_13` | a valid ISBN-13 | The ISBN the provider matched. It is not a `provider_ids` namespace: provider ids stay confined to the provider's own namespaces. |
+| `MetadataPatch.book` | `MetadataBook` (below) | The work's book details. |
+
+`MetadataBook` is `{authors, subtitle, isbn_13, isbn_10, page_count, series_name,
+series_position, original_language, first_published, editions}`:
+
+- `authors`: up to 30 `{name, role}`; `role` is a `book_creator_role` value (`author`, `editor`,
+  `translator`, `illustrator`, `narrator`, `contributor`), default `author`.
+- `first_published` and an edition's `publish_date` are `{date, precision}` partial dates
+  (`YYYY`, `YYYY-MM` or `YYYY-MM-DD`, precision matching the shape), years 1000–2100: older than
+  a release's 1950 floor, because books are.
+- `editions`: up to 50 `{key, name, isbn_13, isbn_10, format, publisher, publish_date,
+  page_count, language}`. `format` is a `book_format` value (`paperback`, `hardcover`, `ebook`,
+  `audiobook`, `other`). An edition's ISBN-10 and ISBN-13 must name the same book, and two
+  editions may not repeat an ISBN-13.
+- ISBNs are normalised digits with a valid check digit (`X` only as the last ISBN-10 digit);
+  page counts are 1–100000.
+
+`book_format` and `book_creator_role` are in `contracts/vocab-v1.json` with the other shared
+vocabularies.
+
+**What the host does with it.** Nothing is stored by a provider on its own: the person chooses.
+*Add book* searches the book providers (title, author or ISBN), shows the chosen result (its cover
+through the host's artwork preview, which fetches only the selected result's own asset URLs) and,
+with **Use these details**, fills the form; saving keeps the `provider_ids` of the result used
+last (they replace, never merge with, those of an earlier result) and, only when the search text
+was an ISBN equal to the result's `isbn_13`, also adds that edition. An ISBN a provider reports
+for a title or author search adds nothing. On a book with provider ids,
+**Find editions** asks the providers for that work again and lists their `editions`; **Add this
+edition** copies one into the work's editions (an edition whose ISBN the work already holds is
+marked *In your editions*). Dates are shown through the shared partial-date formatter, at their
+precision.
+
+**Permissions and enforcement (AGENTS.md §6.3).** Books need no new permission: a book provider
+is an ordinary `metadata_providers.register` registration with the same permission, credential
+and account opt-out handling as the other media. The host enforces the contract in three places:
+the registration (refused below 1.1.20), each request it builds (`isbn` only on books) and each
+response (validated against the plugin's negotiated contract, so a 1.1.19 plugin cannot send
+book data). Tests: `src/backend/tests/test_plugin_api_books_contract.py`. Plugin-repository
+examples (an optional Open Library plugin and the `metadata-atlas` book mapping) belong in their
+own repositories (#265 §7, phase 3).
+
+**Contract range (C16 §22.6).** A plugin built for 1.1.20 can declare `api_contract_max`
+([manifest](plugin-manifest.md#compatibility)). The host runs it at `min(api_contract_max,
+host maximum)` and validates its output against that contract.
 
 ### Achievement catalogues (API 1.1.15)
 

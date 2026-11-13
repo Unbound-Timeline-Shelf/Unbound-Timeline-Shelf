@@ -159,6 +159,7 @@ function description(provider: MetadataProviderStatus) {
     movie: "Movies",
     tv_show: "TV",
     anime: "Anime",
+    book: "Books",
   };
   return `${provider.media_types.map((type) => media[type]).join(", ")} · ${[
     provider.operations.metadata ? "metadata" : null,

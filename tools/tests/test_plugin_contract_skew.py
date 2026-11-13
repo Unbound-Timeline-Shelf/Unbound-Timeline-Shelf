@@ -63,6 +63,13 @@ class CompatibilityTests(unittest.TestCase):
         new["properties"]["kind"] = {"enum": ["a", "b", "c"]}
         self.assertEqual(skew.schema_problems(OLD, new), [])
 
+    def test_relaxed_numeric_bounds_are_compatible(self):
+        old = {"type": "array", "maxItems": 4, "minItems": 2}
+        relaxed = {"type": "array", "maxItems": 5, "minItems": 1}
+        self.assertEqual(skew.schema_problems(old, relaxed), [])
+        self.assertTrue(skew.schema_problems(old, {"type": "array", "maxItems": 3, "minItems": 2}))
+        self.assertTrue(skew.schema_problems(old, {"type": "array", "maxItems": 4, "minItems": 3}))
+
     def test_breaking_changes_are_reported(self):
         cases = {}
         removed = evolved()
