@@ -624,6 +624,54 @@ async def test_export_v3_round_trips_books_editions_reads_and_locks(http, people
     assert again.json()["created"]["books"] == 0 and again.json()["skipped"]["books"] == 1
 
 
+async def test_restore_keeps_two_distinct_books_sharing_a_title_and_year(http, people):
+    """Title and first-published year alone are not a book's identity: two unrelated works can
+    share both (#533 review). Author and ISBN tell them apart; restoring the same export twice
+    must still be idempotent, not fall back to losing the second work again."""
+    _, other = people
+    export = {
+        "format_version": 3,
+        "exported_at": 1,
+        "books": [
+            {
+                "title": "Echoes",
+                "sort_title": "Echoes",
+                "authors": ["Dana Price"],
+                "first_published": "1999-01-01",
+                "first_published_precision": "year",
+                "editions": [{"isbn_13": ISBN13, "format": "paperback"}],
+            },
+            {
+                "title": "Echoes",
+                "sort_title": "Echoes",
+                "authors": ["Marcus Webb"],
+                "first_published": "1999-01-01",
+                "first_published_precision": "year",
+                "editions": [{"isbn_13": ISBN13_979, "format": "hardcover"}],
+            },
+        ],
+    }
+    first = await http.post("/api/import/media", files=_upload(export), headers=other.headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["created"]["books"] == 2, first.json()
+    assert first.json()["skipped"]["books"] == 0
+
+    items = (await http.get("/api/book/list", headers=other.headers)).json()["items"]
+    assert sorted(item["authors"][0] for item in items) == ["Dana Price", "Marcus Webb"]
+    for item in items:
+        assert len(item["editions"]) == 1
+
+    # restoring the same export again is still idempotent: nothing is duplicated
+    again = await http.post("/api/import/media", files=_upload(export), headers=other.headers)
+    assert again.json() == {
+        "created": {"movies": 0, "tv_shows": 0, "anime": 0, "books": 0},
+        "skipped": {"movies": 0, "tv_shows": 0, "anime": 0, "books": 2},
+        "errors": [],
+    }
+    items_after = (await http.get("/api/book/list", headers=other.headers)).json()["items"]
+    assert len(items_after) == 2
+
+
 async def test_an_export_from_before_books_still_imports_and_reports_no_books(http, people):
     _, other = people
     older = {

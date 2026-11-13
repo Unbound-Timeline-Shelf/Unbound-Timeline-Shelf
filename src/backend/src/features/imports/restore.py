@@ -306,10 +306,79 @@ async def _add_book_children(
     errors.extend(f"{book.title}: {problem}" for problem in problems)
 
 
+def _author_key(authors: Any) -> tuple[str, ...]:
+    """A stable, order-independent key for a book's author list."""
+    return tuple(sorted({a.strip().lower() for a in (authors or []) if isinstance(a, str) and a.strip()}))
+
+
+def _entry_isbn13(raw: dict[str, Any]) -> str | None:
+    """The lowest normalised ISBN-13 among an entry's editions.
+
+    Title and first-published year alone are not a book's identity: two distinct works can
+    share both (a reprint under the same title, a common title, or simply two unrelated books
+    published the same year), and both can have an unknown year. Author and ISBN are the
+    available signals that tell such entries apart (#533 review); this is read the same way on
+    export (``_entry_isbn13``) and from already-restored books (``_existing_books``), so
+    restoring one export twice still matches its own books and skips them, not just entries that
+    also happen to share every one of these fields by coincidence."""
+    isbns = set()
+    for entry in raw.get("editions") or []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            pair = normalise_pair(entry.get("isbn_13"), entry.get("isbn_10"))
+        except InvalidIsbn:
+            continue
+        if pair and pair.isbn_13:
+            isbns.add(pair.isbn_13)
+    return min(isbns) if isbns else None
+
+
+_BookIdentity: TypeAlias = tuple[str, int | None, tuple[str, ...], str | None]
+
+
+def _book_identity(title: str, fields: dict[str, Any], raw: dict[str, Any]) -> _BookIdentity:
+    return (
+        title.lower(),
+        _year(fields.get("first_published")),
+        _author_key(fields.get("authors")),
+        _entry_isbn13(raw),
+    )
+
+
+async def _existing_books(db: AsyncSession, user_id: Any) -> set[_BookIdentity]:
+    rows = (
+        await db.execute(
+            select(Book.id, Book.title, Book.first_published, Book.authors).where(
+                Book.user_id == user_id, Book.deleted_at.is_(None)
+            )
+        )
+    ).all()
+    if not rows:
+        return set()
+    isbns = (
+        await db.execute(
+            select(BookEdition.book_id, BookEdition.isbn_13).where(
+                BookEdition.book_id.in_([row.id for row in rows]), BookEdition.isbn_13.is_not(None)
+            )
+        )
+    ).all()
+    isbn_by_book: dict[Any, str] = {}
+    for book_id, isbn_13 in isbns:
+        if isbn_13 is None:
+            continue
+        if book_id not in isbn_by_book or isbn_13 < isbn_by_book[book_id]:
+            isbn_by_book[book_id] = isbn_13
+    return {
+        (title.lower(), _year(published), _author_key(authors), isbn_by_book.get(book_id))
+        for book_id, title, published, authors in rows
+    }
+
+
 async def _restore_books(
     db: AsyncSession, user_id: Any, entries: list[Any], errors: list[str]
 ) -> tuple[int, int]:
-    seen = await _existing(db, Book, user_id, "first_published")
+    seen = await _existing_books(db, user_id)
     created = skipped = 0
     for raw in entries[:MAX_ENTRIES]:
         title = raw.get("title") if isinstance(raw, dict) else None
@@ -327,7 +396,7 @@ async def _restore_books(
             limit = _limits_problem(_RestoredBook, fields)
             if limit is not None:
                 raise ValueError(f"skipped ({limit})")
-            identity = (title.lower(), _year(fields.get("first_published")))
+            identity = _book_identity(title, fields, raw)
             if identity in seen:
                 skipped += 1
                 continue
