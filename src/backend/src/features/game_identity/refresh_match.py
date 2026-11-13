@@ -139,8 +139,17 @@ def _followed(
     saved: Mapping[str, str],
     claims: Mapping[str, Mapping[str, Claim]],
     identities: Mapping[str, Mapping[str, object]],
+    anchors: Mapping[str, str] | None = None,
 ) -> dict[str, dict[str, str]]:
-    """Rule 2: saved ids a provider says it moved from, and the one live id it now reports."""
+    """Rule 2: saved ids a provider says it moved from, and the one live id it now reports.
+
+    A redirect is also followed when the provider's reported ``from`` id is the namespace's
+    recorded anchor (review finding 2) rather than the currently saved id: a follow is not
+    irreversibly final, and the host must notice a *second* move (Atlas undoes the first merge
+    and redirects the original id elsewhere) by re-asking about where the chain started, not
+    only about the id the first follow already adopted. The move is still recorded as replacing
+    the id the game actually holds now, never the anchor itself."""
+    anchors = anchors or {}
     moves: dict[str, dict[str, str]] = {}
     for provider, identity in sorted(identities.items()):
         previous = identity.get("previous_ids")
@@ -149,8 +158,14 @@ def _followed(
         reported = _reported({provider: claims.get(provider, {})})
         for namespace, old in previous.items():
             live = list(reported.get(namespace, {}))
-            if saved.get(namespace) == old and len(live) == 1 and live[0] != old:
-                moves.setdefault(namespace, {"from": str(old), "to": live[0], "provider": provider})
+            current = saved.get(namespace)
+            if (
+                (current == old or anchors.get(namespace) == old)
+                and len(live) == 1
+                and live[0] != current
+            ):
+                frm = str(current) if current is not None else str(old)
+                moves.setdefault(namespace, {"from": frm, "to": live[0], "provider": provider})
     return moves
 
 
@@ -158,6 +173,7 @@ def _apply_verdicts(
     saved: Mapping[str, str],
     claims: Mapping[str, Mapping[str, Claim]],
     identities: Mapping[str, Mapping[str, object]],
+    anchors: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Mapping[str, Claim]], RefreshMatch | dict[str, dict[str, str]]]:
     """The claims that count (an ambiguous provider's do not), and either the rule 4 conflict
     or the ids rule 2 follows."""
@@ -174,7 +190,7 @@ def _apply_verdicts(
             if len(values) == 1
         }
         return counted, RefreshMatch("conflict", agreed, conflicts=conflicts)
-    return counted, _followed(saved, counted, identities)
+    return counted, _followed(saved, counted, identities, anchors)
 
 
 def _compare(
@@ -216,13 +232,17 @@ def classify(
     reported_title: str | None,
     rejected: Iterable[tuple[str, str]] = (),
     identities: Mapping[str, Mapping[str, object]] | None = None,
+    anchors: Mapping[str, str] | None = None,
 ) -> RefreshMatch:
     """Apply the C4.4 rules to one refresh result. Pure; the caller supplies the evidence.
 
     ``identities`` holds each provider's Plugin API 1.1.20 identity verdict (``match`` and
-    ``previous_ids``); an older provider sends none, and rules 1, 3 and 4 then work as before."""
+    ``previous_ids``); an older provider sends none, and rules 1, 3 and 4 then work as before.
+    ``anchors`` is the earliest id on record for a namespace a rule-2 rewrite has touched before
+    (``refresh_match.find_anchor_id``), letting rule 2 follow a second move from where the chain
+    started, not only from the id already adopted (review finding 2)."""
     identities = identities or {}
-    claims, verdict = _apply_verdicts(saved, claims, identities)
+    claims, verdict = _apply_verdicts(saved, claims, identities, anchors)
     if isinstance(verdict, RefreshMatch):
         return verdict
     rejected_set = set(rejected)
@@ -332,6 +352,27 @@ async def forget_rejections(
 _FOLLOW_RECORD = re.compile(r"^(?P<namespace>[^:]+): (?P<value>.+) \(moved by [^)]+\)$")
 
 
+def _predecessor(rows: Iterable[GameFieldChange], namespace: str, value: str) -> str | None:
+    """The id a rule-2 rewrite replaced with ``value`` in ``namespace``, from the audit trail."""
+    for row in rows:
+        match = _FOLLOW_RECORD.match(row.new_value or "")
+        if not match or match["namespace"] != namespace or match["value"] != value:
+            continue
+        old_namespace, _, old_value = (row.old_value or "").partition(": ")
+        return old_value if old_namespace == namespace and old_value else None
+    return None
+
+
+async def _follow_history(db: AsyncSession, game_id: UUID) -> list[GameFieldChange]:
+    return list(
+        await db.scalars(
+            select(GameFieldChange)
+            .where(GameFieldChange.game_id == game_id, GameFieldChange.field_name == "provider_ids")
+            .order_by(GameFieldChange.changed_at.desc(), GameFieldChange.id.desc())
+        )
+    )
+
+
 async def revert_followed_id(db: AsyncSession, game: Game, namespace: str) -> str | None:
     """Undo the most recent rule-2 rewrite of ``namespace`` (C4.2).
 
@@ -347,29 +388,45 @@ async def revert_followed_id(db: AsyncSession, game: Game, namespace: str) -> st
     current = (game.provider_ids or {}).get(namespace)
     if current is None:
         return None
-    rows = await db.scalars(
-        select(GameFieldChange)
-        .where(GameFieldChange.game_id == game.id, GameFieldChange.field_name == "provider_ids")
-        .order_by(GameFieldChange.changed_at.desc(), GameFieldChange.id.desc())
-    )
-    for row in rows:
-        match = _FOLLOW_RECORD.match(row.new_value or "")
-        if not match or match["namespace"] != namespace or match["value"] != current:
-            continue
-        old_namespace, _, old_value = (row.old_value or "").partition(": ")
-        if old_namespace != namespace or not old_value:
-            return None
-        # restore the id first: reject() only remembers an id the game does not currently hold.
-        game.provider_ids = {**(game.provider_ids or {}), namespace: old_value}
-        await reject(db, game, {namespace: current})
-        db.add(
-            GameFieldChange(
-                game_id=game.id,
-                field_name="provider_ids",
-                old_value=f"{namespace}: {current}",
-                new_value=f"{namespace}: {old_value} (reverted)",
-                changed_at=int(time.time()),
-            )
+    old_value = _predecessor(await _follow_history(db, game.id), namespace, current)
+    if old_value is None:
+        return None
+    # restore the id first: reject() only remembers an id the game does not currently hold.
+    game.provider_ids = {**(game.provider_ids or {}), namespace: old_value}
+    await reject(db, game, {namespace: current})
+    db.add(
+        GameFieldChange(
+            game_id=game.id,
+            field_name="provider_ids",
+            old_value=f"{namespace}: {current}",
+            new_value=f"{namespace}: {old_value} (reverted)",
+            changed_at=int(time.time()),
         )
-        return old_value
-    return None
+    )
+    return old_value
+
+
+async def find_anchor_id(db: AsyncSession, game: Game, namespace: str) -> str | None:
+    """The earliest id ``namespace`` held before any rule-2 rewrite (C4.2), read from the audit
+    trail rather than a separate persisted field.
+
+    A followed redirect is not irreversibly final: Atlas can later undo the merge it followed
+    and redirect the ORIGINAL id elsewhere. Every later refresh asks about the live id the first
+    follow adopted, never the id it replaced, so a second move is never discovered (review
+    finding 2) - ``revert_followed_id`` turns the audit trail's one-step predecessor into a real
+    recovery action, but only once a person notices and acts; this instead gives the refresh
+    route the earliest anchor to re-ask about on every refresh, automatically. Returns ``None``
+    when the current id was never adopted through a follow (nothing to re-check)."""
+    current = (game.provider_ids or {}).get(namespace)
+    if current is None:
+        return None
+    rows = await _follow_history(db, game.id)
+    anchor = None
+    value = current
+    seen = {value}
+    while True:
+        predecessor = _predecessor(rows, namespace, value)
+        if predecessor is None or predecessor in seen:
+            return anchor
+        anchor, value = predecessor, predecessor
+        seen.add(predecessor)

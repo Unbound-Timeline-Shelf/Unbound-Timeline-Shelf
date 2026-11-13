@@ -417,6 +417,35 @@ async def refresh_game_metadata(
     # still trusted as confirming a provider it no longer matches (review finding 4).
     record = {**record, **reverify_record(record, game.provider_ids or {})}
 
+    # A followed redirect is not irreversibly final: Atlas can later undo the merge it followed
+    # and redirect the ORIGINAL id elsewhere, but the primary lookup above only ever asks about
+    # the live id the first follow adopted (review finding 2). For a namespace with an earlier
+    # anchor on record, ask about that anchor too and let its evidence join the primary
+    # lookup's, so classify() (given the same anchor) can follow a second move.
+    anchors: dict[str, str] = {}
+    for namespace, current_id in (game.provider_ids or {}).items():
+        anchor = await refresh_match.find_anchor_id(db, game, namespace)
+        if anchor is None or anchor == current_id:
+            continue
+        anchors[namespace] = anchor
+        anchor_record, anchor_failures = await resolve_library_record(
+            db,
+            current_user.id,
+            library_candidate(
+                game.title,
+                MediaType.GAME,
+                {**(game.provider_ids or {}), namespace: anchor},
+                game.release_date.year if game.release_date else None,
+            ),
+            preferences=preferences,
+        )
+        provider_errors.extend(anchor_failures)
+        claims = {**claims, **(anchor_record.get("provider_id_claims") or {})}
+        record["provider_identities"] = {
+            **(record.get("provider_identities") or {}),
+            **(anchor_record.get("provider_identities") or {}),
+        }
+
     # Decided on the row just read (locked when applying), so ids an editor changed during the
     # provider lookup are the ones compared. Titles never gate an id match (C4.4).
     decision = refresh_match.classify(
@@ -426,6 +455,7 @@ async def refresh_game_metadata(
         reported_title=reported_title,
         rejected=await refresh_match.rejected_ids(db, game.id),
         identities=record.get("provider_identities") or {},
+        anchors=anchors,
     )
     candidate = {"title": reported_title, "provider_ids": decision.offered}
     if decision.tier in {"none", "conflict", "rejected"}:

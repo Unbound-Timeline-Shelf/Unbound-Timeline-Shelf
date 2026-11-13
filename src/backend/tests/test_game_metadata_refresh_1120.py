@@ -523,6 +523,49 @@ async def test_undoing_a_followed_merge_restores_the_id_and_lets_a_refresh_corre
     assert nothing_to_revert.status_code == 422
 
 
+async def test_a_second_redirect_from_the_original_anchor_is_followed_automatically(
+    owner, providers, client
+):
+    """A -> C is followed and adopted; Atlas then detaches that merge and redirects A -> D
+    instead (not C -> D: C may now be its own unrelated record). The host only ever asks about
+    the live id the first follow adopted (C), so without re-asking about where the chain
+    started, this second move is never discovered and the game stays on the stale C forever -
+    sharper than a plain detach, since C might still answer normally and look perfectly valid
+    (review finding 2)."""
+    user_id, _ = owner
+    original_id, target_id, third_id = ATLAS_ID, OTHER_ATLAS_ID, "atlas:01JTESTTHIRDRECORD000000"
+    answers = {
+        original_id: MetadataPatch(
+            title="C",
+            provider_ids={"atlas": target_id},
+            identity=MetadataIdentity(match="redirect", previous_ids={"atlas": original_id}),
+        ),
+        target_id: MetadataPatch(
+            title="C", provider_ids={"atlas": target_id}, identity=MetadataIdentity(match="id")
+        ),
+    }
+    providers(atlas_by_id(answers))
+    game_id = await add_game(user_id, title="A", provider_ids={"atlas": original_id})
+
+    await refresh(client, game_id)
+    assert (await stored(game_id)).provider_ids["atlas"] == target_id
+
+    # Atlas detaches that merge and redirects the ORIGINAL id elsewhere instead
+    answers[original_id] = MetadataPatch(
+        title="D",
+        provider_ids={"atlas": third_id},
+        identity=MetadataIdentity(match="redirect", previous_ids={"atlas": original_id}),
+    )
+    await refresh(client, game_id)
+
+    assert (await stored(game_id)).provider_ids["atlas"] == third_id
+    # both moves are on record: the id the game held originally is still recoverable
+    assert {old for old, _new in await id_history(game_id)} == {
+        f"atlas: {original_id}",
+        f"atlas: {target_id}",
+    }
+
+
 # --- C4.4 rule 4: a conflict verdict applies nothing ------------------------------------------
 
 
