@@ -28,6 +28,7 @@ from src.api.schemas.media_extras import (
 from src.core.auth import get_current_user
 from src.core.preferences import load_preferences
 from src.core.titles import display_title
+from src.core.viewer_day import viewer_today
 from src.database.models.achievement import Achievement
 from src.database.models.anime import Anime, AnimeStatus
 from src.database.models.game import Game
@@ -234,7 +235,7 @@ async def log_episode_progress(
             show.id,
             show.title,
             ActivityEventType.EPISODES_WATCHED,
-            date.today(),
+            viewer_today(),
             increment=int(newly_watched),
         )
 
@@ -254,7 +255,7 @@ async def log_status_change(
             row.id,
             row.title,
             ActivityEventType.STATUS_CHANGED,
-            date.today(),
+            viewer_today(),
             detail=detail,
         )
 
@@ -266,7 +267,7 @@ async def create_rewatch(
     current_user: User = Depends(get_current_user),
 ) -> RewatchLog:
     media = await _resolve_media(payload.media_type, payload.media_id, current_user.id, db)
-    finished_on = payload.finished_on or date.today()
+    finished_on = payload.finished_on or viewer_today()
     log = RewatchLog(
         user_id=current_user.id,
         media_type=MediaType(payload.media_type),
@@ -358,7 +359,7 @@ async def get_activity(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list:
-    since = date.today() - timedelta(days=days)
+    since = viewer_today() - timedelta(days=days)
     rows = (
         (
             await db.execute(
@@ -726,20 +727,20 @@ def _calendar_range(first: date | None, last: date | None) -> tuple[date, date] 
         return None
     if first is None or last is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Give both from_date and to_date, or neither.",
         )
     today = date.today()
     if last < first or (last - first).days + 1 > CALENDAR_MAX_RANGE_DAYS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Ask for at most {CALENDAR_MAX_RANGE_DAYS} days at a time.",
         )
     if first < today - timedelta(days=CALENDAR_MAX_BEHIND_DAYS) or last > today + timedelta(
         days=CALENDAR_MAX_AHEAD_DAYS
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="That range is further from today than the calendar supports.",
         )
     return first, last

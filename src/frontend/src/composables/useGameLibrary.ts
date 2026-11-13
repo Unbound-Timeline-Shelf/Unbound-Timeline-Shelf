@@ -42,7 +42,6 @@ import {
   deleteGame,
   setFavorite,
   fetchAchievementsSummary,
-  addGameToCollection,
 } from "../services/games";
 import { setLibraryNavOrder } from "../state/libraryNav";
 import { isCommandPaletteOpen } from "../state/commandPalette";
@@ -83,6 +82,7 @@ import {
   type NestedGame,
 } from "../utils/gameIdentityGroups";
 import { usePrompt } from "../state/dialog";
+import { useGameSelectionActions } from "./useGameSelectionActions";
 import type { GameEditDraft } from "../utils/gameEditDraft";
 export function useGameLibrary() {
   const prompt = usePrompt();
@@ -301,34 +301,14 @@ export function useGameLibrary() {
     await loadGames();
   }
   const bulkEditResultCount = ref<number | null>(null);
-
-  // bulk-add selected games to a collection, a keyboard/click alternative to
-  // dragging cards onto a collection, which this codebase has no drag-and-drop
-  // library to build (see the arrow-based reorder in CollectionDetail.vue for
-  // the same tradeoff elsewhere)
-  const bulkAddingToCollection = ref(false);
-  async function bulkAddToCollection() {
-    if (!selectedIds.value.size) return;
-    const name = await prompt({
-      title: "Add to collection",
-      message: `Add ${selectedIds.value.size} selected game(s) to which collection?`,
-      confirmLabel: "Add",
-    });
-    if (!name || !name.trim()) return;
-    const trimmed = name.trim();
-    bulkAddingToCollection.value = true;
-    try {
-      await Promise.all(
-        [...selectedIds.value].map((id) => addGameToCollection(id, trimmed)),
-      );
-      bulkEditResultCount.value = selectedIds.value.size;
-      selectMode.value = false;
-      selectedIds.value = new Set();
-      await loadGames();
-    } finally {
-      bulkAddingToCollection.value = false;
-    }
-  }
+  const selectionActions = useGameSelectionActions({
+    games,
+    selectedIds,
+    selectMode,
+    selectedGame,
+    bulkEditResultCount,
+    loadGames,
+  });
 
   // Steam's "About This Game" section is rich HTML (headers, screenshots,
   // gifs), sanitize it instead of dumping the raw tags as text
@@ -1122,6 +1102,7 @@ export function useGameLibrary() {
       showFormModal.value ||
       !!quickEditingGame.value ||
       !!deletingGame.value ||
+      selectionActions.confirmingBulkDelete.value ||
       showBulkEditModal.value ||
       !!collectionPickerGame.value ||
       isCommandPaletteOpen.value
@@ -1911,8 +1892,7 @@ export function useGameLibrary() {
     clearSelection,
     onBulkEditSaved,
     bulkEditResultCount,
-    bulkAddingToCollection,
-    bulkAddToCollection,
+    ...selectionActions,
     selectedGameDescriptionHtml,
     searchQuery,
     statusFilter,

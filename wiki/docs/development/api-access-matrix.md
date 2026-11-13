@@ -339,6 +339,7 @@ are redacted. Validation errors never echo submitted values.
 | POST | `/api/game-ownership/separate` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/achievements-summary` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | PATCH | `/api/game/bulk-update` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| POST | `/api/game/bulk-delete` | user | Each game queried with `user_id == caller`; another account's IDs are reported as not found and left untouched. |
 | POST | `/api/game/create` | user-or-app | Game queried with `user_id == caller`; any child ID must also belong to that game. App grants need `library.sync`. |
 | GET | `/api/game/collection-index` | user-or-app | Compact projection of the caller's own nondeleted games. App grants need `library.sync`. |
 | GET | `/api/lists/{list_id}/cover` | user | The caller's own media collection and owned poster sources only. |

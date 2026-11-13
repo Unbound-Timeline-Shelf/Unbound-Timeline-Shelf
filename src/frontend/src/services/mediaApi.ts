@@ -5,7 +5,12 @@
 // how their form values become a request body. Everything specific to one
 // kind (seasons, episodes, metadata search, relations) stays in its service.
 import { failedRequest } from "./apiError";
-import type { EntityCache } from "../utils/entityCache";
+import {
+  atEpoch,
+  entityCacheEpoch,
+  onEntityCacheReset,
+  type EntityCache,
+} from "../utils/entityCache";
 import type { PaginatedResponse } from "../types/pagination";
 import type { LibraryFilters } from "../utils/libraryFilters";
 
@@ -86,6 +91,8 @@ export function createMediaApi<
   function markMutation() {
     revision++;
   }
+  // another account's list is not this one's: views keyed on the revision reload
+  onEntityCacheReset(markMutation);
 
   async function fetchPage(
     offset = 0,
@@ -114,6 +121,7 @@ export function createMediaApi<
     if (filters?.statusBucket && filters.statusBucket !== "all")
       params.set("status_bucket", filters.statusBucket);
     if (filters?.sort) params.set("sort", filters.sort);
+    const started = entityCacheEpoch();
     const response = await fetch(`${base}/list?${params}`, {
       credentials: "include",
     });
@@ -122,7 +130,7 @@ export function createMediaApi<
       `fetch ${plural}`,
     );
     return {
-      items: page.items.map(map),
+      items: atEpoch(started, () => page.items.map(map)),
       total: page.total,
       offset: page.offset,
       limit: page.limit,
@@ -132,6 +140,7 @@ export function createMediaApi<
   }
 
   async function fetchAll(search = ""): Promise<Entity[]> {
+    const started = entityCacheEpoch();
     const all: Entity[] = [];
     let offset = 0;
     const limit = 100;
@@ -141,40 +150,46 @@ export function createMediaApi<
       if (all.length >= page.total || page.items.length === 0) break;
       offset += page.items.length;
     }
-    cache.markListLoaded();
+    atEpoch(started, () => cache.markListLoaded());
     return all;
   }
 
   async function get(id: string): Promise<Entity> {
     const previous = JSON.stringify(cache.peek(id));
+    const started = entityCacheEpoch();
     const response = await fetch(`${base}/get/${id}`, {
       credentials: "include",
     });
-    const item = map(await handle<Raw>(response, `fetch ${noun} ${id}`));
+    const raw = await handle<Raw>(response, `fetch ${noun} ${id}`);
+    const item = atEpoch(started, () => map(raw));
     if (JSON.stringify(item) !== previous) markMutation();
     return item;
   }
 
   async function create(input: Input): Promise<Entity> {
+    const started = entityCacheEpoch();
     const response = await fetch(`${base}/create`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(toBody(input)),
     });
-    const item = map(await handle<Raw>(response, `create ${noun}`));
+    const raw = await handle<Raw>(response, `create ${noun}`);
+    const item = atEpoch(started, () => map(raw));
     markMutation();
     return item;
   }
 
   async function update(id: string, input: Input): Promise<Entity> {
+    const started = entityCacheEpoch();
     const response = await fetch(`${base}/update/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(toBody(input)),
     });
-    const item = map(await handle<Raw>(response, `update ${noun} ${id}`));
+    const raw = await handle<Raw>(response, `update ${noun} ${id}`);
+    const item = atEpoch(started, () => map(raw));
     markMutation();
     return item;
   }
@@ -200,6 +215,7 @@ export function createMediaApi<
   }
 
   async function restore(id: string): Promise<Entity> {
+    const started = entityCacheEpoch();
     const response = await fetch(`${base}/${id}/restore`, {
       method: "POST",
       credentials: "include",
@@ -207,7 +223,8 @@ export function createMediaApi<
     if (!response.ok) {
       throw new Error(`Failed to restore ${noun} ${id}: ${response.status}`);
     }
-    const item = map(await response.json());
+    const raw: Raw = await response.json();
+    const item = atEpoch(started, () => map(raw));
     markMutation();
     return item;
   }
