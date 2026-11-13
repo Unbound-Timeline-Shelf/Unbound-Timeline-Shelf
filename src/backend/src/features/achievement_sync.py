@@ -98,8 +98,14 @@ async def replace_achievements(
         .all()
     }
     now = int(time.time())
-    seen_ids: set[str] = set()
+    # one row per external id (the table is unique on it); a repeat that is unlocked wins
+    unique_rows: dict[str, dict] = {}
     for row in rows:
+        earlier = unique_rows.get(row["external_id"])
+        if earlier is None or (row.get("unlocked") and not earlier.get("unlocked")):
+            unique_rows[row["external_id"]] = row
+    seen_ids: set[str] = set()
+    for row in unique_rows.values():
         seen_ids.add(row["external_id"])
         current = existing.get(row["external_id"])
         if current is not None:
