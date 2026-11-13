@@ -1,5 +1,9 @@
 // Small helpers shared by the Achievements tab and an achievement's own page.
-import type { Achievement, AchievementKind } from "../types/game";
+import type {
+  Achievement,
+  AchievementKind,
+  AchievementTier,
+} from "../types/game";
 
 // PlayStation and RetroAchievements unlocks have no stored time, so "unlocked"
 // can't be read from the time alone: use the flag the API sends when there is
@@ -62,4 +66,35 @@ export function unlockedOn(iso: string): { date: string; time: string } {
     date: d.toLocaleDateString(),
     time: d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
   };
+}
+
+// The medal a provider declares (Plugin API 1.1.20). Platinum is the
+// whole-catalogue trophy; it is shown even when no other medal is.
+export const MEDAL_LABEL: Record<AchievementTier, string> = {
+  bronze: "Bronze",
+  silver: "Silver",
+  gold: "Gold",
+  platinum: "Platinum",
+};
+
+// A hidden achievement that is still locked is named by its placeholder
+// everywhere, screen-reader labels included, and shows no medal, so nothing
+// spoils it. `hiddenLocked` is the page's isHiddenLocked(a), which also knows
+// whether the person revealed it.
+export function achievementLabel(
+  a: Achievement,
+  hiddenLocked: boolean,
+): string {
+  return hiddenLocked ? "hidden achievement" : a.name;
+}
+
+export function visibleMedal(
+  a: Achievement,
+  hiddenLocked: boolean,
+): AchievementTier | null {
+  return hiddenLocked ? null : (a.tierOverride ?? null);
+}
+
+export function isPlatinum(a: Achievement): boolean {
+  return a.tierOverride === "platinum";
 }

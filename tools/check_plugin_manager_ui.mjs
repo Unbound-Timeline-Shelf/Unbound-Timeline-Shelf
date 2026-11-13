@@ -103,7 +103,7 @@ try {
     assert.equal(await page.getByRole("button", { name: "Install package or URL", exact: true }).isDisabled(), true);
     releaseRefresh();
     await page.getByRole("button", { name: "Installed", exact: true }).click();
-    await plugin.getByText("running", { exact: true }).waitFor();
+    await plugin.getByText("Running", { exact: true }).waitFor();
     assert.equal(await plugin.count(), 1);
     // Same installation selected from the catalogue produces explicit choices.
     await page.getByRole("button", { name: "Install a plugin", exact: true }).click();
@@ -146,7 +146,7 @@ try {
     console.log("Browser retained release selection, signed review, installation and visible automatic update pin: passed");
   } else if (phase === "offline") {
     // Backend inventory must render even before catalogue discovery completes.
-    await plugin.getByText("unknown", { exact: true }).first().waitFor();
+    await plugin.getByText("Unknown", { exact: true }).first().waitFor();
     assert.equal(await plugin.count(), 1);
     await page.getByText("Refreshing catalogues…", { exact: true }).waitFor();
     await page.screenshot({ path: path.join(process.env.INTEGRATION_WORK_ROOT, "offline-inventory.png"), fullPage: true });
@@ -175,7 +175,7 @@ try {
     await consent.getByRole("button", { name: "Update with selected access", exact: true }).click();
     await consent.waitFor({ state: "hidden" });
     await page.getByRole("button", { name: "Installed", exact: true }).click();
-    await plugin.getByText("running", { exact: true }).waitFor();
+    await plugin.getByText("Running", { exact: true }).waitFor();
     console.log("Browser Updates Available direct review and update: passed");
   }
   assert.deepEqual(errors, [], "Browser runtime errors");

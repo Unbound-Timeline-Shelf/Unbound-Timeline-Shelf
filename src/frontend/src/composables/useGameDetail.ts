@@ -1,4 +1,5 @@
 import { useGameChecklist } from "./useGameChecklist";
+import { releaseFacts } from "../utils/releaseDate";
 import { usePageTitle } from "../state/pageTitle";
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -82,6 +83,7 @@ import {
 } from "../state/taskProgress";
 import type { Achievement, Game, GameStatus } from "../types/game";
 import { computeScore } from "../utils/scoring";
+import { overflows } from "../utils/gameDetailDisplay";
 import DOMPurify from "dompurify";
 import { useConfirm, usePrompt } from "../state/dialog";
 import { matchesShortcut } from "../state/shortcuts";
@@ -145,11 +147,7 @@ export function useGameDetail() {
   });
 
   const descriptionExpanded = ref(false);
-  const descriptionOverflows = computed(
-    () =>
-      (new DOMParser().parseFromString(descriptionHtml.value, "text/html").body
-        .textContent?.length ?? 0) > 320,
-  );
+  const descriptionOverflows = computed(() => overflows(descriptionHtml.value));
 
   // resolved separately from game.value.parentGameId (which is only an id),
   // see loadGame()
@@ -704,6 +702,7 @@ export function useGameDetail() {
       accent?: boolean;
       muted?: boolean;
       tab?: TabName;
+      field?: string;
     }[] = [];
     // your verdict first (score and where it ranks), then how you played it;
     // the individual ratings get their own row under these
@@ -719,6 +718,7 @@ export function useGameDetail() {
     }
     // playtime, achievements and platform are not repeated here: the hero shows the
     // achievements and platform, Copies & versions the reconciled playtime
+    facts.push(...releaseFacts(g));
     if (g.timeToBeatHours != null && g.timeToBeatHours > 0)
       facts.push({ label: "Main story", value: `~${g.timeToBeatHours}h` });
     if (g.dateAdded && !pageSettings.value.hide_date_badge)
