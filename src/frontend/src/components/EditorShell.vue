@@ -20,6 +20,8 @@ const props = withDefaults(
     tabsLabel?: string;
     size?: "standard" | "wide" | "editor";
     dismissible?: boolean;
+    // unsaved edits: closing asks first (see UiModal)
+    dirty?: boolean;
   }>(),
   {
     heading: undefined,
@@ -30,6 +32,7 @@ const props = withDefaults(
     tabsLabel: "Editor sections",
     size: "editor",
     dismissible: true,
+    dirty: false,
   },
 );
 const tab = defineModel<T>("tab");
@@ -105,6 +108,7 @@ defineExpose({ scrollToTop });
     :size="size"
     :bounded="bounded"
     :dismissible="dismissible"
+    :dirty="dirty"
     class="editor-shell"
     @close="emit('close')"
   >

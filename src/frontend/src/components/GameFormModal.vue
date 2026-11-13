@@ -2,6 +2,7 @@
 import {
   ref,
   computed,
+  inject,
   nextTick,
   onMounted,
   watch,
@@ -58,6 +59,8 @@ import {
   attachArtwork,
   stagedArtworkList,
 } from "../composables/useGameArtworkTransfer";
+import { useUnsavedGuard } from "../composables/useUnsavedGuard";
+import { routerKey } from "vue-router";
 
 const props = defineProps<{
   game?: Game | null;
@@ -65,6 +68,9 @@ const props = defineProps<{
   // Unsaved values handed over by the quick editor's "Edit more"; they take
   // the place of the saved ones until this editor saves or is cancelled.
   draft?: GameEditDraft | null;
+  // The address parameter whose history step opened this editor; Back
+  // removing it closes the editor, after asking about unsaved edits.
+  historyKey?: string;
 }>();
 
 const compact = ref(!!props.quickAdd && !props.game);
@@ -762,6 +768,8 @@ async function submit() {
     if (import.meta.env.VITE_USE_MOCK_DATA !== "true" && pendingArtwork.length)
       await attachArtwork(savedGame.id, savedGame.title, pendingArtwork);
 
+    // the saved values are no longer "unsaved", so closing must not ask
+    unsaved.release();
     emit("saved", savedGame.id);
   } catch (err) {
     error.value =
@@ -769,6 +777,97 @@ async function submit() {
   } finally {
     saving.value = false;
   }
+}
+
+// Unsaved edits (UX-AUDIT-APP A1, A2): the form compares what Save would
+// send with what it opened with, once the person has edited something.
+// Until then the starting point keeps moving with the form, so values that
+// arrive asynchronously (metadata, artwork settling after open) never count
+// as edits. Typing or changing a field is an edit; a click is one only when it
+// changes what Save would send (a chip removed, a reset button), so switching
+// editor tabs or opening a menu leaves the starting point free to move.
+// Values handed over by the quick editor are unsaved from the start.
+const touched = ref(false);
+let openedWith: string | null = null;
+function editorSnapshot(): string {
+  try {
+    return JSON.stringify([
+      buildInput(),
+      !!cover.staged.value,
+      !!banner.staged.value,
+    ]);
+  } catch {
+    // a value Save would reject (e.g. a malformed number) is still an edit
+    return "invalid";
+  }
+}
+onMounted(() =>
+  nextTick(() => {
+    openedWith = editorSnapshot();
+  }),
+);
+function markTouched() {
+  touched.value = true;
+}
+// Before the first edit, take a fresh starting point as a click begins, then
+// count the click only if it changed the form.
+function beforeClick() {
+  if (!touched.value && openedWith !== null) openedWith = editorSnapshot();
+}
+function afterClick() {
+  if (touched.value || openedWith === null) return;
+  void nextTick(() => {
+    if (!touched.value && editorSnapshot() !== openedWith) markTouched();
+  });
+}
+const dirty = computed(
+  () =>
+    !saving.value &&
+    (!!props.draft ||
+      (touched.value &&
+        openedWith !== null &&
+        editorSnapshot() !== openedWith)),
+);
+const unsaved = useUnsavedGuard(() => dirty.value, {
+  closesOn: (to, from) =>
+    !!props.historyKey &&
+    from.query[props.historyKey] !== undefined &&
+    to.query[props.historyKey] === undefined,
+});
+// Escape, the backdrop and × already asked (UiModal `dirty`).
+function onShellClose() {
+  unsaved.release();
+  emit("close");
+}
+// The in-editor link to the provider settings. Opened from its own history
+// step, the editor leaves with its page and the leave guard asks first.
+// Opened from the library or Home it has to close before the page changes,
+// which would unmount it before that guard runs, so it asks here instead.
+const router = inject(routerKey, null);
+const SOURCES_SETTINGS = "/settings?section=sources";
+const sourcesSettingsHref = computed(
+  () => router?.resolve(SOURCES_SETTINGS).href ?? SOURCES_SETTINGS,
+);
+async function openSourcesSettings(event: MouseEvent) {
+  // a new tab or window leaves this editor as it is
+  if (
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  )
+    return;
+  event.preventDefault();
+  if (!router) return;
+  if (!props.historyKey) {
+    if (!(await unsaved.confirmDiscard())) return;
+    emit("close");
+  }
+  void router.push(SOURCES_SETTINGS);
+}
+async function cancel() {
+  if (await unsaved.confirmDiscard()) emit("close");
 }
 </script>
 
@@ -785,9 +884,14 @@ async function submit() {
     tabs-label="Game details"
     :size="compact ? 'standard' : 'editor'"
     :dismissible="!saving"
+    :dirty="dirty"
     class="game-editor"
     :class="{ 'quick-add': compact }"
-    @close="emit('close')"
+    @close="onShellClose"
+    @input="markTouched"
+    @change="markTouched"
+    @click.capture="beforeClick"
+    @click="afterClick"
     @submit="submit"
     @cover="activeTab = 'Artwork'"
   >
@@ -823,8 +927,8 @@ async function submit() {
           class="steamgriddb-hint"
         >
           Configure the built-in artwork providers in
-          <router-link to="/settings?section=sources" @click="emit('close')"
-            >Settings &rsaquo; Metadata/API</router-link
+          <a :href="sourcesSettingsHref" @click="openSourcesSettings"
+            >Settings &rsaquo; Metadata/API</a
           >
           to receive cover and hero artwork after choosing a game.
         </p>
@@ -1460,7 +1564,7 @@ async function submit() {
         type="button"
         class="secondary-button"
         :disabled="saving"
-        @click="emit('close')"
+        @click="cancel"
       >
         Cancel
       </button>

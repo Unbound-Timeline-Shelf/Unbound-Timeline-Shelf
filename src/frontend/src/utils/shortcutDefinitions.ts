@@ -1,4 +1,4 @@
-import { isGameDetailPath } from "../state/libraryScroll";
+import { isGameDetailPath } from "./gameLink";
 
 export interface ShortcutDefinition {
   id: string;

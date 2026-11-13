@@ -17,7 +17,7 @@ vi.mock("../services/media");
 vi.mock("../services/gameArchives");
 vi.mock("vue-router", () => ({
   useRoute: () => ({ params: { id: mainId }, query: {} }),
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), options: { history: { state: {} } } }),
 }));
 const wrappers: VueWrapper[] = [];
 const copy: GameCopyLabel = {

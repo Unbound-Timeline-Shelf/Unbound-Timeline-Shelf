@@ -12,6 +12,7 @@ import {
   type ManagerView,
 } from "../../services/pluginManagerViews";
 import { refreshPluginExtensions } from "../../state/pluginExtensions";
+import { useQueryState } from "../../composables/useQueryState";
 import UiModal from "../UiModal.vue";
 import PluginInstallConsentDialog from "../plugins/PluginInstallConsentDialog.vue";
 import PluginSettingsDialog from "../plugins/PluginSettingsDialog.vue";
@@ -128,7 +129,29 @@ watch(error, (value) => {
 });
 const availableUpdates = ref<Record<string, PluginUpdateCheck>>({});
 const checkingUpdates = ref(false);
-const view = ref<ManagerView>("Installed");
+// The view is part of the address (`?view=discover`), so Back walks back
+// through Installed / Updates / Discover and a link opens the same view
+// (UX-AUDIT-APP A11).
+const VIEW_SLUGS = {
+  installed: "Installed",
+  updates: "Updates Available",
+  discover: "Discover",
+} as const satisfies Record<string, ManagerView>;
+type ViewSlug = keyof typeof VIEW_SLUGS;
+const viewSlug = useQueryState<ViewSlug>("view", {
+  values: Object.keys(VIEW_SLUGS) as ViewSlug[],
+  fallback: () => "installed",
+  omitFallback: true,
+});
+const view = computed<ManagerView>({
+  get: () => VIEW_SLUGS[viewSlug.value],
+  set(next) {
+    const slug = (Object.keys(VIEW_SLUGS) as ViewSlug[]).find(
+      (key) => VIEW_SLUGS[key] === next,
+    );
+    if (slug) viewSlug.value = slug;
+  },
+});
 const search = ref("");
 const tag = ref("");
 const channel = ref("");
