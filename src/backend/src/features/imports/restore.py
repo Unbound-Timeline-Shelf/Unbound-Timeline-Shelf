@@ -308,7 +308,9 @@ async def _add_book_children(
 
 def _author_key(authors: Any) -> tuple[str, ...]:
     """A stable, order-independent key for a book's author list."""
-    return tuple(sorted({a.strip().lower() for a in (authors or []) if isinstance(a, str) and a.strip()}))
+    return tuple(
+        sorted({a.strip().lower() for a in (authors or []) if isinstance(a, str) and a.strip()})
+    )
 
 
 def _entry_isbn13(raw: dict[str, Any]) -> str | None:
