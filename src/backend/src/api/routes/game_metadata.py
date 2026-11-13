@@ -47,6 +47,7 @@ from src.features.metadata.service import (
     game_result,
     library_candidate,
     resolve_library_record,
+    reverify_record,
     search_games,
 )
 from src.features.provider_play import provider_custom_values, provider_play_compatibility
@@ -366,6 +367,11 @@ async def refresh_game_metadata(
             )
     else:
         game = await _get_game_or_404(game_id, db, current_user.id, for_storage=True)
+
+    # The lookup's own verification ran against the ids it started with; redo it against the
+    # row just read (locked when applying), so an id an editor changed during the lookup is not
+    # still trusted as confirming a provider it no longer matches (review finding 4).
+    record = {**record, **reverify_record(record, game.provider_ids or {})}
 
     # Decided on the row just read (locked when applying), so ids an editor changed during the
     # provider lookup are the ones compared. Titles never gate an id match (C4.4).

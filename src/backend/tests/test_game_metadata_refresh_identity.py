@@ -866,6 +866,45 @@ async def test_a_lock_set_during_the_lookup_is_respected(owner, providers, clien
     assert (game.description, game.developer) == ("Edited while the refresh ran", "Valve")
 
 
+async def test_an_id_edited_during_the_lookup_un_verifies_the_now_mismatched_provider(
+    owner, providers, client
+):
+    """A provider's id-match verification is computed against the ids the lookup started with
+    (#492), but the route locks and re-reads the row before applying; if the game's id in that
+    provider's own namespace changes before the lock, the provider must not keep being treated
+    as verified just because it was, against ids that no longer hold (review finding 4). Steam
+    still confirms the game by its own namespace, so the refresh is not a conflict (#486/#492's
+    classify tolerates a differing Atlas id when another namespace agrees) - but Atlas's now
+    stale claim must be withheld, not silently applied."""
+    user_id, _ = owner
+    gate = asyncio.Event()
+    slow_atlas = atlas(ATLAS_ID, description="Old Atlas record")
+    slow_atlas.gate = gate
+    providers(steam(), slow_atlas)
+    game_id = await add_game(
+        user_id, provider_ids={"steam": "12345", "atlas": ATLAS_ID}
+    )
+
+    pending = asyncio.create_task(refresh(client, game_id))
+    async with asyncio.timeout(5):
+        while not slow_atlas.asked:
+            await asyncio.sleep(0.01)
+    async with SessionLocal() as db:
+        game = await db.get(Game, game_id, with_for_update=True)
+        game.provider_ids = {"steam": "12345", "atlas": OTHER_ATLAS_ID}
+        await db.commit()
+    gate.set()
+    result = await asyncio.wait_for(pending, timeout=10)
+
+    assert result["status"] == "updated"
+    assert slow_atlas.id in result["unverified_sources"]
+    game = await stored(game_id)
+    assert (game.description, game.provider_ids) == (
+        None,
+        {"steam": "12345", "atlas": OTHER_ATLAS_ID},
+    )
+
+
 # --- the rules on their own -------------------------------------------------------------------
 
 

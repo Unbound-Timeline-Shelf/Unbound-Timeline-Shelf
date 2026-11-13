@@ -81,6 +81,21 @@ def unverified_providers(
     contributed.update(provider_id for key in group for provider_id in sources[key].metadata)
     for asset in assets:
         contributed.update(asset_providers.get((asset["kind"], asset["url"]), ()))
+    return unverified_from_evidence(claims, contributed, namespaces, held)
+
+
+def unverified_from_evidence(
+    claims: Mapping[str, Mapping[str, list[str]]],
+    contributed: Iterable[str],
+    namespaces: Mapping[str, str | None],
+    held: Mapping[str, str],
+) -> set[str]:
+    """The ``held``-dependent half of ``unverified_providers``, split out so a route that locked
+    the game after the lookup ran can re-decide against the row it actually applies to, rather
+    than reusing a verdict computed from the ids the lookup started with (review finding 4):
+    while a provider request is in flight, an editor can change the game's id in a namespace,
+    and the refresh must not keep treating a provider as confirming ids that are no longer the
+    ones on the row it is about to write to."""
     return {
         provider_id
         for provider_id in contributed
