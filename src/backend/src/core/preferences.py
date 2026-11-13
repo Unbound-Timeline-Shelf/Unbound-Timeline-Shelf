@@ -19,6 +19,7 @@ from src.core.page_settings import DEFAULT_PAGE_SETTINGS, validate_page_settings
 from src.core.public_url import normalize_public_url
 from src.database.models.user_preferences import UserPreferences
 from src.helpers.shortcut_keys import validate_shortcut_overrides
+from src.plugin_api.vocab import RELATION_TYPES
 
 DEFAULTS: dict[str, Any] = {
     "ui_theme": "system",
@@ -146,24 +147,8 @@ def _validate_anilist_username(value: Any) -> str:
     return value.strip()
 
 
-_RELATIONSHIP_RULE_KINDS = frozenset(
-    {
-        "version_of",
-        "remake_of",
-        "remaster_of",
-        "port_of",
-        "dlc_of",
-        "expansion_of",
-        "standalone_expansion_of",
-        "mod_of",
-        "modpack_of",
-        "total_conversion_of",
-        "series_member",
-        "collection_member",
-        "related_to",
-        "custom",
-    }
-)
+# the shared relation vocabulary, plus the two kinds only a person creates
+_RELATIONSHIP_RULE_KINDS = frozenset({*RELATION_TYPES, "related_to", "custom"})
 
 
 def _validate_relationship_display(value: Any) -> dict[str, str]:

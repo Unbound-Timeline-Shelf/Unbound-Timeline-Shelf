@@ -387,6 +387,7 @@ def resolve_path(template: str, ids: dict[str, str]) -> str | None:
         "token": ids["live_token"],
         "index": "0",
         "action_id": "install",
+        "namespace": "atlas",
     }
     # Game identity records (observations, counters, decisions, relationships) have no
     # fixture: a fresh identifier proves a caller cannot reach a record that is not theirs.

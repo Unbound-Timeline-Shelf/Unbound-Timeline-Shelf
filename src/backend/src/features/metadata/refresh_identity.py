@@ -14,6 +14,10 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from .handler import Provider, Source
 
+# identity verdicts (Plugin API 1.1.20, C4.4) that stand in for a held-id namespace match:
+# the provider itself found this record by id, not by an unreliable title fallback (#492).
+CORROBORATING_MATCHES = frozenset({"id", "redirect", "crosswalk"})
+
 
 def provider_id_claims(
     sources: Mapping[str, Source], group: Iterable[str], providers: Iterable[Provider]
@@ -73,18 +77,30 @@ def unverified_providers(
     none at all, may have fallen back to a title lookup and found another game, so a
     refresh must not apply its fields or ids without the person's confirmation (#492
     review). A provider without a namespace (artwork-only sources) is looked up by the held
-    ids and cannot report an identity either way, so it is not counted here."""
+    ids and cannot report an identity either way, so it is not counted here.
+
+    A provider's own identity verdict (Plugin API 1.1.20, C4.4) is also confirmation: a
+    ``match`` of ``id``, ``redirect`` or ``crosswalk`` is identity evidence even when the
+    provider's own id claim sits in a namespace the game does not hold yet (an Atlas patch
+    matched by Steam id but reporting only its own ``atlas`` id, for one)."""
     namespaces = {provider.id: provider.declaration.identifier_namespace for provider in providers}
     group = tuple(group)
     asset_providers = asset_providers or {}
+    verdicts = {
+        provider_id: patch.identity.match
+        for key in group
+        for provider_id, patch in sources[key].metadata.items()
+        if patch.identity is not None
+    }
     contributed = set(claims)
     contributed.update(provider_id for key in group for provider_id in sources[key].metadata)
     for asset in assets:
         contributed.update(asset_providers.get((asset["kind"], asset["url"]), ()))
-    return unverified_from_evidence(claims, contributed, namespaces, held)
+    return unverified_from_evidence(verdicts, claims, contributed, namespaces, held)
 
 
 def unverified_from_evidence(
+    verdicts: Mapping[str, str],
     claims: Mapping[str, Mapping[str, list[str]]],
     contributed: Iterable[str],
     namespaces: Mapping[str, str | None],
@@ -93,17 +109,23 @@ def unverified_from_evidence(
     """The ``held``-dependent half of ``unverified_providers``, split out so a route that locked
     the game after the lookup ran can re-decide against the row it actually applies to, rather
     than reusing a verdict computed from the ids the lookup started with (review finding 4):
-    while a provider request is in flight, an editor can change the game's id in a namespace,
-    and the refresh must not keep treating a provider as confirming ids that are no longer the
-    ones on the row it is about to write to."""
-    return {
-        provider_id
-        for provider_id in contributed
-        if namespaces.get(provider_id)
-        and not any(
+    while a provider request is in flight, an editor can change the game's id in a namespace a
+    *different* source still confirms by its OWN namespace, which tolerates the game's id
+    differing elsewhere; the refresh must not keep treating a provider as verified against ids
+    that are no longer the ones on the row it is about to write to."""
+
+    def confirms(provider_id: str) -> bool:
+        if verdicts.get(provider_id) in CORROBORATING_MATCHES:
+            return True
+        return any(
             held.get(namespace) in values
             for namespace, values in claims.get(provider_id, {}).items()
         )
+
+    return {
+        provider_id
+        for provider_id in contributed
+        if namespaces.get(provider_id) and not confirms(provider_id)
     }
 
 

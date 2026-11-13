@@ -42,7 +42,8 @@ case "${LANE_MODE:-tests}" in
     python -m pytest tools/tests/test_plugin_acceptance_acquisition.py \
       tools/tests/test_environment_reference.py \
       tools/tests/test_backend_test_shards.py \
-      tools/tests/test_backend_linux_lane_args.py 2>&1 | tee /out/repository-pytest-output.txt
+      tools/tests/test_backend_linux_lane_args.py \
+      tools/tests/test_vocab_check.py 2>&1 | tee /out/repository-pytest-output.txt
     exit "${PIPESTATUS[0]}" ;;
   plugin-runtime)
     cd "$WORK/src/plugin-runtime"

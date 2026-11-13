@@ -41,6 +41,7 @@ from src.database.models.movies import Movie, MovieStatus
 from src.database.models.tv_show import TVShow, TVShowStatus
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.metadata.game_releases import known_day
 from src.features.notifications import tracked_statuses
 
 # The app shows five statuses (Plan to Watch, On Hold, Watching, Completed,
@@ -661,6 +662,8 @@ async def build_calendar_entries(
                         Game.user_id == user_id,
                         Game.deleted_at.is_(None),
                         Game.release_date.isnot(None),
+                        # a year or month is not a day to show the release on (C5.5)
+                        known_day(),
                         Game.release_date >= date_window_start,
                         Game.release_date <= date_window_end,
                     )
@@ -767,6 +770,7 @@ async def get_calendar_games(
                         Game.user_id == current_user.id,
                         Game.deleted_at.is_(None),
                         Game.release_date.isnot(None),
+                        known_day(),
                         Game.release_date < date.today() - timedelta(days=1),
                         Game.release_date >= date.today() - timedelta(days=days),
                     )

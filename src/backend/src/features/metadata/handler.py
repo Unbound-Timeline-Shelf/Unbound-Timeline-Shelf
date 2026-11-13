@@ -28,6 +28,7 @@ from .configuration import UNRANKED
 from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
+from .provider_reports import is_unassignable, provider_identities, provider_relations
 from .providers import Operation, PluginMetadataProvider
 from .refresh_identity import provider_id_claims, unverified_providers, verified_record
 
@@ -413,6 +414,8 @@ class MetadataHandler:
                 (priorities.get(provider_id, source.priority), provider_id, patch)
                 for source in members
                 for provider_id, patch in source.metadata.items()
+                # an ambiguous lookup named several games; none of its fields are this one's
+                if not is_unassignable(patch)
             ),
             key=lambda item: (item[0], item[1]),
         )
@@ -587,6 +590,22 @@ class MetadataHandler:
         for asset in session.candidates.get(group_id or "", {}).get("assets", []):
             used.update(session.asset_providers.get((asset["kind"], asset["url"]), ()))
         return sorted(used & {provider.id for provider in session.providers})
+
+    @staticmethod
+    def provider_reports(session: SearchSession, group_id: str | None) -> dict[str, Any]:
+        """Identity verdicts and game relations, per registered provider (Plugin API 1.1.20)."""
+        group = session.groups.get(group_id or "", ())
+        namespaces = {
+            provider.id: provider.declaration.identifier_namespace for provider in session.providers
+        }
+        # the contract each plugin declared; a host-owned provider has none
+        contracts = {
+            provider.id: getattr(provider, "api_contract", None) for provider in session.providers
+        }
+        return {
+            "provider_identities": provider_identities(session.sources, group, namespaces),
+            "provider_relations": provider_relations(session.sources, group, namespaces, contracts),
+        }
 
     def _rank(self, session: SearchSession) -> None:
         previous, previous_groups = session.candidates, session.groups
@@ -886,6 +905,7 @@ class MetadataHandler:
                 "contributors": self.contributors(session, session.selected),
                 "provider_id_claims": claims,
                 "unverified_providers": sorted(unverified),
+                **self.provider_reports(session, session.selected),
                 # kept so a route that locks the game row after this lookup ran can redo the
                 # verification against the row it actually applies to (review finding 4);
                 # `session` outlives this call (`cancel`/the session-id pop below do not clear
