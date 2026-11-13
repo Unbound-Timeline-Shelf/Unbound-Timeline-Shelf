@@ -389,6 +389,7 @@ are redacted. Validation errors never echo submitted values.
 | DELETE | `/api/game/{game_id}/files/{kind}/{filename}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/files/{kind}/{filename}` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/files/{kind}/{filename}/restore` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
+| POST | `/api/game/{game_id}/metadata/provider-ids/{namespace}/revert-follow` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | POST | `/api/game/{game_id}/metadata/refresh` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | DELETE | `/api/game/{game_id}/metadata/rejections` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |
 | GET | `/api/game/{game_id}/metadata/rejections` | user | Game queried with `user_id == caller`; any child ID must also belong to that game. |

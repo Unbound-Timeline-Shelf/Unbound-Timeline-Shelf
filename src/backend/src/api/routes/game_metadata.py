@@ -774,3 +774,28 @@ async def forget_metadata_rejections(
     only = (namespace, identity) if namespace is not None and identity is not None else None
     await refresh_match.forget_rejections(db, game.id, only=only)
     await db.commit()
+
+
+@router.post("/{game_id}/metadata/provider-ids/{namespace}/revert-follow")
+async def revert_followed_provider_id(
+    game_id: UUID,
+    namespace: str,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict:
+    """Undo the most recent merge/redirect rewrite of this namespace's id (C4.2).
+
+    Atlas can later undo a merge a refresh followed; the game is then stuck using the live id's
+    (possibly now wrong) data with no built-in way to go back. This restores the id the rewrite
+    replaced and rejects the one being reverted away from, so a refresh does not immediately
+    re-adopt it even if the provider still reports the same, now-stale redirect.
+    """
+    game = await _get_game_or_404(game_id, db, current_user.id, for_update=True)
+    restored = await refresh_match.revert_followed_id(db, game, namespace)
+    if restored is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"No recorded merge or redirect to undo for the {namespace} id.",
+        )
+    await db.commit()
+    return {"namespace": namespace, "provider_ids": dict(game.provider_ids or {})}
