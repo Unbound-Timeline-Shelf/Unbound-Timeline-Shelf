@@ -3,10 +3,19 @@
 // will stay that way when titles become shared between people.
 import { ref, watch, nextTick } from "vue";
 
-const props = defineProps<{ note: string | null }>();
+// saveNote resolves false when the note could not be saved; the editor then
+// stays open with the typed text so nothing is lost. A caller that has not
+// moved to the race-safe quick-save path yet may omit it and listen for the
+// plain "save" event instead.
+const props = defineProps<{
+  note: string | null;
+  saveNote?: (note: string | null) => Promise<boolean>;
+}>();
 const emit = defineEmits<{ (e: "save", note: string | null): void }>();
 
 const editing = ref(false);
+const saving = ref(false);
+const saveFailed = ref(false);
 const draft = ref(props.note ?? "");
 const input = ref<HTMLTextAreaElement | null>(null);
 
@@ -33,11 +42,29 @@ async function startEdit() {
   input.value?.focus();
 }
 function cancel() {
+  if (saving.value) return;
   editing.value = false;
+  saveFailed.value = false;
 }
-function save() {
-  emit("save", draft.value.trim() || null);
-  editing.value = false;
+async function save() {
+  if (saving.value) return;
+  const submitted = draft.value;
+  if (!props.saveNote) {
+    emit("save", submitted.trim() || null);
+    editing.value = false;
+    return;
+  }
+  saving.value = true;
+  saveFailed.value = false;
+  try {
+    if (await props.saveNote(submitted.trim() || null)) {
+      if (draft.value === submitted) editing.value = false;
+    } else saveFailed.value = true;
+  } catch {
+    saveFailed.value = true;
+  } finally {
+    saving.value = false;
+  }
 }
 </script>
 
@@ -61,12 +88,22 @@ function save() {
         @keydown.meta.enter="save"
       ></textarea>
       <div class="note-actions">
-        <button type="button" class="btn-solid" @click="save">Save</button>
+        <button
+          type="button"
+          class="btn-solid"
+          :disabled="saving"
+          @click="save"
+        >
+          {{ saving ? "Saving…" : "Save" }}
+        </button>
         <button type="button" class="btn-text muted" @click="cancel">
           Cancel
         </button>
         <span class="note-hint">Ctrl+Enter to save</span>
       </div>
+      <p v-if="saveFailed" class="note-error" role="alert">
+        Your note could not be saved. It is still here; try again.
+      </p>
     </template>
 
     <template v-else-if="note">
@@ -158,6 +195,11 @@ function save() {
   margin-left: auto;
   font-size: 0.72rem;
   color: var(--ui-faint);
+}
+.note-error {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--ui-error);
 }
 .btn-text {
   background: none;
