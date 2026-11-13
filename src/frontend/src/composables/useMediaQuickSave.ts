@@ -1,0 +1,151 @@
+import { ref, watch, type Ref } from "vue";
+
+// A record from a response is a new object with new arrays and dates, so a
+// field counts as changed only when its value differs, not its identity.
+function same(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+interface Queue<T> {
+  tail: Promise<void>;
+  // The value of each field as the server last confirmed it.
+  confirmed: T;
+  // The newest value asked for, per field with a quick save in flight.
+  wanted: Map<keyof T, unknown>;
+  pending: number;
+  // Bumped per field when another writer (the full editor, a progress
+  // action) replaces the record with a different value for that field.
+  replaced: Map<keyof T, number>;
+  fields: Set<keyof T>;
+  errors: Map<keyof T, string>;
+}
+
+/**
+ * One-click changes (favourite, status, rating, note) on a movie, TV show or
+ * anime page. The movie/TV/anime detail endpoints only take a full update
+ * (there is no partial PATCH), so each quick save still sends the whole
+ * record — but it is built from the last value the server confirmed for every
+ * field, not from whatever the page happens to hold when the request finally
+ * runs. That keeps two independent quick saves (or a quick save and the full
+ * editor) from overwriting each other when their requests settle out of
+ * order, and serializes saves for the same title so they reach the server in
+ * the order they were made.
+ *
+ * Saves are serialized per field with per-field ownership: a replacement
+ * (the full editor, a progress save) that changes a field takes over that
+ * field, so an older quick-save answer for it is neither applied nor
+ * reported; a field the replacement left alone still belongs to the pending
+ * quick save, whose answer (success or failure) is applied when it arrives.
+ * A save still queued behind an earlier one re-checks which of its fields it
+ * still owns right before it sends, so it never ships a value the full
+ * editor has since replaced.
+ */
+export function useMediaQuickSave<T extends { id: string }>(
+  record: Ref<T | null>,
+  persist: (id: string, next: T) => Promise<T>,
+) {
+  const saveError = ref<string | null>(null);
+  const queues = new Map<string, Queue<T>>();
+  watch(
+    record,
+    (value, previous) => {
+      if (value?.id !== previous?.id) saveError.value = null;
+      const queue = value && queues.get(value.id);
+      if (!queue || value === previous) return;
+      for (const key of Object.keys(value) as (keyof T)[]) {
+        if (same(value[key], queue.confirmed[key])) continue;
+        queue.confirmed[key] = value[key];
+        queue.replaced.set(key, (queue.replaced.get(key) ?? 0) + 1);
+        queue.wanted.delete(key);
+        queue.errors.delete(key);
+      }
+      // Fields the replacement did not touch keep showing their pending change.
+      for (const [key, wanted] of queue.wanted)
+        value[key] = wanted as T[keyof T];
+    },
+    { flush: "sync" },
+  );
+
+  async function quickSave(
+    change: (target: T) => void,
+    failure: string,
+  ): Promise<boolean> {
+    const target = record.value;
+    if (!target) return false;
+    const id = target.id;
+    let queue = queues.get(id);
+    if (!queue) {
+      queue = {
+        tail: Promise.resolve(),
+        confirmed: { ...target },
+        wanted: new Map(),
+        pending: 0,
+        replaced: new Map(),
+        fields: new Set(),
+        errors: new Map(),
+      };
+      queues.set(id, queue);
+    }
+    const current = queue;
+    const next = { ...target };
+    change(next);
+    const fields = (Object.keys(next) as (keyof T)[]).filter(
+      (key) => !Object.is(next[key], target[key]),
+    );
+    for (const key of fields) {
+      target[key] = next[key];
+      current.fields.add(key);
+      current.wanted.set(key, next[key]);
+    }
+    // A field belongs to this save until another writer replaces it. The
+    // counters are read now, not when the request starts: a save queued
+    // behind an earlier one must not send a value the editor has since
+    // replaced.
+    const askedAt = new Map(
+      fields.map((key) => [key, current.replaced.get(key) ?? 0]),
+    );
+    const own = () =>
+      fields.filter(
+        (key) => (current.replaced.get(key) ?? 0) === askedAt.get(key),
+      );
+    current.pending += 1;
+    saveError.value = null;
+    let saved = false;
+    current.tail = current.tail.then(async () => {
+      const sending = own();
+      // Every field was replaced while this save waited: nothing to send.
+      if (sending.length === 0) return;
+      const body = { ...current.confirmed };
+      for (const key of sending) body[key] = next[key];
+      try {
+        const result = await persist(id, body);
+        for (const key of own()) {
+          current.confirmed[key] = result[key];
+          current.errors.delete(key);
+        }
+        saved = true;
+      } catch {
+        for (const key of own()) current.errors.set(key, failure);
+      }
+    });
+    await current.tail;
+    current.pending -= 1;
+    if (current.pending === 0) {
+      queues.delete(id);
+      if (record.value?.id === id) {
+        for (const key of current.fields)
+          record.value[key] = current.confirmed[key];
+        saveError.value = [...current.errors.values()].at(-1) ?? null;
+      }
+    }
+    return saved;
+  }
+
+  return { saveError, quickSave };
+}

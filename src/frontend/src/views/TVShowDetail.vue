@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { latestRequest } from "../utils/latestRequest";
+import { useMediaQuickSave } from "../composables/useMediaQuickSave";
 import RetryMessage from "../components/RetryMessage.vue";
 import { localMediaImage } from "../utils/mediaImages";
 import { usePageTitle } from "../state/pageTitle";
@@ -46,6 +47,9 @@ const router = useRouter();
 const showId = computed(() => route.params.id as string);
 
 const show = ref<TVShow | null>(null);
+const { saveError, quickSave } = useMediaQuickSave(show, (id, next) =>
+  updateTVShow(id, tvShowToInput(next)),
+);
 usePageTitle(() => show.value?.title);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -56,8 +60,11 @@ const activeTab = ref<"overview" | "episodes" | "related" | "recommended">(
 const statusBucketModel = computed({
   get: () => statusBucket(show.value?.status ?? "wishlist"),
   set: (bucket: string) => {
-    if (!show.value) return;
-    show.value.status = bucketToReal(bucket) as TVShowStatus;
+    const next = bucketToReal(bucket) as TVShowStatus;
+    void quickSave(
+      (target) => (target.status = next),
+      "Could not change the status. Try again.",
+    );
   },
 });
 
@@ -101,42 +108,18 @@ async function load() {
 async function toggleFavorite() {
   if (!show.value) return;
   const next = !show.value.favorite;
-  show.value.favorite = next;
-  try {
-    await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      favorite: next,
-    });
-  } catch {
-    show.value.favorite = !next;
-  }
+  await quickSave(
+    (target) => (target.favorite = next),
+    "Could not update the favourite. Try again.",
+  );
 }
 
-async function saveNote(note: string | null) {
-  if (!show.value) return;
-  const previous = show.value.note;
-  show.value.note = note;
-  try {
-    show.value = await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      note,
-    });
-  } catch {
-    show.value.note = previous;
-  }
-}
-
-async function onStatusChange() {
-  if (!show.value) return;
-  const previous = show.value.status;
-  try {
-    show.value = await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      status: show.value.status,
-    });
-  } catch {
-    show.value.status = previous;
-  }
+// The note editor stays open with the typed text when this returns false.
+function saveNote(note: string | null): Promise<boolean> {
+  return quickSave(
+    (target) => (target.note = note),
+    "Could not save your note. Try again.",
+  );
 }
 
 function onSaved(saved: TVShow) {
@@ -632,17 +615,10 @@ watch(
   { immediate: true },
 );
 async function onRatingChange(value: number | null) {
-  if (!show.value) return;
-  const previous = show.value.ratingOverall;
-  show.value.ratingOverall = value;
-  try {
-    show.value = await updateTVShow(show.value.id, {
-      ...tvShowToInput(show.value),
-      ratingOverall: value,
-    });
-  } catch {
-    if (show.value) show.value.ratingOverall = previous;
-  }
+  await quickSave(
+    (target) => (target.ratingOverall = value),
+    "Could not save the rating. Try again.",
+  );
 }
 </script>
 
@@ -667,6 +643,7 @@ async function onRatingChange(value: number | null) {
         @retry="load"
       />
     </p>
+    <p v-if="saveError" class="empty-state error-text">{{ saveError }}</p>
     <PluginExtensionSlot
       slot-id="media.detail.after-header"
       :context="{
@@ -718,7 +695,6 @@ async function onRatingChange(value: number | null) {
             ]
           : []),
       ]"
-      @status-change="onStatusChange"
       @rating-change="onRatingChange"
       @edit="showEditModal = true"
       @toggle-favorite="toggleFavorite"
@@ -773,7 +749,7 @@ async function onRatingChange(value: number | null) {
           v-if="show.description"
           :text="show.description"
         />
-        <MyNote :note="show.note" @save="saveNote" />
+        <MyNote :note="show.note" :save-note="saveNote" />
         <MediaProviderPanel media-type="tv" :media-id="show.id" />
       </div>
 
