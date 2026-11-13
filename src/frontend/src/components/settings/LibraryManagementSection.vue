@@ -132,10 +132,37 @@ const showPreviewDialog = ref(false);
 const previewError = ref<string | null>(null);
 // title-only matches the user ticked in the preview; none is applied unticked
 const confirmedTitleMatches = ref<Set<string>>(new Set());
+// id matches whose withheld (unverified) source the user ticked to accept
+const confirmedIdMatches = ref<Set<string>>(new Set());
 
 // a dry run answers "preview" for a game it matched
 function previewMatched(preview: RefreshMetadataPreview): boolean {
   return preview.status === "preview" || preview.status === "updated";
+}
+
+function isTitleOnly(entry: PreviewEntry): boolean {
+  return entry.preview.match === "title";
+}
+
+// an id match that withheld another source's fields/id pending confirmation (#492 review):
+// the verified source alone may report no changes, so this must not be folded into
+// "already up to date" the way a title-only match with no changes would be.
+function hasUnverifiedSource(entry: PreviewEntry): boolean {
+  return (
+    entry.preview.match === "id" &&
+    Object.keys(entry.preview.unverifiedSources ?? {}).length > 0
+  );
+}
+
+// either kind of match that is only applied once the person confirms this exact candidate
+function needsCandidateConfirmation(entry: PreviewEntry): boolean {
+  return isTitleOnly(entry) || hasUnverifiedSource(entry);
+}
+
+function isConfirmed(entry: PreviewEntry): boolean {
+  return isTitleOnly(entry)
+    ? confirmedTitleMatches.value.has(entry.game.id)
+    : confirmedIdMatches.value.has(entry.game.id);
 }
 
 const previewWithChanges = computed(() =>
@@ -144,12 +171,10 @@ const previewWithChanges = computed(() =>
       previewMatched(e.preview) &&
       (e.preview.changedFields.length ||
         e.preview.wouldAddKeyArt ||
-        e.preview.wouldAddBanner),
+        e.preview.wouldAddBanner ||
+        hasUnverifiedSource(e)),
   ),
 );
-function isTitleOnly(entry: PreviewEntry): boolean {
-  return entry.preview.match === "title";
-}
 
 function toggleTitleMatch(entry: PreviewEntry, confirmed: boolean) {
   const next = new Set(confirmedTitleMatches.value);
@@ -158,20 +183,34 @@ function toggleTitleMatch(entry: PreviewEntry, confirmed: boolean) {
   confirmedTitleMatches.value = next;
 }
 
+function toggleIdMatch(entry: PreviewEntry, confirmed: boolean) {
+  const next = new Set(confirmedIdMatches.value);
+  if (confirmed) next.add(entry.game.id);
+  else next.delete(entry.game.id);
+  confirmedIdMatches.value = next;
+}
+
 function candidateIds(preview: RefreshMetadataPreview): string {
   return Object.entries(preview.candidate?.providerIds ?? {})
     .map(([namespace, identity]) => `${namespace}:${identity}`)
     .join(", ");
 }
 
-// what "Apply" sends: id matches, plus the title-only matches the user ticked
+function unverifiedSourceNames(preview: RefreshMetadataPreview): string {
+  return Object.keys(preview.unverifiedSources ?? {}).join(", ");
+}
+
+// what "Apply" sends: id matches, plus any title-only or unverified-source match the user ticked
 const previewToApply = computed(() =>
   previewWithChanges.value.filter(
-    (e) => !isTitleOnly(e) || confirmedTitleMatches.value.has(e.game.id),
+    (e) => !needsCandidateConfirmation(e) || isConfirmed(e),
   ),
 );
 const previewTitleOnly = computed(
   () => previewWithChanges.value.filter(isTitleOnly).length,
+);
+const previewUnverifiedId = computed(
+  () => previewWithChanges.value.filter(hasUnverifiedSource).length,
 );
 const previewUnchanged = computed(
   () =>
@@ -213,6 +252,7 @@ async function previewRefresh() {
   }
   previewResults.value = [];
   confirmedTitleMatches.value = new Set();
+  confirmedIdMatches.value = new Set();
   let taskId: string | null = null;
   try {
     const games = await fetchGames();
@@ -266,12 +306,12 @@ async function applyPreviewedRefresh() {
 
     await runInBatches(entries, REFRESH_CONCURRENCY, async (entry) => {
       const game = entry.game;
-      // a ticked title-only match is confirmed by the exact candidate shown;
-      // the server refuses it if the lookup now finds a different one
+      // a ticked title-only or unverified-source match is confirmed by the exact
+      // candidate shown; the server refuses it if the lookup now finds a different one
       const outcome: RefreshMetadataOutcome = await refreshGameMetadata(
         game,
         options,
-        isTitleOnly(entry)
+        needsCandidateConfirmation(entry)
           ? (entry.preview.candidate?.providerIds ?? {})
           : null,
       );
@@ -594,26 +634,45 @@ async function restoreGameById(game: TrashedGame) {
         game already has. Tick each one that is the right game; unticked ones
         are left alone.
       </p>
+      <p v-if="previewUnverifiedId" class="section-hint">
+        {{ previewUnverifiedId }} matched by a provider id the game already has,
+        but another source could only confirm it by title and its fields/id are
+        withheld until you confirm it is the same game. Tick each one that is
+        correct; unticked ones apply only the verified source's data.
+      </p>
       <ul v-if="previewWithChanges.length" class="preview-change-list">
         <li
           v-for="entry in previewWithChanges"
           :key="entry.game.id"
-          :class="{ 'preview-title-only': isTitleOnly(entry) }"
+          :class="{
+            'preview-title-only': isTitleOnly(entry),
+            'preview-unverified-id': hasUnverifiedSource(entry),
+          }"
         >
-          <label v-if="isTitleOnly(entry)" class="preview-title-confirm">
+          <label
+            v-if="needsCandidateConfirmation(entry)"
+            class="preview-title-confirm"
+          >
             <input
               type="checkbox"
-              :checked="confirmedTitleMatches.has(entry.game.id)"
-              :aria-label="`Apply the title-only match for ${entry.game.title}`"
+              :checked="isConfirmed(entry)"
+              :aria-label="`Apply the ${isTitleOnly(entry) ? 'title-only' : 'unverified-source'} match for ${entry.game.title}`"
               @change="
-                toggleTitleMatch(
-                  entry,
-                  ($event.target as HTMLInputElement).checked,
-                )
+                isTitleOnly(entry)
+                  ? toggleTitleMatch(
+                      entry,
+                      ($event.target as HTMLInputElement).checked,
+                    )
+                  : toggleIdMatch(
+                      entry,
+                      ($event.target as HTMLInputElement).checked,
+                    )
               "
             />
             <span class="preview-change-title">{{ entry.game.title }}</span>
-            <span class="preview-title-badge">title only</span>
+            <span class="preview-title-badge">{{
+              isTitleOnly(entry) ? "title only" : "unverified source"
+            }}</span>
           </label>
           <span v-else class="preview-change-title">{{
             entry.game.title
@@ -622,6 +681,10 @@ async function restoreGameById(game: TrashedGame) {
             {{ previewChangeSummary(entry.preview) }}
             <template v-if="isTitleOnly(entry) && candidateIds(entry.preview)">
               <br />would link {{ candidateIds(entry.preview) }}
+            </template>
+            <template v-if="hasUnverifiedSource(entry)">
+              <br />{{ unverifiedSourceNames(entry.preview) }} withheld its data
+              pending confirmation
             </template>
           </span>
         </li>

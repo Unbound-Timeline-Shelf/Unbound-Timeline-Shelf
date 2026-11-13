@@ -1,6 +1,7 @@
 import { fetchAllGamePages, fetchViewportGamePage } from "./gamePages";
 import type { MetadataSearchResult } from "./metadata";
 export type { MetadataSearchResult } from "./metadata";
+import type { BackendMetadataRefreshResponse } from "./gameApiTypes";
 import { mockGames } from "../data/mockGames";
 import { failedRequest } from "./apiError";
 import { mapAchievements } from "./achievementMapping";
@@ -568,22 +569,8 @@ export interface RefreshMetadataPreview {
   wouldAddKeyArt: boolean;
   wouldAddBanner: boolean;
   gameUpdatedAt: number;
-}
-
-interface BackendMetadataRefreshResponse {
-  status: RefreshMetadataResult;
-  match?: RefreshMetadataMatch;
-  candidate?: {
-    title: string | null;
-    provider_ids: Record<string, string>;
-  } | null;
-  provider: string | null;
-  provider_errors: string[];
-  changed_fields: string[];
-  skipped_locked_fields: string[];
-  would_add_key_art: boolean;
-  would_add_banner: boolean;
-  game_updated_at: number;
+  // id match only: unconfirmed providers' reported ids, withheld pending confirmation (#492).
+  unverifiedSources: Record<string, Record<string, unknown>>;
 }
 
 async function requestGameMetadataRefresh(
@@ -683,6 +670,7 @@ export async function previewGameMetadataRefresh(
       wouldAddKeyArt: raw.would_add_key_art,
       wouldAddBanner: raw.would_add_banner,
       gameUpdatedAt: raw.game_updated_at,
+      unverifiedSources: raw.unverified_sources ?? {},
     };
   } catch {
     return {
@@ -696,6 +684,7 @@ export async function previewGameMetadataRefresh(
       wouldAddKeyArt: false,
       wouldAddBanner: false,
       gameUpdatedAt: game.updatedAt ?? 0,
+      unverifiedSources: {},
     };
   }
 }
