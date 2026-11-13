@@ -201,6 +201,13 @@ def _compare(
     return offered, shared, conflicts
 
 
+def _corroborating_verdict(identities: Mapping[str, Mapping[str, object]]) -> bool:
+    """Whether some (non-ambiguous) provider's own identity verdict is id/redirect/crosswalk
+    evidence (Plugin API 1.1.20), the same evidence `unverified_providers` treats as confirming
+    the game even without a shared namespace (review finding 5)."""
+    return any(identity.get("match") in FOLLOWED_MATCHES for identity in identities.values())
+
+
 def classify(
     saved: Mapping[str, str],
     claims: Mapping[str, Mapping[str, Claim]],
@@ -214,22 +221,36 @@ def classify(
 
     ``identities`` holds each provider's Plugin API 1.1.20 identity verdict (``match`` and
     ``previous_ids``); an older provider sends none, and rules 1, 3 and 4 then work as before."""
-    claims, verdict = _apply_verdicts(saved, claims, identities or {})
+    identities = identities or {}
+    claims, verdict = _apply_verdicts(saved, claims, identities)
     if isinstance(verdict, RefreshMatch):
         return verdict
-    followed = verdict
-    saved = {**saved, **{namespace: move["to"] for namespace, move in followed.items()}}
-    offered, shared, conflicts = _compare(saved, _reported(claims))
+    rejected_set = set(rejected)
+    # Rule 2 is never followed into an id the person explicitly rejected: checking rejections
+    # only after substituting the followed id into `saved` would make that id look already
+    # held, silently overriding the rejection (review finding 1).
+    followed = {
+        namespace: move
+        for namespace, move in verdict.items()
+        if (namespace, move["to"]) not in rejected_set
+    }
+    saved_with_follows = {
+        **saved,
+        **{namespace: move["to"] for namespace, move in followed.items()},
+    }
+    offered, shared, conflicts = _compare(saved_with_follows, _reported(claims))
     if conflicts:
         return RefreshMatch("conflict", offered, shared, conflicts)
     refused = {
         namespace: value
         for namespace, value in offered.items()
-        if saved.get(namespace) != value and (namespace, value) in set(rejected)
+        if saved.get(namespace) != value and (namespace, value) in rejected_set
     }
     if refused:
         return RefreshMatch("rejected", offered, shared, rejected=refused)
-    if shared:
+    # Rule 1 (a shared namespace) or an applicable identity verdict alone (rule 2's own
+    # evidence, without a followed move) is the game (review finding 5).
+    if shared or _corroborating_verdict(identities):
         return RefreshMatch("id", offered, shared, followed=followed)
     if reported_title and normalize_metadata_title(reported_title) == normalize_metadata_title(
         game_title

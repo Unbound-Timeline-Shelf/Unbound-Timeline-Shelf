@@ -649,10 +649,18 @@ async def refresh_game_metadata(
         if "title" in updates:
             names.note_title_change(game, trusted_metadata=True)
             await names.reconcile_games(db, game.user_id, [game])
-        # Plugin API 1.1.20 game relations; a savepoint, so a failure keeps the metadata update
+        # Plugin API 1.1.20 game relations; a savepoint, so a failure keeps the metadata update.
+        # An unverified provider's fields/ids/artwork are already withheld (#492 review); its
+        # relations get the same treatment, or a title-matched but unverified provider could
+        # still create a real edge, or a pending one for an absent target (review finding 3).
+        verified_relations = [
+            relation
+            for relation in record.get("provider_relations") or []
+            if relation.get("provider") not in unverified
+        ]
         try:
             async with db.begin_nested():
-                relations = await ingest_relations(db, game, record.get("provider_relations") or [])
+                relations = await ingest_relations(db, game, verified_relations)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             provider_errors.append(f"Relations: {type(exc).__name__}")
 

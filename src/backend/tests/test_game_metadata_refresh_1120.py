@@ -35,6 +35,7 @@ from tests.test_game_metadata_refresh_identity import (
     OTHER_ATLAS_ID,
     StandInProvider,
     add_game,
+    atlas,
     refresh,
     steam,
     stored,
@@ -334,6 +335,38 @@ async def test_a_redirected_atlas_id_is_rewritten_to_the_live_one(owner, provide
     assert len(await id_history(game_id)) == 1
 
 
+async def test_a_redirect_into_a_rejected_id_is_not_followed(owner, providers, client):
+    """A rejection is checked against the ids the game actually holds, not against the id a
+    followed redirect would substitute in: classify() used to compute `refused` after already
+    rewriting `saved` to include the redirect's target, which made that target look already
+    held and silently bypassed the person's earlier rejection of it (review finding 1)."""
+    user_id, _ = owner
+    providers(
+        atlas_by_id(
+            {
+                OTHER_ATLAS_ID: MetadataPatch(
+                    title="Merged target",
+                    provider_ids={"atlas": ATLAS_ID},
+                    identity=MetadataIdentity(
+                        match="redirect", previous_ids={"atlas": OTHER_ATLAS_ID}
+                    ),
+                )
+            }
+        )
+    )
+    game_id = await add_game(user_id, title="Original", provider_ids={"atlas": OTHER_ATLAS_ID})
+    rejected = await client.post(
+        f"/api/game/{game_id}/metadata/rejections",
+        json={"provider_ids": {"atlas": ATLAS_ID}},
+    )
+    assert rejected.status_code == 200, rejected.text
+
+    result = await refresh(client, game_id)
+
+    assert result["status"] == "rejected"
+    assert (await stored(game_id)).provider_ids == {"atlas": OTHER_ATLAS_ID}
+
+
 async def test_without_an_identity_verdict_a_changed_atlas_id_is_not_followed(
     owner, providers, client
 ):
@@ -461,9 +494,7 @@ async def test_undoing_a_followed_merge_restores_the_id_and_lets_a_refresh_corre
 
     # Atlas undoes the merge: nothing left asking for OTHER_ATLAS_ID yet, so a refresh right
     # now would just ask Atlas about ATLAS_ID again and find nothing new (no stand-in for it).
-    reverted = await client.post(
-        f"/api/game/{game_id}/metadata/provider-ids/atlas/revert-follow"
-    )
+    reverted = await client.post(f"/api/game/{game_id}/metadata/provider-ids/atlas/revert-follow")
     assert reverted.status_code == 200, reverted.text
     assert reverted.json() == {"namespace": "atlas", "provider_ids": {"atlas": OTHER_ATLAS_ID}}
     after_revert = await stored(game_id)
@@ -758,6 +789,33 @@ async def test_a_relation_that_would_be_circular_is_dropped(owner, providers, cl
 
     assert result["status"] == "updated" and result["relations_added"] == 0
     assert await edges(user_id) == [("dlc_of", base_id, dlc_id, RecordOrigin.INGEST.value, True)]
+
+
+async def test_an_unverified_providers_relation_is_not_ingested_even_pending(
+    owner, providers, client
+):
+    """An unverified provider's fields, ids and artwork are already withheld (#492 review); its
+    relations must be too, whether the target already exists (an edge would be created right
+    away) or not (a pending relationship would wait for it) - review finding 3."""
+    user_id, _ = owner
+    providers(
+        steam(), atlas(ATLAS_ID, title="Wrong game", relations=(relation("dlc_of", BASE_ATLAS_ID),))
+    )
+    game_id = await add_game(user_id, provider_ids={"steam": "12345"})
+
+    # the target is absent: an unverified relation must not even become a pending one
+    no_target = await refresh(client, game_id)
+    assert no_target["status"] == "updated"
+    assert ATLAS in no_target["unverified_sources"]
+    assert (no_target["relations_added"], no_target["relations_pending"]) == (0, 0)
+    assert await edges(user_id) == [] and await pending(user_id) == []
+
+    # the target now exists: an unverified relation must not create a real edge either
+    base_id = await add_game(user_id, title="Base Game", provider_ids={"atlas": BASE_ATLAS_ID})
+    with_target = await refresh(client, game_id)
+    assert with_target["relations_added"] == 0
+    assert await edges(user_id) == [] and await pending(user_id) == []
+    assert (await stored(base_id)).title == "Base Game"
 
 
 # --- C7.2: crossplay from a provider ----------------------------------------------------------
