@@ -395,6 +395,59 @@
   display: none;
 }
 
+.game-detail-page .tabbar-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+/* Phone (UX-AUDIT-APP A12): a compact hero, the cover beside the title, so
+   the tab bar is on the first screen above the bottom navigation; it then
+   stays at the top while the panel scrolls, and fades at the edge when more
+   tabs lie to the right. */
+@media (max-width: 640px) {
+  .game-detail-page .hero {
+    min-height: 0;
+  }
+  .game-detail-page .hero-content {
+    flex-direction: row;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 58px 16px 12px;
+  }
+  .game-detail-page .poster-card {
+    width: 88px;
+    max-height: 40vh;
+  }
+  .game-detail-page .hero-text {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .game-detail-page .title {
+    font-size: 1.55rem;
+    margin-bottom: 10px;
+  }
+  .game-detail-page .badge-row,
+  .game-detail-page .action-row {
+    flex-wrap: wrap;
+  }
+  .game-detail-page .tabbar-wrap {
+    position: sticky;
+    top: var(--ui-phone-sticky-top, 0px);
+    z-index: 5;
+    margin-top: 8px;
+    padding: 6px 12px;
+    background: var(--ui-bg);
+  }
+  .game-detail-page .tabbar {
+    width: auto;
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .game-detail-page .tab-btn {
+    padding: 8px 14px;
+  }
+}
+
 .game-detail-page .tab-btn {
   flex-shrink: 0;
   white-space: nowrap;

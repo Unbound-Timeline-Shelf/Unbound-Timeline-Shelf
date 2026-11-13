@@ -172,7 +172,7 @@ async function upload(kind: BrandingAsset, event: Event) {
     <p v-if="error" role="alert" class="ui-alert">{{ error }}</p>
     <p class="section-hint">
       For your own theme and completed-game badges, open
-      <RouterLink to="/settings?section=appearance">Appearance</RouterLink>.
+      <RouterLink to="/settings/preferences/appearance">Appearance</RouterLink>.
     </p>
   </section>
 </template>

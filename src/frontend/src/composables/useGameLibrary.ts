@@ -28,6 +28,7 @@ import {
 import { useKeptAlive } from "../utils/useKeptAlive";
 import { libraryFreshness } from "../utils/libraryFreshness";
 import { useScrollReady } from "../state/scrollMemory";
+import { BULK_EDIT_TIP, dismissTip, tipVisible } from "../state/tips";
 import { useRoute, useRouter, stringifyQuery } from "vue-router";
 import type { LocationQueryRaw } from "vue-router";
 import { useWindowVirtualizer } from "@tanstack/vue-virtual";
@@ -245,18 +246,10 @@ export function useGameLibrary() {
   const showRandomPicker = ref(false);
 
   // one-time nudge toward bulk edit, gone for good the first time it's
-  // dismissed or the feature is actually used, not re-shown once discovered
-  const BULK_EDIT_HINT_KEY = "seenBulkEditHint";
-  const showBulkEditHint = ref(
-    localStorage.getItem(BULK_EDIT_HINT_KEY) !== "true",
-  );
+  // dismissed or the feature is actually used, on every device (A24)
+  const showBulkEditHint = tipVisible(BULK_EDIT_TIP);
   function dismissBulkEditHint() {
-    showBulkEditHint.value = false;
-    try {
-      localStorage.setItem(BULK_EDIT_HINT_KEY, "true");
-    } catch {
-      // worst case it just shows again next visit, not worth failing over
-    }
+    void dismissTip(BULK_EDIT_TIP);
   }
 
   function toggleSelectMode() {

@@ -53,7 +53,9 @@ onBeforeUnmount(() => display.removeEventListener("change", updateDisplay));
           Ask your administrator to enable the PWA plugin before installing the
           app.
         </p>
-        <RouterLink v-if="currentUser?.is_admin" to="/settings?section=plugins"
+        <RouterLink
+          v-if="currentUser?.is_admin"
+          to="/settings/administration/plugins"
           >Open plugin settings</RouterLink
         >
       </template>

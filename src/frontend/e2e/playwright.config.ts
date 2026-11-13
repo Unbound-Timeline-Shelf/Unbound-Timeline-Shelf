@@ -30,7 +30,7 @@ export default defineConfig({
     {
       name: "phone",
       use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 } },
-      testMatch: "navigation-state.e2e.ts",
+      testMatch: ["navigation-state.e2e.ts", "shell-and-phone.e2e.ts"],
       grep: /@phone/,
     },
   ],

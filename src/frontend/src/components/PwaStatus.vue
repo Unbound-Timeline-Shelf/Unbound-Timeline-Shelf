@@ -27,7 +27,7 @@ const visible = computed(
     <span v-if="!pwaState.online">Waiting for internet.</span>
     <span v-else-if="pwaState.available && !pwaState.enabled">
       PWA plugin is not enabled. This shortcut opens the ordinary website.
-      <RouterLink to="/settings?section=app-installation"
+      <RouterLink to="/settings/preferences/app-installation"
         >Open app installation settings</RouterLink
       >
     </span>

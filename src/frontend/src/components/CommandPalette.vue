@@ -18,6 +18,8 @@ import { pluginNavigation } from "../state/pluginExtensions";
 import {
   searchSettings,
   settingsSearchIndex,
+  settingsAreaOf,
+  settingsLocation,
   settingsSearchLocation,
 } from "../state/settingsRegistry";
 import UiModal from "./UiModal.vue";
@@ -211,7 +213,7 @@ const results = computed<Result[]>(() => {
     if (item.location === "administration" && !currentUser.value?.is_admin)
       continue;
     const destination = item.settingsSectionId
-      ? `/settings?section=${encodeURIComponent(item.settingsSectionId)}`
+      ? settingsSectionHref(item.settingsSectionId)
       : `/plugins/${encodeURIComponent(item.pluginId)}/${(item.routePath || item.pageId || "").split("/").map(encodeURIComponent).join("/")}`;
     out.push({
       key: "plugin-navigation:" + item.contributionId,
@@ -239,6 +241,14 @@ const activeIndex = ref(0);
 watch(results, () => {
   activeIndex.value = 0;
 });
+
+// Plugin settings sections link straight to their path once the registry
+// knows their area; until then the legacy address lets the redirect decide.
+function settingsSectionHref(section: string): string {
+  if (!settingsAreaOf(section))
+    return `/settings?section=${encodeURIComponent(section)}`;
+  return settingsLocation(section).path;
+}
 
 function go(to: string) {
   close();

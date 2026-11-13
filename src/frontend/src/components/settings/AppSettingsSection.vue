@@ -83,7 +83,7 @@ async function save() {
         {{ settings.app?.last_app_url || "Not detected yet" }}
       </p>
       <p class="hint">
-        <router-link to="/settings?section=notifications"
+        <router-link to="/settings/account/notifications"
           >Your notification URL preferences</router-link
         >
         can use separate URLs for email and other destinations.
