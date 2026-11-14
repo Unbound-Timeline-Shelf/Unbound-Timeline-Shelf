@@ -1,11 +1,11 @@
 # Core web framework
-fastapi==0.162.0
+fastapi==0.162.4
 starlette==1.10.0
 uvicorn[standard]==0.54.0
 
 # Database
 sqlalchemy[asyncio]==2.1.8
-psycopg[asyncio]==3.3.7
+psycopg[asyncio]==3.3.8
 alembic==1.20.1
 
 # HTTP client
@@ -37,7 +37,7 @@ python-dotenv==1.2.4
 cryptography==50.0.2
 
 # OpenID Connect / OAuth 2.0
-Authlib==1.9.3
+Authlib==1.9.5
 itsdangerous==2.2.0
 
 # Development/testing
