@@ -336,7 +336,65 @@ def _entry_isbn13(raw: dict[str, Any]) -> str | None:
     return min(isbns) if isbns else None
 
 
-_BookIdentity: TypeAlias = tuple[str, int | None, tuple[str, ...], str | None]
+# Core identity (title/year/author/ISBN) plus everything else this build knows how to derive
+# or carry for a precision/title helper, never a book's identity in its own right.
+_BOOK_IDENTITY_EXTRAS = {
+    "title",
+    "authors",
+    "first_published",
+    "first_published_precision",
+    "sort_title",
+}
+_BookIdentity: TypeAlias = tuple[str, int | None, tuple[str, ...], str | None, tuple[Any, ...]]
+
+
+def _hashable(value: Any) -> Any:
+    """A deterministic, hashable stand-in for a column value, for use inside a set key."""
+    if isinstance(value, dict):
+        return tuple(sorted((k, _hashable(v)) for k, v in value.items()))
+    if isinstance(value, (list, tuple, set)):
+        return tuple(_hashable(v) for v in value)
+    try:
+        hash(value)
+    except TypeError:
+        return repr(value)
+    return value
+
+
+def _book_extra_columns() -> tuple[str, ...]:
+    """Every other mapped ``Book`` column: two entries that share a title, year, author list
+    and ISBN can still be distinct books (two placeholder titles with different notes, say),
+    so everything else the model carries also has to differ before two entries are treated as
+    the same restored row."""
+    return tuple(
+        sorted(
+            column.key
+            for column in class_mapper(Book).columns
+            if column.key not in _NEVER and column.key not in _BOOK_IDENTITY_EXTRAS
+        )
+    )
+
+
+def _column_default(column: Any) -> Any:
+    """The column's own Python-side default, applied the same way SQLAlchemy would apply it
+    on insert, so a field left out of an entry compares equal to that same field read back
+    from an already-restored row."""
+    default = column.default
+    if default is None:
+        return None
+    return default.arg(None) if default.is_callable else default.arg
+
+
+def _book_extra_values(fields: dict[str, Any], columns: tuple[str, ...]) -> tuple[Any, ...]:
+    mapper = class_mapper(Book)
+    values = []
+    for key in columns:
+        if key in fields:
+            value = fields[key]
+        else:
+            value = _column_default(mapper.columns[key])
+        values.append(_hashable(value))
+    return tuple(values)
 
 
 def _book_identity(title: str, fields: dict[str, Any], raw: dict[str, Any]) -> _BookIdentity:
@@ -345,17 +403,16 @@ def _book_identity(title: str, fields: dict[str, Any], raw: dict[str, Any]) -> _
         _year(fields.get("first_published")),
         _author_key(fields.get("authors")),
         _entry_isbn13(raw),
+        _book_extra_values(fields, _book_extra_columns()),
     )
 
 
 async def _existing_books(db: AsyncSession, user_id: Any) -> set[_BookIdentity]:
     rows = (
-        await db.execute(
-            select(Book.id, Book.title, Book.first_published, Book.authors).where(
-                Book.user_id == user_id, Book.deleted_at.is_(None)
-            )
-        )
-    ).all()
+        (await db.execute(select(Book).where(Book.user_id == user_id, Book.deleted_at.is_(None))))
+        .scalars()
+        .all()
+    )
     if not rows:
         return set()
     isbns = (
@@ -371,9 +428,16 @@ async def _existing_books(db: AsyncSession, user_id: Any) -> set[_BookIdentity]:
             continue
         if book_id not in isbn_by_book or isbn_13 < isbn_by_book[book_id]:
             isbn_by_book[book_id] = isbn_13
+    columns = _book_extra_columns()
     return {
-        (title.lower(), _year(published), _author_key(authors), isbn_by_book.get(book_id))
-        for book_id, title, published, authors in rows
+        (
+            book.title.lower(),
+            _year(book.first_published),
+            _author_key(book.authors),
+            isbn_by_book.get(book.id),
+            tuple(_hashable(getattr(book, key)) for key in columns),
+        )
+        for book in rows
     }
 
 

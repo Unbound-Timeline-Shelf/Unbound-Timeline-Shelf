@@ -672,6 +672,42 @@ async def test_restore_keeps_two_distinct_books_sharing_a_title_and_year(http, p
     assert len(items_after) == 2
 
 
+async def test_restore_keeps_two_distinct_same_titled_books_with_no_other_identity(http, people):
+    """Title-only books are valid: two works titled "Untitled", with no author, year or ISBN,
+    collide on every identity field restore.py used to check, but are still distinct entries as
+    soon as any other field (here, the note) differs (#533 review). Restoring both must create
+    two books, and restoring the same export again must still be idempotent."""
+    _, other = people
+    export = {
+        "format_version": 3,
+        "exported_at": 1,
+        "books": [
+            {"title": "Untitled", "sort_title": "Untitled", "note": "first copy, water-damaged"},
+            {"title": "Untitled", "sort_title": "Untitled", "note": "second copy, signed"},
+        ],
+    }
+    first = await http.post("/api/import/media", files=_upload(export), headers=other.headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["created"]["books"] == 2, first.json()
+    assert first.json()["skipped"]["books"] == 0
+
+    items = (await http.get("/api/book/list", headers=other.headers)).json()["items"]
+    assert sorted(item["note"] for item in items) == [
+        "first copy, water-damaged",
+        "second copy, signed",
+    ]
+
+    # restoring the same export again is still idempotent: nothing is duplicated
+    again = await http.post("/api/import/media", files=_upload(export), headers=other.headers)
+    assert again.json() == {
+        "created": {"movies": 0, "tv_shows": 0, "anime": 0, "books": 0},
+        "skipped": {"movies": 0, "tv_shows": 0, "anime": 0, "books": 2},
+        "errors": [],
+    }
+    items_after = (await http.get("/api/book/list", headers=other.headers)).json()["items"]
+    assert len(items_after) == 2
+
+
 async def test_an_export_from_before_books_still_imports_and_reports_no_books(http, people):
     _, other = people
     older = {
