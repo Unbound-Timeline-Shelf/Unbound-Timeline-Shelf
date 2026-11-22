@@ -14,6 +14,7 @@ from src.database.models import (
     account_storage_cleanup,  # noqa: F401
     achievement,  # noqa: F401
     achievement_override,  # noqa: F401
+    achievement_rekey_log,  # noqa: F401
     achievement_sync_queue,  # noqa: F401
     admin_user_audit,  # noqa: F401
     anime,  # noqa: F401

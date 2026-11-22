@@ -14,6 +14,12 @@ On a game's **Achievements** tab, each achievement has separate **Pin** and **Ed
 
 Manual progress is stored separately from provider data. It takes precedence in the app's achievement list and remains in effect across later platform and Atlas refreshes. Choose **Synced** in the editor to remove the override and return to the latest provider state. Notes and pins remain local and can be changed without altering synced progress.
 
+### When a provider changes an achievement's id
+
+Manual progress on a catalogue achievement is stored against that achievement's external id. Atlas used to issue new ids on every refresh, and newer versions of the Atlas plugin send a stable key instead. When the plugin also sends the old Atlas row id (`source_ids["atlas.row"]`), the refresh re-keys the stored catalogue row in place and moves its manual progress with it, so media links and marks are kept. A mark that no catalogue row carries any more is moved to the one incoming achievement with the same name; a mark that matches no name, or several, is kept as it was, and the refresh reports "N manual marks could not be matched". Hidden placeholders ("Hidden achievement") are never matched by name. If two marks end up on one achievement, the more recently changed one is kept.
+
+Each change is recorded in the `achievement_rekey_log` table. Downgrading the database below revision `c558a537a476` replays that log backwards, so catalogue rows and marks get their old ids back before the table is dropped. Catalogues from other metadata providers are stored exactly as before. Revision `edf13797f129` makes `(game, provider, external id)` unique on `achievements`; before adding the constraint it removes duplicate rows, keeping an unlocked row first and then the newest, and moves media and notes linked to a removed duplicate onto the row that stays.
+
 The API accepts `PUT /api/game/{game_id}/achievements/{achievement_id}/progress` with a JSON body such as `{"unlocked": true}`. The achievement list includes `manual_override` so clients can distinguish this state from provider-reported progress.
 
 ## Screenshots
