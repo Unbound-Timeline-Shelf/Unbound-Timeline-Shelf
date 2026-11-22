@@ -139,11 +139,16 @@ async def _enrich_steam_game_by_appid(
     use_user_tags: bool = True,
     *,
     artwork_only: bool = False,
+    fill_only: bool = False,
 ) -> "EnrichOutcome":
     """Owned-game IDs anchor enrichment without another title match."""
     game.provider_ids = {**(game.provider_ids or {}), "steam": str(app_id)}
     return await _enrich_new_game(
-        game, user, {"steam_user_tags": use_user_tags}, artwork_only=artwork_only
+        game,
+        user,
+        {"steam_user_tags": use_user_tags},
+        artwork_only=artwork_only,
+        fill_only=fill_only,
     )
 
 
@@ -231,13 +236,21 @@ _ASSET_KINDS: tuple[tuple[AssetKind, str], ...] = (
 )
 
 
+# pylint: disable-next=too-many-locals,too-many-branches
 async def _enrich_new_game(
-    game: Game, user: User, preferences: dict, *, artwork_only: bool = False
+    game: Game,
+    user: User,
+    preferences: dict,
+    *,
+    artwork_only: bool = False,
+    fill_only: bool = False,
 ) -> EnrichOutcome:
     """Fill newly imported rows through the same scoped metadata and media operations.
 
     `artwork_only` is the retry mode: it never rewrites details a person may since have edited
-    and only fetches pictures the game does not already have."""
+    and only fetches pictures the game does not already have. `fill_only` is the recovery mode
+    for a record an earlier import left unfinished (#465): it fills only empty details, a
+    placeholder title and missing pictures, so nothing saved since is replaced."""
     outcome = EnrichOutcome()
     candidate = game_candidate(game)
     async with SessionLocal() as metadata_db:
@@ -292,21 +305,36 @@ async def _enrich_new_game(
         value = match.get(field)
         if not value:
             continue
+        if fill_only and _has_own_value(game, field):
+            continue
         if field == "tags" and isinstance(value, list):
             # the source tag the import just added (Steam, PlayStation...) stays with them
             outcome.field_values["tags"] = value
             value = [*value, *(tag for tag in game.tags or [] if tag not in value)]
         apply_metadata_updates(game, {field: value})
-    if match.get("series"):
+    if match.get("series") and (not fill_only or game.series == match["series"]):
         _add_to_series_collection(game, match["series"])
     # a Plugin API 1.1.20 first_release keeps its precision (C5.4), as a refresh stores it
-    apply_metadata_updates(game, sync_release_updates(game, match))
+    if not fill_only or game.release_date is None:
+        apply_metadata_updates(game, sync_release_updates(game, match))
     outcome.field_sources = {
         field: field_source(match, field)
         for field, value in before.items()
         if getattr(game, field) != value
     }
-    return await _fetch_missing_artwork(game, match, max_image_bytes, outcome, overwrite=True)
+    return await _fetch_missing_artwork(
+        game, match, max_image_bytes, outcome, overwrite=not fill_only
+    )
+
+
+def _has_own_value(game: Game, field: str) -> bool:
+    """Whether a recovery pass must keep this field because it already holds a value.
+
+    The import's own source tag (Steam, PlayStation...) is not a value the person chose."""
+    current = getattr(game, field)
+    if field == "tags":
+        return any(tag != game.source for tag in current or [])
+    return current not in (None, "", [])
 
 
 async def _fetch_missing_artwork(

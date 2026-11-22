@@ -21,6 +21,13 @@ export interface AccessRequestSummary {
   expires_at: number;
   maximum_grant_hours: number;
   capabilities: AccessCapability[];
+  /** The person's existing connections from the same desktop device (#460). */
+  same_device_connections?: {
+    id: string;
+    scopes: string[];
+    created_at: number;
+    expires_at: number | null;
+  }[];
 }
 export interface IntegrationGrant {
   external_account?: {
@@ -95,10 +102,16 @@ export const decideAccessRequest = (
   approve: boolean,
   scopes: string[],
   expiresInHours: number | null,
+  replaceGrantIds: string[] = [],
 ) =>
   request<{ state: string }>(`/requests/${encodeURIComponent(id)}/decision`, {
     method: "POST",
-    body: JSON.stringify({ approve, scopes, expires_in_hours: expiresInHours }),
+    body: JSON.stringify({
+      approve,
+      scopes,
+      expires_in_hours: expiresInHours,
+      replace_grant_ids: replaceGrantIds,
+    }),
   });
 export const fetchIntegrationGrants = (signal?: AbortSignal) =>
   request<IntegrationGrant[]>("/grants", { signal });

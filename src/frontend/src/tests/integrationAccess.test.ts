@@ -55,6 +55,7 @@ describe("integration consent", () => {
       true,
       ["games.read"],
       null,
+      [],
     );
   });
   it("shows the integration identity and leaves writes unselected", async () => {
@@ -73,6 +74,7 @@ describe("integration consent", () => {
       true,
       ["games.read"],
       24,
+      [],
     );
   });
 
@@ -87,6 +89,7 @@ describe("integration consent", () => {
       true,
       ["games.read", "tracking.write"],
       24,
+      [],
     );
   });
 
@@ -100,6 +103,7 @@ describe("integration consent", () => {
       false,
       [],
       24,
+      [],
     );
   });
 
@@ -140,7 +144,82 @@ describe("integration consent", () => {
       true,
       ["library.sync", "saves.read"],
       null,
+      [],
     );
     expect(wrapper.text()).toContain("return to Playnite");
+  });
+
+  it("offers to replace the same device's earlier connection and sends the choice", async () => {
+    const summary = {
+      id: "request-1",
+      name: "Unnamed Tracking for Playnite",
+      origin: "desktop:playnite",
+      kind: "desktop" as const,
+      instance_id: "instance-1",
+      state: "pending",
+      expires_at: 2000000000,
+      maximum_grant_hours: 336,
+      external_account: {
+        provider: "playnite",
+        subject: "playnite-1234",
+        username: "Gaming PC",
+      },
+      same_device_connections: [
+        {
+          id: "grant-old",
+          scopes: ["library.sync"],
+          created_at: 1700000000,
+          expires_at: null,
+        },
+      ],
+      capabilities: [
+        { scope: "library.sync", description: "Sync", write: true },
+      ],
+    };
+    vi.mocked(fetchAccessRequest).mockResolvedValue(summary);
+    vi.mocked(decideAccessRequest).mockResolvedValue({ state: "approved" });
+    const wrapper = render();
+    await flushPromises();
+    expect(wrapper.text()).toContain("Already connected from this device");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(decideAccessRequest).toHaveBeenLastCalledWith(
+      "request-1",
+      true,
+      ["library.sync"],
+      null,
+      ["grant-old"],
+    );
+
+    // Unchecking keeps both connections; a refusal never sends replacements.
+    const second = render();
+    await flushPromises();
+    await second.get(".replace input[type=checkbox]").setValue(false);
+    await second.get("form").trigger("submit");
+    await flushPromises();
+    expect(decideAccessRequest).toHaveBeenLastCalledWith(
+      "request-1",
+      true,
+      ["library.sync"],
+      null,
+      [],
+    );
+    const third = render();
+    await flushPromises();
+    await third.findAll("button")[1].trigger("click");
+    await flushPromises();
+    expect(decideAccessRequest).toHaveBeenLastCalledWith(
+      "request-1",
+      false,
+      [],
+      null,
+      [],
+    );
+  });
+
+  it("shows no replacement choice when the device has no earlier connection", async () => {
+    const wrapper = render();
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("Already connected from this device");
   });
 });

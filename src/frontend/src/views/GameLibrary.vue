@@ -76,6 +76,12 @@ const {
   clearSelection,
   onBulkEditSaved,
   bulkEditResultCount,
+  confirmingBulkDelete,
+  bulkDeleting,
+  bulkDeleteMessage,
+  bulkDeleteFailures,
+  openBulkDelete,
+  confirmBulkDelete,
   bulkAddingToCollection,
   bulkAddToCollection,
   selectedGameDescriptionHtml,
@@ -368,6 +374,27 @@ async function openRandomPicker() {
         >
           Bulk Edit
         </button>
+        <button
+          type="button"
+          class="btn-outline danger-outline"
+          :disabled="!selectedIds.size || bulkDeleting"
+          @click="openBulkDelete"
+        >
+          {{ bulkDeleting ? "Removing…" : "Remove" }}
+        </button>
+      </div>
+      <div
+        v-if="bulkDeleteMessage"
+        class="bulk-success"
+        :class="bulkDeleteFailures.length ? 'form-error' : 'form-success'"
+        role="status"
+      >
+        {{ bulkDeleteMessage }}. Restore from Settings → Library within 7 days.
+        <ul v-if="bulkDeleteFailures.length" class="bulk-failures">
+          <li v-for="failure in bulkDeleteFailures" :key="failure.id">
+            {{ failure.title }}: {{ failure.detail }}
+          </li>
+        </ul>
       </div>
       <div
         v-if="bulkEditResultCount !== null"
@@ -1316,6 +1343,48 @@ async function openRandomPicker() {
         :games="libraryEntries"
         @close="showRandomPicker = false"
       />
+
+      <div
+        v-if="confirmingBulkDelete"
+        class="confirm-backdrop"
+        @click.self="confirmingBulkDelete = false"
+      >
+        <div
+          class="confirm-dialog"
+          role="alertdialog"
+          aria-labelledby="bulk-remove-title"
+        >
+          <h3 id="bulk-remove-title">
+            Remove {{ selectedIds.size }} game{{
+              selectedIds.size === 1 ? "" : "s"
+            }}?
+          </h3>
+          <p>
+            Each selected game is moved to trash with its notes, screenshots,
+            saves and other files, exactly as deleting it from its page would. A
+            game shown with several copies removes only the record you selected.
+            Restore from Settings → Library within 7 days; after that it is
+            purged for good.
+          </p>
+          <div class="confirm-actions">
+            <button
+              type="button"
+              class="secondary-button"
+              @click="confirmingBulkDelete = false"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="danger-button"
+              :disabled="bulkDeleting"
+              @click="confirmBulkDelete"
+            >
+              {{ bulkDeleting ? "Removing…" : "Remove" }}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div
         v-if="deletingGame"

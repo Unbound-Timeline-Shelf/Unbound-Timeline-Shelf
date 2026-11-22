@@ -131,6 +131,7 @@ from src.api.routes.utils.games import (
 )
 from src.api.schemas.game import (
     CollectionIndexGame,
+    GameBulkDelete,
     GameBulkUpdate,
     GameCreate,
     GameFieldChangeRead,
@@ -842,6 +843,16 @@ async def delete_game(
         await game_trash.trash_game(db, game, _DATA_ROOT)
     except game_folders.FolderStorageError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_games(
+    payload: GameBulkDelete,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict[str, list]:
+    """Move several games to trash, each through the single-delete path (#462)."""
+    return await game_trash.trash_games(db, current_user.id, payload.game_ids, _DATA_ROOT)
 
 
 @router.get("/trash")

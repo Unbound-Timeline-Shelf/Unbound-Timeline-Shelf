@@ -23,7 +23,7 @@ Nothing is invented. The history log records how many episodes were watched on a
 
 ## Which day an entry belongs to
 
-- Episode and other history entries are saved as a calendar day with no time of day. They stay on that day wherever you view them from.
+- Episode and other history entries are saved as a calendar day with no time of day. They stay on that day wherever you view them from. The app saves them on your device's day at the moment you check off an episode, change a status or log a rewatch, using the same time zone as the grid. Entries saved before this, or by another app that does not send a time zone, keep the day they were saved with (the server's own day); they are never moved.
 - Achievements are saved as an exact moment. They belong to the local day of that moment in your device's time zone. The grid and the dialog both send your device's time zone, so the count on a square and the entries in its dialog always agree, including near midnight, for half-hour and 45-minute zones, and on days that are 23 or 25 hours long when clocks change.
 - Moving to another time zone can move an achievement to the neighbouring day; recorded episode days do not move.
 

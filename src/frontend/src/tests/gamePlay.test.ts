@@ -3,7 +3,8 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import GamePlayFields from "../components/game/GamePlayFields.vue";
 import BulkEditModal from "../components/BulkEditModal.vue";
-import { bulkUpdateGames, setGamePlayCompatibility } from "../services/games";
+import { setGamePlayCompatibility } from "../services/games";
+import { bulkUpdateGames } from "../services/gameBulkActions";
 
 afterEach(() => {
   vi.unstubAllGlobals();

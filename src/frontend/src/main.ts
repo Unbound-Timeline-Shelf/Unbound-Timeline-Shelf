@@ -10,8 +10,10 @@ import "./styles/tokens.css";
 import "./styles/classic.css";
 import { initializeUiAppearance } from "./state/uiAppearance";
 import { loadBranding } from "./state/branding";
+import { installViewerTimeZoneHeader } from "./services/viewerTimeZoneHeader";
 
 performance.mark("uta.bootstrap-start");
+installViewerTimeZoneHeader();
 initializeUiAppearance();
 void loadBranding();
 

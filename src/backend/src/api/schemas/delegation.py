@@ -126,6 +126,9 @@ class AccessDecision(DelegationSchema):
     approve: bool
     scopes: list[str] = Field(default_factory=list, max_length=len(SCOPE_DESCRIPTIONS))
     expires_in_hours: int | None = Field(default=24, ge=1, le=720)
+    # Earlier connections from the same desktop device that this approval replaces (#460).
+    # Empty keeps them: a reported device_id alone never merges or revokes anything.
+    replace_grant_ids: list[UUID] = Field(default_factory=list, max_length=50)
 
     _scopes = field_validator("scopes")(integration_scopes)
 

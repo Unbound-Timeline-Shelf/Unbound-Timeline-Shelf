@@ -11,7 +11,7 @@ from sqlalchemy import delete, select
 
 from src.api.routes.delegation import browser_user
 from src.core.auth import hash_token
-from src.database.models.delegation import IntegrationClient, IntegrationPolicy
+from src.database.models.delegation import DelegationAudit, IntegrationClient, IntegrationPolicy
 from src.database.models.game import Game, GameStatus
 from src.database.models.user import User
 from src.database.session import SessionLocal
@@ -73,7 +73,7 @@ async def desktop():
         await db.commit()
 
 
-async def connect(flow, scopes=SYNC, *, approve=None):
+async def connect(flow, scopes=SYNC, *, approve=None, device_id="playnite-1234abcd"):
     verifier = secrets.token_urlsafe(48)
     started = await flow.client.post(
         f"{BASE}/desktop/playnite/requests",
@@ -81,7 +81,7 @@ async def connect(flow, scopes=SYNC, *, approve=None):
             "scopes": scopes,
             "code_challenge": hash_token(verifier),
             "device_name": "Gaming PC",
-            "device_id": "playnite-1234abcd",
+            "device_id": device_id,
         },
     )
     assert started.status_code == 201, started.text
@@ -366,3 +366,115 @@ async def test_content_write_is_listed_as_a_write_capability(desktop):
     summary = (await desktop.client.get(f"{BASE}/requests/{started.json()['request_id']}")).json()
     capability = summary["capabilities"][0]
     assert capability["scope"] == "content.write" and capability["write"] is True
+
+
+async def start(flow, device_id="playnite-1234abcd"):
+    verifier = secrets.token_urlsafe(48)
+    started = await flow.client.post(
+        f"{BASE}/desktop/playnite/requests",
+        json={
+            "scopes": SYNC,
+            "code_challenge": hash_token(verifier),
+            "device_name": "Gaming PC",
+            "device_id": device_id,
+        },
+    )
+    assert started.status_code == 201, started.text
+    return started.json()["request_id"], verifier
+
+
+async def approve_and_collect(flow, request_id, verifier, replace):
+    decided = await flow.client.post(
+        f"{BASE}/requests/{request_id}/decision",
+        json={
+            "approve": True,
+            "scopes": SYNC,
+            "expires_in_hours": None,
+            "replace_grant_ids": replace,
+        },
+    )
+    if decided.status_code != 200:
+        return decided
+    exchanged = await flow.client.post(
+        f"{BASE}/requests/{request_id}/exchange", json={"verifier": verifier}
+    )
+    return {"Authorization": f"Bearer {exchanged.json()['access_token']}"}
+
+
+async def test_relinking_offers_and_replaces_the_same_devices_earlier_connection(desktop):
+    """#460: signing Playnite in again (say after the address changed) can replace the earlier
+    connection when the person chooses to; another device keeps its own."""
+    first = await connect(desktop)
+    laptop = await connect(desktop, device_id="playnite-laptop-5678")
+    request_id, verifier = await start(desktop)
+
+    summary = (await desktop.client.get(f"{BASE}/requests/{request_id}")).json()
+    offered = summary["same_device_connections"]
+    assert len(offered) == 1 and offered[0]["scopes"] == SYNC
+    again = await approve_and_collect(desktop, request_id, verifier, [offered[0]["id"]])
+
+    assert (await desktop.client.get("/api/game/list", headers=first)).status_code == 401
+    assert (await desktop.client.get("/api/game/list", headers=again)).status_code == 200
+    assert (await desktop.client.get("/api/game/list", headers=laptop)).status_code == 200
+    listed = (await desktop.client.get(f"{BASE}/grants")).json()
+    assert sorted(grant["external_account"]["subject"] for grant in listed) == [
+        "playnite-1234abcd",
+        "playnite-laptop-5678",
+    ]
+    async with SessionLocal() as db:
+        events = (
+            await db.scalars(
+                select(DelegationAudit.event).where(DelegationAudit.user_id == desktop.user.id)
+            )
+        ).all()
+    assert events.count("replaced") == 1
+
+
+async def test_relinking_without_choosing_replacement_keeps_both_connections(desktop):
+    """A reported device_id alone never merges or revokes a connection (#441's contract)."""
+    first = await connect(desktop)
+    second = await connect(desktop)
+    assert (await desktop.client.get("/api/game/list", headers=first)).status_code == 200
+    assert (await desktop.client.get("/api/game/list", headers=second)).status_code == 200
+    assert len((await desktop.client.get(f"{BASE}/grants")).json()) == 2
+
+
+async def test_only_this_devices_active_connections_can_be_replaced(desktop):
+    """Another device's, a revoked, or an unknown grant cannot be named for replacement, and a
+    refused decision leaves the request pending and every connection usable."""
+    first = await connect(desktop)
+    laptop = await connect(desktop, device_id="playnite-laptop-5678")
+    grants = {
+        grant["external_account"]["subject"]: grant["id"]
+        for grant in (await desktop.client.get(f"{BASE}/grants")).json()
+    }
+    request_id, verifier = await start(desktop)
+    for wrong in (grants["playnite-laptop-5678"], str(uuid4())):
+        refused = await approve_and_collect(desktop, request_id, verifier, [wrong])
+        assert refused.status_code == 409, refused
+    assert (await desktop.client.get("/api/game/list", headers=first)).status_code == 200
+    assert (await desktop.client.get("/api/game/list", headers=laptop)).status_code == 200
+    summary = (await desktop.client.get(f"{BASE}/requests/{request_id}")).json()
+    assert summary["state"] == "pending"
+
+    revoked = await desktop.client.delete(f"{BASE}/grants/{grants['playnite-1234abcd']}")
+    assert revoked.status_code == 200
+    summary = (await desktop.client.get(f"{BASE}/requests/{request_id}")).json()
+    assert summary["same_device_connections"] == []
+    refused = await approve_and_collect(
+        desktop, request_id, verifier, [grants["playnite-1234abcd"]]
+    )
+    assert refused.status_code == 409
+
+
+async def test_another_users_same_device_connection_is_never_offered(desktop):
+    """The offer is scoped to the person deciding: someone else's Playnite on a PC that reports
+    the same device_id is neither listed nor replaceable."""
+    await connect(desktop)
+    request_id, _ = await start(desktop)
+    app.dependency_overrides[browser_user] = lambda: desktop.other
+    try:
+        summary = (await desktop.client.get(f"{BASE}/requests/{request_id}")).json()
+        assert summary["same_device_connections"] == []
+    finally:
+        app.dependency_overrides[browser_user] = lambda: desktop.user

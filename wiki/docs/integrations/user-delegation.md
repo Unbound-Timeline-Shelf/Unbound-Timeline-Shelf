@@ -62,6 +62,15 @@ operator-approved web origin. They start with
 `POST /api/delegation/v1/desktop/{app}/requests`, sending `scopes`, `code_challenge`, a
 `device_name` and a stable `device_id`; the device is shown on the consent page and in Connected
 apps as display context, like `external_account`. `GET /instance` lists them in `desktop_apps`.
+The reported `device_id` is not proof of identity, so two approvals that report the same one stay
+separate connections unless the person chooses otherwise. When the same device signs in again (for
+example after the instance address changed), `GET /requests/{id}` lists that person's active
+connections to the same app from that `device_id` in `same_device_connections`, and the consent
+page offers to revoke them (checked by default, with a note to uncheck it when another computer
+reports the same device). The choice is sent as `replace_grant_ids` with the approval: only those
+listed connections can be named, anything else is refused with 409 and the request stays pending,
+and each replaced grant is revoked immediately and audited as `replaced`. Other devices, other apps
+and other people's connections are never offered.
 
 **Administration → Integration access → Let people connect desktop apps such as Playnite**
 (`allow_desktop_apps`) governs them, on by default because each user could already create a

@@ -140,6 +140,68 @@ describe("Steam import steps", () => {
     );
   });
 
+  it("finishes unfinished wishlist records on a re-import that adds no games (#465)", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, options: RequestInit) => {
+        if (url.includes("/steam?"))
+          return {
+            ok: true,
+            json: async () => ({
+              games_added: 0,
+              games: [],
+              enrich_game_ids: [],
+            }),
+          };
+        if (url.endsWith("/wishlist"))
+          return {
+            ok: true,
+            json: async () => ({
+              added: 0,
+              game_ids: [],
+              recover_game_ids: ["w1", "w2"],
+            }),
+          };
+        bodies.push(JSON.parse(String(options.body)));
+        return {
+          ok: true,
+          json: async () => ({
+            failed: 1,
+            failed_game_ids: ["w2"],
+            artwork_missing_game_ids: [],
+          }),
+        };
+      }),
+    );
+    const result = await syncLibrary("steam");
+    // only the recovery pass runs, in fill-only mode, never a full overwrite
+    expect(bodies).toEqual([{ game_ids: ["w1", "w2"], recover: true }]);
+    expect(result.wishlist_recovered).toBe(2);
+    expect(result.enrich_failed_ids).toEqual(["w2"]);
+    expect(result.enrich_failed).toBe(1);
+  });
+
+  it("sends the retry modes the server understands", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, options: RequestInit) => {
+        bodies.push(JSON.parse(String(options.body)));
+        return { ok: true, json: async () => ({ failed: 0 }) };
+      }),
+    );
+    await enrichSteamGames(["a"]);
+    await enrichSteamGames(["b"], "recover");
+    await enrichSteamGames(["c"], "artwork");
+    await enrichSteamGames([], "recover");
+    expect(bodies).toEqual([
+      { game_ids: ["a"] },
+      { game_ids: ["b"], recover: true },
+      { game_ids: ["c"], artwork_only: true },
+    ]);
+  });
+
   it("reports Steam's reason instead of the raw response", async () => {
     vi.stubGlobal(
       "fetch",
@@ -228,7 +290,7 @@ describe("enrichment outcomes (#256)", () => {
       artworkMissingIds: [],
     });
     expect(fetch).not.toHaveBeenCalled();
-    await enrichSteamGames(["a", "b"], true);
+    await enrichSteamGames(["a", "b"], "artwork");
     const call = fetch.mock.calls[0] as unknown as [string, RequestInit];
     expect(call[0]).toBe("/api/library-sync/steam/enrich");
     expect(JSON.parse(String(call[1].body))).toEqual({

@@ -100,7 +100,13 @@ export interface BackendAnime {
   linked_movie_id: string | null;
 }
 
-import { createEntityCache } from "../utils/entityCache";
+import {
+  atEpoch,
+  createEntityCache,
+  entityCacheEpoch,
+  isCurrentEpoch,
+  onEntityCacheReset,
+} from "../utils/entityCache";
 const animeCache = createEntityCache<Anime>();
 export const peekAnime = animeCache.peek;
 export const peekAllAnimes = (): Anime[] | null =>
@@ -382,6 +388,7 @@ export async function createSeason(
   showId: string,
   input: SeasonInput,
 ): Promise<Anime> {
+  const started = entityCacheEpoch();
   const response = await fetch(`/api/anime/${showId}/seasons`, {
     method: "POST",
     credentials: "include",
@@ -390,7 +397,7 @@ export async function createSeason(
   });
   const raw = await handle<BackendAnime>(response, "create season");
   api.markMutation();
-  return mapBackendAnime(raw);
+  return atEpoch(started, () => mapBackendAnime(raw));
 }
 
 export interface SeasonUpdateInput {
@@ -417,6 +424,7 @@ export async function updateSeason(
   if ("posterUrl" in input) body.poster_url = input.posterUrl;
   if (input.status) body.status = denormalizeStatus(input.status);
 
+  const started = entityCacheEpoch();
   const response = await fetch(`/api/anime/${showId}/seasons/${seasonId}`, {
     method: "PATCH",
     credentials: "include",
@@ -425,7 +433,7 @@ export async function updateSeason(
   });
   const raw = await handle<BackendAnime>(response, "update season");
   api.markMutation();
-  return mapBackendAnime(raw);
+  return atEpoch(started, () => mapBackendAnime(raw));
 }
 
 // First call syncs the season's episodes in from Jikan if none exist yet
@@ -435,6 +443,7 @@ export async function fetchEpisodes(
   showId: string,
   seasonId: string,
 ): Promise<Anime> {
+  const started = entityCacheEpoch();
   const response = await fetch(
     `/api/anime/${showId}/seasons/${seasonId}/episodes`,
     {
@@ -443,7 +452,7 @@ export async function fetchEpisodes(
   );
   const raw = await handle<BackendAnime>(response, "fetch episodes");
   const previous = JSON.stringify(animeCache.peek(showId));
-  const show = mapBackendAnime(raw);
+  const show = atEpoch(started, () => mapBackendAnime(raw));
   if (JSON.stringify(show) !== previous) api.markMutation();
   return show;
 }
@@ -465,6 +474,7 @@ export async function updateEpisode(
   if ("rating" in input) body.rating = input.rating;
   if ("note" in input) body.note = input.note;
 
+  const started = entityCacheEpoch();
   const response = await fetch(
     `/api/anime/${showId}/seasons/${seasonId}/episodes/${episodeId}`,
     {
@@ -476,7 +486,7 @@ export async function updateEpisode(
   );
   const raw = await handle<BackendAnime>(response, "update episode");
   api.markMutation();
-  return mapBackendAnime(raw);
+  return atEpoch(started, () => mapBackendAnime(raw));
 }
 
 // Sets `watched` on many episodes in one request â€” a shift-click range
@@ -488,6 +498,7 @@ export async function bulkSetEpisodesWatched(
   episodeIds: string[],
   watched: boolean,
 ): Promise<Anime> {
+  const started = entityCacheEpoch();
   const response = await fetch(
     `/api/anime/${showId}/seasons/${seasonId}/episodes/bulk-watched`,
     {
@@ -499,20 +510,21 @@ export async function bulkSetEpisodesWatched(
   );
   const raw = await handle<BackendAnime>(response, "bulk-update episodes");
   api.markMutation();
-  return mapBackendAnime(raw);
+  return atEpoch(started, () => mapBackendAnime(raw));
 }
 
 export async function deleteSeason(
   showId: string,
   seasonId: string,
 ): Promise<Anime> {
+  const started = entityCacheEpoch();
   const response = await fetch(`/api/anime/${showId}/seasons/${seasonId}`, {
     method: "DELETE",
     credentials: "include",
   });
   const raw = await handle<BackendAnime>(response, "delete season");
   api.markMutation();
-  return mapBackendAnime(raw);
+  return atEpoch(started, () => mapBackendAnime(raw));
 }
 
 // A raw metadata search result, straight from whichever provider
@@ -723,6 +735,7 @@ function mapRelatedAnime(r: BackendRelatedAnime): RelatedAnime {
 }
 
 const relationsCache = new Map<string, AnimeRelationsResponse>();
+onEntityCacheReset(() => relationsCache.clear());
 export const peekAnimeRelations = (
   id: string,
 ): AnimeRelationsResponse | undefined => relationsCache.get(id);
@@ -730,6 +743,7 @@ export const peekAnimeRelations = (
 export async function fetchAnimeRelations(
   id: string,
 ): Promise<AnimeRelationsResponse> {
+  const started = entityCacheEpoch();
   const response = await fetch(`/api/anime/${id}/relations`, {
     credentials: "include",
   });
@@ -751,7 +765,8 @@ export async function fetchAnimeRelations(
     })),
     configured: raw.configured,
   };
-  relationsCache.set(id, result);
+  // a late answer for the previous account is not kept (#468)
+  if (isCurrentEpoch(started)) relationsCache.set(id, result);
   return result;
 }
 
@@ -784,13 +799,14 @@ export async function fetchAnimeRecommended(
 // Runs the airing check for just this title now (the background loop only
 // comes around every 30 minutes) and returns the refreshed record.
 export async function refreshAnimeAiring(id: string): Promise<Anime> {
+  const started = entityCacheEpoch();
   const response = await fetch(`/api/anime/${id}/refresh-airing`, {
     method: "POST",
     credentials: "include",
   });
   const raw = await handle<BackendAnime>(response, "refresh airing schedule");
   api.markMutation();
-  return mapBackendAnime(raw);
+  return atEpoch(started, () => mapBackendAnime(raw));
 }
 
 // Looks up the English, romaji and Japanese spelling of every anime that has

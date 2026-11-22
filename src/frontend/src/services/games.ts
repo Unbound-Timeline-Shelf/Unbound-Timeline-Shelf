@@ -9,7 +9,7 @@ import {
   forgetGame,
   gameCache,
   gameLibraryRevision,
-  invalidateGameLibrary,
+  markGameListLoaded,
   rememberFetchedGame,
   rememberGameMutation,
 } from "./gameCache";
@@ -45,7 +45,7 @@ function toNumberOrNull(value: number | string | null): number | null {
   return value === null ? null : Number(value);
 }
 
-function playCompatibilityPayload(
+export function playCompatibilityPayload(
   value: GamePlayCompatibility | null | undefined,
 ) {
   return value
@@ -199,17 +199,40 @@ export function mapBackendGame(raw: BackendGame): Game {
 
 // Bulk list consumers still page through the endpoint to completion. The
 // Games view uses fetchGamesForViewport below so its first paint stays bounded.
+//
+// One complete read costs about 0.4 s and 1.9 MB (64 KB gzipped) per 1000
+// games in-process, 1.7 s and 9.7 MB for 5000 (#469; measured with
+// tests/measure_full_library_reads.py in the backend). Callers that ask while
+// an identical read is still in flight share it instead of starting another.
+// "Identical" means same account and same library revision: a mutation, an
+// import or an account change since it started gives the next caller a fresh
+// read, so nothing older than an in-flight answer is ever reused, and a
+// failure is not remembered. Finished reads are never reused.
+let inFlightList: { revision: number; read: Promise<Game[]> } | null = null;
+
+async function readAllGames(started: number): Promise<Game[]> {
+  const all = await fetchAllGamePages<BackendGame>();
+  const games = all.map((raw) =>
+    rememberFetchedGame(mapBackendGame(raw), started),
+  );
+  markGameListLoaded(started);
+  return games;
+}
+
 export async function fetchGames(): Promise<Game[]> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return mockGames;
   }
   const started = gameLibraryRevision();
-  const all = await fetchAllGamePages<BackendGame>();
-  const games = all.map((raw) =>
-    rememberFetchedGame(mapBackendGame(raw), started),
-  );
-  gameCache.markListLoaded();
-  return games;
+  let shared = inFlightList;
+  if (shared?.revision !== started) {
+    const read = readAllGames(started).finally(() => {
+      if (inFlightList?.read === read) inFlightList = null;
+    });
+    shared = inFlightList = { revision: started, read };
+  }
+  // Each caller gets its own array, so sorting one result cannot reorder another.
+  return [...(await shared.read)];
 }
 
 export async function fetchGamesForViewport(
@@ -252,7 +275,7 @@ export async function fetchGamesForViewport(
     rememberFetchedGame(mapBackendGame(raw), started),
   );
   if (result.total !== null && skip + games.length >= result.total)
-    gameCache.markListLoaded();
+    markGameListLoaded(started);
   return { games, total: result.total, statusCounts: result.statusCounts };
 }
 
@@ -804,6 +827,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
     return newGame;
   }
 
+  const started = gameLibraryRevision();
   const response = await fetch("/api/game/create", {
     method: "POST",
     credentials: "include",
@@ -858,7 +882,7 @@ export async function createGame(input: NewGameInput): Promise<Game> {
   if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 export async function updateGame(
   id: string,
@@ -983,6 +1007,7 @@ export async function updateGame(
   if (input.priority !== undefined) body.priority = input.priority;
   if (input.createdAt != null) body.created_at = input.createdAt;
 
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${id}`, {
     method: "PATCH",
     credentials: "include",
@@ -993,7 +1018,7 @@ export async function updateGame(
   if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 export interface GameNoteListResponse {
@@ -1700,6 +1725,7 @@ export async function setFavorite(
     return mockGames[index];
   }
 
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${gameId}`, {
     method: "PATCH",
     credentials: "include",
@@ -1712,7 +1738,7 @@ export async function setFavorite(
   }
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 export async function setResumeNote(
@@ -1791,6 +1817,7 @@ export async function setStatus(
     return mockGames[index];
   }
 
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${gameId}`, {
     method: "PATCH",
     credentials: "include",
@@ -1803,78 +1830,12 @@ export async function setStatus(
   }
 
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 // Deliberately narrower than NewGameInput/GameUpdate, title, folder,
 // notes, playtime, purchase info, and ratings are per-game by nature and
 // excluded so a bulk edit can't stamp one game's specifics onto many others.
-export interface BulkEditFields {
-  playCompatibility?: GamePlayCompatibility | null;
-  status?: GameStatus;
-  favorite?: boolean;
-  developer?: string | null;
-  publisher?: string | null;
-  series?: string | null;
-  ageRating?: string | null;
-  platform?: string | null;
-  priority?: string | null;
-  tags?: string[];
-  features?: string[];
-}
-
-export async function bulkUpdateGames(
-  gameIds: string[],
-  fields: BulkEditFields,
-): Promise<number> {
-  const payload: Record<string, unknown> = { game_ids: gameIds };
-  if (fields.playCompatibility !== undefined)
-    payload.play_compatibility = playCompatibilityPayload(
-      fields.playCompatibility,
-    );
-  if (fields.status !== undefined)
-    payload.status = denormalizeStatus(fields.status);
-  if (fields.favorite !== undefined) payload.favorite = fields.favorite;
-  if (fields.developer !== undefined) payload.developer = fields.developer;
-  if (fields.publisher !== undefined) payload.publisher = fields.publisher;
-  if (fields.series !== undefined) payload.series = fields.series;
-  if (fields.ageRating !== undefined) payload.age_rating = fields.ageRating;
-  if (fields.platform !== undefined) payload.platform = fields.platform;
-  if (fields.priority !== undefined) payload.priority = fields.priority;
-  if (fields.tags !== undefined) payload.tags = fields.tags;
-  if (fields.features !== undefined) payload.features = fields.features;
-
-  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
-    let count = 0;
-    for (const game of mockGames) {
-      if (!gameIds.includes(game.id)) continue;
-      if (fields.playCompatibility !== undefined)
-        game.playCompatibility = fields.playCompatibility;
-      if (fields.status !== undefined) game.status = fields.status;
-      if (fields.favorite !== undefined) game.favorite = fields.favorite;
-      if (fields.developer !== undefined) game.developer = fields.developer;
-      if (fields.publisher !== undefined) game.publisher = fields.publisher;
-      if (fields.series !== undefined) game.series = fields.series;
-      if (fields.ageRating !== undefined) game.ageRating = fields.ageRating;
-      if (fields.tags !== undefined) game.tags = fields.tags;
-      if (fields.features !== undefined) game.features = fields.features;
-      count++;
-    }
-    return count;
-  }
-
-  const response = await fetch("/api/game/bulk-update", {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) throw await failedRequest(response);
-  const result: { updated: number } = await response.json();
-  invalidateGameLibrary();
-  return result.updated;
-}
-
 // PATCHes `collections` alone rather than the whole game through updateGame,
 // so adding/removing a collection can't overwrite an edit made elsewhere in
 // the meantime.
@@ -1882,6 +1843,7 @@ async function patchCollections(
   gameId: string,
   collections: string[],
 ): Promise<Game> {
+  const started = gameLibraryRevision();
   const response = await fetch(`/api/game/update/${gameId}`, {
     method: "PATCH",
     credentials: "include",
@@ -1890,7 +1852,7 @@ async function patchCollections(
   });
   if (!response.ok) throw await failedRequest(response);
   const raw: BackendGame = await response.json();
-  return rememberGameMutation(mapBackendGame(raw));
+  return rememberGameMutation(mapBackendGame(raw), started);
 }
 
 export async function addGameToCollection(

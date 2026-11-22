@@ -83,6 +83,18 @@ review the canonical entry and propose missing store IDs through Atlas.
 
 Bulk edit changes selected records only. Locked fields are not overwritten by refresh operations.
 
+**Select → Remove** moves every selected game to Trash at once, exactly as deleting
+each from its page would: its notes, screenshots, saves and other files go with it,
+and **Settings → Library** restores it for 7 days. A game shown with several copies
+removes only the record you selected; its other copies show on their own until it
+is restored. The confirmation says how many games are affected; afterwards a summary
+reports how many moved to Trash, which were no longer in your library, and which
+could not be removed. Games that could not be removed stay selected with the reason,
+so **Remove** again retries just those. Selections larger than 100 games are sent in
+several requests (`POST /api/game/bulk-delete`, at most 100 IDs each; it reports
+`deleted`, `not_found`, `already_deleted` and `failed` per ID, and another account's
+IDs are reported as not found).
+
 ### Quick edit
 
 The Edit button on a game in the library opens a light editor for the status,
@@ -356,12 +368,22 @@ never undoes games that were already saved. The summary tells the parts apart:
   offered or could not be downloaded.
 
 When anything is left, the Steam connection dialog shows **Retry N games**. A retry
-reads only the unfinished parts: missing details are filled in, and for games that
-only lack a cover it fetches just the missing pictures and never rewrites titles,
-notes, tags or pictures you have changed. Retrying again is safe and does not
-create duplicates. The same results are available from the batch endpoint
+reads only the unfinished parts: it fills in details that are still empty, replaces
+a `Steam app <id>` placeholder title with the store name, and fetches only pictures
+the game does not have. It never rewrites titles, descriptions, tags, locked fields
+or pictures you have set. Retrying again is safe and does not create duplicates.
+The same results are available from the batch endpoint
 (`POST /api/library-sync/steam/enrich` returns `failed_game_ids` and
-`artwork_missing_game_ids`; send `artwork_only` to retry only covers).
+`artwork_missing_game_ids`; send `recover` to fill in only what is empty, or
+`artwork_only` to retry only covers).
+
+A later import also finishes wishlist games an earlier import left unfinished,
+even when it adds no new games: a wishlist record still named `Steam app <id>`
+(for its own Steam ID) is filled in the same safe way, at most 100 per import, and
+the summary counts them as **unfinished wishlist games retried**. A title you
+locked is left alone, even when it looks like a placeholder. Owned games always
+arrive with their real store name, so an owned game whose details or cover are
+missing is finished with **Retry N games**, not by re-importing.
 
 Library imports match existing games by provider ID. Different provider IDs with
 the same title stay separate, while a matching record without a provider ID can
