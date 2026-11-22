@@ -156,6 +156,11 @@ beforeEach(() => {
   vi.mocked(anime.peekAllAnimes).mockReturnValue(null);
   vi.mocked(anime.fetchAnime).mockResolvedValue([]);
   vi.mocked(anime.peekAnimeRelations).mockReturnValue(undefined);
+  // movieToInput is a plain mapper, not a network call: give it a real
+  // (loose) implementation so updateMovie sees an actual body to assert on.
+  vi.mocked(movies.movieToInput).mockImplementation(
+    (m: Movie) => m as unknown as movies.MovieInput,
+  );
 });
 afterEach(() => vi.useRealTimers());
 
@@ -292,6 +297,99 @@ describe("anime and TV detail load", () => {
     await flushPromises();
     expect((state(wrapper).show as { id: string }).id).toBe("b");
     expect(state(wrapper).episodesLoading).toBe(false);
+    wrapper.unmount();
+  });
+});
+
+// Regression coverage for the quick-save race: movie/TV/anime detail pages
+// have several one-click saves (favourite, rating, status, note) that used
+// to each build their own full-record body from whatever movie.value held
+// at the moment they fired. A slow one's answer could then overwrite a
+// field the full editor (or another quick save) had since confirmed.
+describe("concurrent detail edits", () => {
+  it("keeps a confirmed rename while a delayed quick edit finishes", async () => {
+    vi.mocked(movies.getMovie).mockResolvedValue(movie("a"));
+    const slow = deferred<Movie>();
+    vi.mocked(movies.updateMovie)
+      .mockReturnValueOnce(slow.promise)
+      .mockResolvedValueOnce(
+        movie("a", {
+          title: "Confirmed renamed title",
+          favorite: true,
+          ratingOverall: 7,
+        }),
+      );
+    const wrapper = mountView(MovieDetail);
+    await flushPromises();
+    const vm = state(wrapper);
+    const favorite = (vm.toggleFavorite as () => Promise<void>)();
+    await flushPromises();
+    (vm.onSaved as (saved: Movie) => void)(
+      movie("a", { title: "Confirmed renamed title", favorite: true }),
+    );
+    const rating = (vm.onRatingChange as (value: number) => Promise<void>)(7);
+    slow.resolve(movie("a", { favorite: true }));
+    await Promise.all([favorite, rating]);
+    expect(movies.updateMovie).toHaveBeenNthCalledWith(
+      2,
+      "a",
+      expect.objectContaining({ ratingOverall: 7 }),
+    );
+    expect(vm.movie).toMatchObject({
+      title: "Confirmed renamed title",
+      ratingOverall: 7,
+    });
+    wrapper.unmount();
+  });
+
+  it.each([
+    ["succeeds", true],
+    ["fails", false],
+  ] as const)(
+    "applies a favorite that %s after an unrelated editor save",
+    async (_outcome, succeeds) => {
+      vi.mocked(movies.getMovie).mockResolvedValue(movie("a"));
+      const slow = deferred<Movie>();
+      vi.mocked(movies.updateMovie).mockReturnValueOnce(slow.promise);
+      const wrapper = mountView(MovieDetail);
+      await flushPromises();
+      const vm = state(wrapper);
+      const favorite = (vm.toggleFavorite as () => Promise<void>)();
+      await flushPromises();
+      // The editor's response renames the title and still has the old favorite.
+      (vm.onSaved as (saved: Movie) => void)(
+        movie("a", { title: "Renamed", favorite: false }),
+      );
+      if (succeeds)
+        slow.resolve(movie("a", { title: "Renamed", favorite: true }));
+      else slow.reject(new Error("Down"));
+      await favorite;
+      await flushPromises();
+      expect(vm.movie).toMatchObject({ title: "Renamed", favorite: succeeds });
+      expect(vm.saveError).toEqual(
+        succeeds ? null : expect.stringContaining("favourite"),
+      );
+      wrapper.unmount();
+    },
+  );
+
+  it("does not ship a stale status once the full editor changed it first", async () => {
+    vi.mocked(movies.getMovie).mockResolvedValue(movie("a"));
+    const slow = deferred<Movie>();
+    vi.mocked(movies.updateMovie).mockReturnValueOnce(slow.promise);
+    const wrapper = mountView(MovieDetail);
+    await flushPromises();
+    const vm = state(wrapper);
+    // Queue a favourite save, then let the full editor replace the record
+    // (a rename) before the favourite request settles.
+    const favorite = (vm.toggleFavorite as () => Promise<void>)();
+    (vm.onSaved as (saved: Movie) => void)(
+      movie("a", { title: "Renamed", favorite: false }),
+    );
+    slow.resolve(movie("a", { favorite: true }));
+    await favorite;
+    await flushPromises();
+    expect(vm.movie).toMatchObject({ title: "Renamed" });
     wrapper.unmount();
   });
 });

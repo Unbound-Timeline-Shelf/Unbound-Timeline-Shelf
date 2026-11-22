@@ -42,6 +42,11 @@ import { numberOrNull } from "../utils/numberInput";
 
 const props = defineProps<{
   movie?: Movie | null;
+  // Saves an edit to an existing movie through the parent page's quick-save queue,
+  // so this does not settle out of order with a quick save made while this form was
+  // open (review finding on #536). Falls back to a direct update when the caller
+  // has not supplied one yet.
+  persistEdit?: (id: string, input: Record<string, unknown>) => Promise<Movie>;
 }>();
 
 const emit = defineEmits<{
@@ -287,11 +292,13 @@ async function submit() {
       }),
     };
     const saved = props.movie
-      ? await updateMovie(props.movie.id, {
-          // keep the fields this form doesn't show
-          ...movieToInput(props.movie),
-          ...input,
-        })
+      ? props.persistEdit
+        ? await props.persistEdit(props.movie.id, input)
+        : await updateMovie(props.movie.id, {
+            // keep the fields this form doesn't show
+            ...movieToInput(props.movie),
+            ...input,
+          })
       : await createMovie(input);
     emit("saved", saved);
   } catch (e) {
