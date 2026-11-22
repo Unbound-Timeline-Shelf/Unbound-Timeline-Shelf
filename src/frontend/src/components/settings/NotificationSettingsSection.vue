@@ -3,6 +3,7 @@
 // (not in this browser), so they follow you between devices, and each
 // change saves as soon as it is made.
 import { ref, computed, onMounted } from "vue";
+import { useQueryState } from "../../composables/useQueryState";
 import SegmentedControl from "./SegmentedControl.vue";
 import SettingsTabs from "./SettingsTabs.vue";
 import { NOTIFICATION_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
@@ -22,9 +23,15 @@ import type { InboxRetentionPolicy } from "../../services/notifications";
 const props = defineProps<{ initialTab?: string }>();
 // Four short pages instead of one long scroll: where notifications go, which
 // kinds you get, when they arrive, and what has happened to them.
-const tab = ref(
-  TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "providers",
-);
+// the open tab is part of the address, so Back returns to the previous tab
+// and a reload keeps it (UX-AUDIT-APP §3.1)
+const tab = useQueryState("tab", {
+  values: TABS.map((t) => t.id),
+  fallback: () =>
+    TABS.some((t) => t.id === props.initialTab)
+      ? props.initialTab!
+      : "providers",
+});
 
 const prefs = ref<Preferences>({ ...DEFAULT_PREFERENCES });
 const loaded = ref(false);

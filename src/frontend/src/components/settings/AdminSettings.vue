@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { useQueryState } from "../../composables/useQueryState";
 import SettingsTabs from "./SettingsTabs.vue";
 import AdminSection from "./AdminSection.vue";
 import OidcSettingsSection from "./OidcSettingsSection.vue";
@@ -22,9 +22,13 @@ const TABS = [
   { id: "limits", label: "Limits" },
   { id: "dev-tools", label: "Dev Tools" },
 ];
-const tab = ref(
-  TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "users",
-);
+// the open tab is part of the address, so Back returns to the previous tab
+// and a reload keeps it (UX-AUDIT-APP §3.1)
+const tab = useQueryState("tab", {
+  values: TABS.map((t) => t.id),
+  fallback: () =>
+    TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "users",
+});
 </script>
 
 <template>

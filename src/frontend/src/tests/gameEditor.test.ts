@@ -2,11 +2,14 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick, ref } from "vue";
+import EditorShell from "../components/EditorShell.vue";
 import GameFormModal from "../components/GameFormModal.vue";
 import MetadataComparison from "../components/MetadataComparison.vue";
 import { mockGames } from "../data/mockGames";
 import type { MetadataCandidate } from "../services/metadata";
 import { smartCollections } from "../state/smartCollections";
+import { activeDialog, closeDialog } from "../state/dialog";
+import { createMemoryHistory, createRouter } from "vue-router";
 import { tasks } from "../state/taskProgress";
 import type { Game } from "../types/game";
 
@@ -214,6 +217,8 @@ const button = (wrapper: VueWrapper, text: string | RegExp) =>
     .find((item) =>
       typeof text === "string" ? item.text() === text : text.test(item.text()),
     )!;
+const dirtyOf = (shell: VueWrapper) =>
+  (shell.props() as { dirty?: boolean }).dirty;
 const submit = async (wrapper: VueWrapper) => {
   await wrapper.get("form").trigger("submit");
   await flushPromises();
@@ -565,5 +570,90 @@ describe("shared full game editor", () => {
     expect(toggle.attributes("aria-expanded")).toBe("true");
     expect(wrapper.find('input[type="search"]').exists()).toBe(true);
     expect(wrapper.get('[aria-selected="true"]').text()).toBe("Ownership");
+  });
+
+  it("counts edits, not tab clicks or values that arrive later", async () => {
+    const wrapper = open(savedGame());
+    await flushPromises();
+    const shell = wrapper.findComponent(EditorShell);
+    const state = wrapper.vm as unknown as { description: string };
+    await tab(wrapper, "Details");
+    await nextTick();
+    expect(dirtyOf(shell)).toBe(false);
+    // a value settling after the tab click (e.g. metadata loading late)
+    state.description = "Arrived after open";
+    await nextTick();
+    expect(dirtyOf(shell)).toBe(false);
+    // the next click takes it as the starting point
+    await tab(wrapper, "Basics");
+    await nextTick();
+    expect(dirtyOf(shell)).toBe(false);
+    await field(wrapper, "Title").setValue("Renamed");
+    expect(dirtyOf(shell)).toBe(true);
+  });
+
+  it("counts a click that changes what Save would send", async () => {
+    const wrapper = open(savedGame());
+    await flushPromises();
+    const shell = wrapper.findComponent(EditorShell);
+    const state = wrapper.vm as unknown as { description: string };
+    const panel = wrapper.get('[role="tabpanel"]');
+    // a click handler that edits the form, like removing a chip
+    panel.element.addEventListener("click", () => {
+      state.description = "Cleared by a button";
+    });
+    await panel.trigger("click");
+    await nextTick();
+    await nextTick();
+    expect(dirtyOf(shell)).toBe(true);
+  });
+
+  it("asks before the settings link drops edits made from the library", async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/games", component: { render: () => null } },
+        { path: "/settings", component: { render: () => null } },
+      ],
+    });
+    await router.push("/games");
+    // opened from the library or Home: no history step of its own
+    const wrapper = mount(GameFormModal, {
+      props: { game: savedGame() },
+      attachTo: document.body,
+      global: {
+        plugins: [router],
+        stubs: {
+          UiModal: { template: "<div><slot/><slot name='footer'/></div>" },
+          PageSettingsEditor: true,
+        },
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    await field(wrapper, "Title").setValue("Renamed");
+    await button(wrapper, "Look up metadata").trigger("click");
+    await flushPromises();
+    const link = wrapper
+      .findAll("a")
+      .find((item) => item.text().includes("Metadata/API"))!;
+    expect(link.attributes("href")).toBe("/settings?section=sources");
+
+    await link.trigger("click");
+    await flushPromises();
+    expect(activeDialog.value?.title).toBe("Discard changes?");
+    closeDialog(false); // Keep editing
+    await flushPromises();
+    expect(wrapper.emitted("close")).toBeUndefined();
+    expect(router.currentRoute.value.path).toBe("/games");
+
+    await link.trigger("click");
+    await flushPromises();
+    closeDialog(true); // Discard changes
+    await flushPromises();
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    expect(router.currentRoute.value.fullPath).toBe(
+      "/settings?section=sources",
+    );
   });
 });

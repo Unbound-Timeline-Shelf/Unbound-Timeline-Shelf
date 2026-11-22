@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatInstant } from "../../utils/dates";
 import { ref, computed, defineAsyncComponent, onMounted } from "vue";
+import { useQueryState } from "../../composables/useQueryState";
 import SegmentedControl from "./SegmentedControl.vue";
 import SettingsTabs from "./SettingsTabs.vue";
 import { EXPORT_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
@@ -12,9 +13,13 @@ const AniListImportSection = defineAsyncComponent(
 // Four workflows instead of one long page. Each keeps its own preview, busy and
 // error state while you switch between them, so nothing is lost mid-import.
 const props = defineProps<{ initialTab?: string }>();
-const tab = ref(
-  TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "export",
-);
+// the open tab is part of the address, so Back returns to the previous tab
+// and a reload keeps it (UX-AUDIT-APP §3.1)
+const tab = useQueryState("tab", {
+  values: TABS.map((t) => t.id),
+  fallback: () =>
+    TABS.some((t) => t.id === props.initialTab) ? props.initialTab! : "export",
+});
 import {
   fetchLibraryExport,
   importLibrary,
