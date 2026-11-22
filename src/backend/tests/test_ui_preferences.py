@@ -167,3 +167,48 @@ async def test_widget_configuration_follows_only_its_account_and_retains_unavail
 def test_invalid_widget_configuration_is_rejected(value):
     with pytest.raises(ValueError):
         validate_preference("home_widget_config", value)
+
+
+@pytest.mark.asyncio
+async def test_home_choice_and_dismissed_tips_follow_the_account():
+    """UX-AUDIT-APP A22/A24: an untouched Home and undismissed tips are the defaults; both
+    are stored per account so another browser or device sees the same choice."""
+    fresh = SimpleNamespace(scalar=AsyncMock(return_value=None))
+    defaults = await load_preferences(fresh, uuid4())
+    assert defaults["home_widgets_customized"] is False
+    assert defaults["dismissed_tips"] == []
+
+    row = SimpleNamespace(data={"ui_theme": "dark"})
+    db = SimpleNamespace(scalar=AsyncMock(return_value=row), commit=AsyncMock())
+    result = await save_preferences(
+        db,
+        uuid4(),
+        {
+            "home_widgets": [],
+            "home_widgets_customized": True,
+            "dismissed_tips": ["library.bulk-edit"],
+        },
+    )
+    assert result["home_widgets"] == []
+    assert result["home_widgets_customized"] is True
+    assert result["dismissed_tips"] == ["library.bulk-edit"]
+    assert result["ui_theme"] == "dark"
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("home_widgets_customized", "true"),
+        ("home_widgets_customized", 1),
+        ("dismissed_tips", "library.bulk-edit"),
+        ("dismissed_tips", [1]),
+        ("dismissed_tips", ["Library Bulk Edit"]),
+        ("dismissed_tips", ["<script>"]),
+        ("dismissed_tips", ["x" * 65]),
+        ("dismissed_tips", ["library.bulk-edit", "library.bulk-edit"]),
+        ("dismissed_tips", [f"tip-{n}" for n in range(65)]),
+    ],
+)
+def test_invalid_home_choice_and_tip_values_are_rejected(key, value):
+    with pytest.raises(ValueError):
+        validate_preference(key, value)

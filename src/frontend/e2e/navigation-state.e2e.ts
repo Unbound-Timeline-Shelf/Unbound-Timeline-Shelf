@@ -14,8 +14,12 @@ async function settle(page: Page, ms = 400) {
 const scrollY = (page: Page) => page.evaluate(() => window.scrollY);
 const press = (target: Locator) =>
   target.evaluate((element) => (element as HTMLElement).click());
+// Settings landing entries are links since U4 part 2; section menus are buttons.
 const visible = (page: Page, name: string) =>
-  page.getByRole("button", { name, exact: true }).filter({ visible: true });
+  page
+    .getByRole("link", { name, exact: true })
+    .or(page.getByRole("button", { name, exact: true }))
+    .filter({ visible: true });
 
 /** Scrolls the window to `y`, letting a paged list load until it can. */
 async function scrollWindowTo(page: Page, y: number): Promise<number> {

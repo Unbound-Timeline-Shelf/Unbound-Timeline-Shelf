@@ -88,7 +88,7 @@ export function notificationDestination(
   if (n.link && n.link.startsWith("/") && !n.link.startsWith("//"))
     return n.link;
   if (n.kind === "plugin_update") {
-    return "/settings?area=administration&section=plugins";
+    return "/settings/administration/plugins";
   }
   if (!n.mediaId) return null;
   const roots: Record<string, string> = {

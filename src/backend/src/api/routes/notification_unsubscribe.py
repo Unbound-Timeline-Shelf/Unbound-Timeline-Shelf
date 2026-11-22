@@ -68,7 +68,7 @@ def _page(
         f"<title>{escape(title)}</title><style>{_STYLE}</style></head><body><main>"
         f"<h1>{escape(title)}</h1><p>{escape(text)}</p>{form}"
         "<small>Your inbox and other destinations stay active. "
-        '<a href="/settings?area=account&amp;section=notifications">Review other subscriptions '
+        '<a href="/settings/account/notifications">Review other subscriptions '
         "or re-enable notifications in Settings</a> after signing in.</small>"
         "</main></body></html>",
         status_code=status,

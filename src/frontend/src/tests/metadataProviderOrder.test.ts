@@ -311,7 +311,9 @@ describe("Scan & providers", () => {
     expect(text).toContain("Not used by your account: GiantBomb.");
     expect(text).toContain("Disabled on this server");
     expect(text).toContain("Plugin");
-    expect(wrapper.find('a[href*="section=plugins"]').exists()).toBe(true);
+    expect(
+      wrapper.find('a[href*="/settings/administration/plugins"]').exists(),
+    ).toBe(true);
     expect(text).toContain("Used");
   });
 

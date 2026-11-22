@@ -608,7 +608,7 @@ async def test_unsubscribe_header_and_get_post_destination_isolation(
                 assert "plugin.notice" in response.text
                 assert 'name="scope" value="type"' in response.text
                 assert 'name="scope" value="all"' in response.text
-                assert "/settings?area=account" in response.text
+                assert "/settings/account/notifications" in response.text
                 assert "first@example.test" not in response.text
                 assert response.headers["referrer-policy"] == "no-referrer"
                 assert response.headers["cache-control"] == "no-store"

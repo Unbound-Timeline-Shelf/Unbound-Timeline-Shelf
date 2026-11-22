@@ -30,8 +30,10 @@ import {
   loadSharedPreferences,
   resetSharedPreferences,
   dateOfferHiddenFor,
+  welcomeHiddenFor,
 } from "./state/preferences";
 import { quickTourActive } from "./state/quickTour";
+import { routeAnnouncement } from "./state/routeFocus";
 import { shouldOfferDateFormat } from "./utils/dates";
 import {
   effectiveSidebarMode,
@@ -260,6 +262,10 @@ const KEPT_ALIVE = [
         </KeepAlive>
       </router-view>
     </div>
+    <!-- the page a navigation opened, for screen readers (routeFocus.ts) -->
+    <p class="visually-hidden" aria-live="polite" aria-atomic="true">
+      {{ routeAnnouncement }}
+    </p>
     <PluginExtensionSlot
       v-if="currentUser"
       slot-id="app.global"
@@ -278,7 +284,8 @@ const KEPT_ALIVE = [
         currentUser &&
         preferencesLoaded &&
         !preferencesError &&
-        !preferences.ui_welcome_completed
+        !preferences.ui_welcome_completed &&
+        welcomeHiddenFor !== currentUser.id
       "
       :key="currentUser.id"
     />
@@ -288,6 +295,7 @@ const KEPT_ALIVE = [
         currentUser &&
         preferencesLoaded &&
         !preferencesError &&
+        welcomeHiddenFor !== currentUser.id &&
         shouldOfferDateFormat(preferences, {
           tourActive: quickTourActive,
           hidden: dateOfferHiddenFor === currentUser.id,

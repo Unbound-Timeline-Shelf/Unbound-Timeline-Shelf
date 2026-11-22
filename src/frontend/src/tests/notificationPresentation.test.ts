@@ -23,7 +23,7 @@ it("groups plugin notifications without requiring a media page", () => {
       mediaId: "batch-uuid",
       kind: "plugin_update",
     }),
-  ).toBe("/settings?area=administration&section=plugins");
+  ).toBe("/settings/administration/plugins");
 });
 
 it.each(["legacy-event", "constructor", "__proto__"])(

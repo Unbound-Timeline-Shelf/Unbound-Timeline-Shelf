@@ -219,7 +219,7 @@ onMounted(() => void refresh());
   <section class="provider-settings">
     <div class="provider-toolbar">
       <h3 class="group-heading">Metadata</h3>
-      <router-link v-if="!pluginId" to="/settings?section=plugins"
+      <router-link v-if="!pluginId" to="/settings/administration/plugins"
         >Optional plugins</router-link
       >
       <button

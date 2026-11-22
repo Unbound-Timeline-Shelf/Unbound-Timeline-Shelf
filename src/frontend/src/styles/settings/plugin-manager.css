@@ -448,3 +448,29 @@ summary {
   outline: 2px solid var(--ui-accent, currentColor);
   outline-offset: 2px;
 }
+.manager-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-bottom: 8px;
+}
+.manager-head > .muted {
+  flex: 1 1 280px;
+  margin: 0;
+}
+.manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.manager-more {
+  margin: 32px 0 12px;
+  font: var(--ui-weight-heading) var(--ui-font-heading) / 1.4
+    var(--ui-font-family);
+  color: var(--ui-text);
+}
+.manager-more ~ .manager-settings + .manager-settings {
+  margin-top: 12px;
+}

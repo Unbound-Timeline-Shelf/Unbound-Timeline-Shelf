@@ -613,7 +613,7 @@ describe("shared full game editor", () => {
       history: createMemoryHistory(),
       routes: [
         { path: "/games", component: { render: () => null } },
-        { path: "/settings", component: { render: () => null } },
+        { path: "/settings/:rest(.*)*", component: { render: () => null } },
       ],
     });
     await router.push("/games");
@@ -637,7 +637,9 @@ describe("shared full game editor", () => {
     const link = wrapper
       .findAll("a")
       .find((item) => item.text().includes("Metadata/API"))!;
-    expect(link.attributes("href")).toBe("/settings?section=sources");
+    expect(link.attributes("href")).toBe(
+      "/settings/preferences/metadata?tab=sources",
+    );
 
     await link.trigger("click");
     await flushPromises();
@@ -653,7 +655,7 @@ describe("shared full game editor", () => {
     await flushPromises();
     expect(wrapper.emitted("close")).toHaveLength(1);
     expect(router.currentRoute.value.fullPath).toBe(
-      "/settings?section=sources",
+      "/settings/preferences/metadata?tab=sources",
     );
   });
 });

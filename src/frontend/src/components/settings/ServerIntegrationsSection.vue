@@ -81,14 +81,15 @@ async function save() {
       Metadata credentials are managed in the provider tiles below. The core
       providers are included with the app; additional providers are optional.
       Your personal overrides are available under
-      <router-link to="/settings?section=sources">Metadata/API</router-link>.
-      Existing core metadata keys are carried into these encrypted settings.
+      <router-link to="/settings/preferences/metadata?tab=sources"
+        >Metadata/API</router-link
+      >. Existing core metadata keys are carried into these encrypted settings.
     </p>
     <div v-if="loading">Loading…</div>
     <template v-else>
       <p class="hint">
         Email delivery and notification providers are configured under
-        <router-link to="/settings?section=admin-notifications"
+        <router-link to="/settings/administration/admin-notifications"
           >Notifications</router-link
         >.
       </p>

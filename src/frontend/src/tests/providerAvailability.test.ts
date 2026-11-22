@@ -144,7 +144,7 @@ describe("the search box", () => {
     expect(note.text()).toContain("fill in the details by hand");
     const link = note.get("a");
     expect(link.attributes("href")).toBe(
-      "/settings?section=metadata&tab=sources",
+      "/settings/preferences/metadata?tab=sources",
     );
     expect(link.attributes("target")).toBe("_blank");
     // keyboard and screen readers get the same reason

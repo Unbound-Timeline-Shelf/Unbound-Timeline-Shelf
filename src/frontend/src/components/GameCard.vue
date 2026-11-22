@@ -135,14 +135,37 @@ const statuses: GameStatus[] = [
   "wishlist",
 ];
 
+// The cover and the title are links (UX-AUDIT-APP A14): middle-click,
+// Ctrl-click and "copy link" work, and the cover link is the card's first Tab
+// stop, so Enter on it opens the game (critic C1).
+const gameHref = computed(
+  () => `/games/${props.versionContext?.gameId ?? props.game.id}`,
+);
 function openGame(e?: MouseEvent) {
   if (props.selectMode) {
     emit("toggle-select", props.game, e?.shiftKey ?? false);
     return;
   }
-  router.push(`/games/${props.versionContext?.gameId ?? props.game.id}`);
+  router.push(gameHref.value);
+}
+// In select mode a click on the cover link selects instead of navigating;
+// this runs before RouterLink's own handler.
+function onCoverClickCapture(e: MouseEvent) {
+  if (!props.selectMode) return;
+  if ((e.target as Element | null)?.closest?.(".cover-actions")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  emit("toggle-select", props.game, e.shiftKey);
+}
+// The rest of the cover (badges drawn over the art) opens the game too;
+// the link handles its own clicks, including ones meant for a new tab.
+function onCoverClick(e: MouseEvent) {
+  if ((e.target as Element | null)?.closest?.("a")) return;
+  openGame(e);
 }
 
+// The button is never disabled while saving: a disabled button drops focus
+// to <body> and the keyboard user loses their place (critic C1).
 async function toggleFavorite() {
   if (favoriteSaving.value) return;
   const previous = localFavorite.value;
@@ -257,19 +280,27 @@ function copyFolderPath() {
       <div
         ref="coverRef"
         class="cover"
-        @click="openGame($event)"
+        @click.capture="onCoverClickCapture"
+        @click="onCoverClick"
         @contextmenu="onContextMenu"
         @touchstart="onTouchStart"
         @touchmove="onTouchMove"
         @touchend="onTouchEnd"
       >
-        <GameArtwork
-          class="cover-image"
-          :src="game.hasKeyArt === false ? '' : game.coverImageUrl"
-          :title="game.title"
-          :eager="prioritizeImages"
-          fill
-        />
+        <RouterLink
+          :to="gameHref"
+          class="cover-link"
+          :aria-label="game.title"
+          draggable="false"
+        >
+          <GameArtwork
+            class="cover-image"
+            :src="game.hasKeyArt === false ? '' : game.coverImageUrl"
+            :title="game.title"
+            :eager="prioritizeImages"
+            fill
+          />
+        </RouterLink>
         <div
           v-if="selectMode"
           class="select-checkbox"
@@ -330,7 +361,8 @@ function copyFolderPath() {
             class="favorite-button"
             :class="{ active: localFavorite }"
             :aria-pressed="localFavorite"
-            :disabled="favoriteSaving"
+            :aria-disabled="favoriteSaving || undefined"
+            :aria-label="`Favorite ${game.title}`"
             title="Favorite"
             @click.stop="toggleFavorite"
           >
@@ -340,6 +372,7 @@ function copyFolderPath() {
           <button
             type="button"
             class="collection-button"
+            :aria-label="`Add ${game.title} to a collection`"
             title="Add to collection"
             @click.stop="emit('add-to-collection', game)"
           >
@@ -358,6 +391,7 @@ function copyFolderPath() {
           <button
             type="button"
             class="edit-button"
+            :aria-label="`Edit ${game.title}`"
             title="Edit"
             @click.stop="emit('edit', game)"
           >
@@ -490,7 +524,13 @@ function copyFolderPath() {
 
     <div class="card-info">
       <div class="title-row">
-        <h3 class="title">{{ game.title }}</h3>
+        <h3 class="title">
+          <span v-if="selectMode">{{ game.title }}</span>
+          <!-- the same place as the cover link, so not a second Tab stop -->
+          <RouterLink v-else :to="gameHref" class="title-link" tabindex="-1">{{
+            game.title
+          }}</RouterLink>
+        </h3>
         <span v-if="score" class="score-tag">★ {{ score.sum.toFixed(1) }}</span>
       </div>
       <div class="meta-row">
@@ -527,7 +567,7 @@ function copyFolderPath() {
       <RouterLink
         v-if="possibleDuplicate"
         class="copy-review-link"
-        to="/settings?section=library&tab=duplicates"
+        to="/settings/preferences/library?tab=duplicates"
         @click.stop
         >Review possible duplicate</RouterLink
       >
@@ -652,6 +692,24 @@ function copyFolderPath() {
   font-size: 0.68rem;
   font-weight: var(--ui-weight-title);
   font-variant-numeric: tabular-nums;
+}
+.cover-link {
+  position: absolute;
+  inset: 0;
+  display: block;
+  color: inherit;
+  border-radius: inherit;
+}
+.cover-link:focus-visible {
+  outline: 3px solid var(--ui-accent-text);
+  outline-offset: -3px;
+}
+.title-link {
+  color: inherit;
+  text-decoration: none;
+}
+.title-link:hover {
+  text-decoration: underline;
 }
 .cover-image {
   width: 100%;

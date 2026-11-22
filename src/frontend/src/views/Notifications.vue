@@ -349,14 +349,14 @@ function toggleOpen(n: MediaNotification) {
           </select></label
         >
         <RouterLink
-          to="/settings?section=notifications"
+          to="/settings/account/notifications"
           class="ui-btn ui-btn-secondary"
           >Notification settings</RouterLink
         >
       </div>
       <p v-if="policy" class="retention-note" data-testid="retention-note">
         {{ retentionSummary(policy) }}
-        <RouterLink to="/settings?section=notifications"
+        <RouterLink to="/settings/account/notifications"
           >Change retention</RouterLink
         >
       </p>

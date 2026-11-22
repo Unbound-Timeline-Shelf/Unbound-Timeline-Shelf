@@ -16,6 +16,7 @@ import type { Achievement, GameStatus } from "../types/game";
 import GameRatingPicker from "../components/GameRatingPicker.vue";
 import GameCollectionsButton from "../components/GameCollectionsButton.vue";
 import BackButton from "../components/BackButton.vue";
+import { onRovingKeydown, rovingTabIndex } from "../utils/rovingFocus";
 import GameTopBar from "../components/GameTopBar.vue";
 import GameUnavailable from "../components/game/GameUnavailable.vue";
 import HeartIcon from "../components/HeartIcon.vue";
@@ -596,17 +597,29 @@ async function onFieldSourceChanged() {
     </section>
 
     <div ref="tabbarWrap" class="tabbar-wrap">
-      <nav class="tabbar">
-        <button
-          v-for="tab in visibleTabs"
-          :key="tab"
-          type="button"
-          class="tab-btn"
-          :class="{ active: activeTab === tab }"
-          @click="selectTab(tab)"
+      <!-- a tablist (critic C3): one Tab stop, arrows between the tabs -->
+      <nav class="tabbar" aria-label="Game page">
+        <div
+          class="tabbar-tabs"
+          role="tablist"
+          aria-label="Game page sections"
+          @keydown="onRovingKeydown($event)"
         >
-          {{ tab }}
-        </button>
+          <button
+            v-for="(tab, index) in visibleTabs"
+            :key="tab"
+            type="button"
+            role="tab"
+            class="tab-btn"
+            data-roving
+            :class="{ active: activeTab === tab }"
+            :aria-selected="activeTab === tab"
+            :tabindex="rovingTabIndex(index, visibleTabs.indexOf(activeTab))"
+            @click="selectTab(tab)"
+          >
+            {{ tab }}
+          </button>
+        </div>
         <div v-if="moreTabs.length" class="tab-more">
           <button
             type="button"

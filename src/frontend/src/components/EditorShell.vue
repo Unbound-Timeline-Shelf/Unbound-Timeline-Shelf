@@ -362,6 +362,8 @@ defineExpose({ scrollToTop });
   .editor-tabs {
     max-width: calc(100% - 32px);
     margin: 10px 16px 0;
+    /* the sections that do not fit lie to the right (A13) */
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
   }
 
   .bounded .editor-body {

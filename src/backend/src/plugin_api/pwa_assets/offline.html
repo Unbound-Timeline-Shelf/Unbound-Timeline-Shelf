@@ -63,5 +63,5 @@ main{width:100%;max-width:36rem;padding:clamp(20px,5vw,32px);background:var(--ui
   system.addEventListener('change',apply);
 })();
 </script></head>
-<body><main><h1>Waiting for internet</h1><p>Reconnect to your tracking server to use Unnamed Tracking. Your account data and API responses are never stored in this offline page.</p><p>The installed app opens the complete web application when you reconnect. If its plugin was disabled or removed, the ordinary website remains available.</p><button type="button" id="retry">Try again</button><p><a href="/settings?section=plugins">Open plugin settings when online</a></p></main>
+<body><main><h1>Waiting for internet</h1><p>Reconnect to your tracking server to use Unnamed Tracking. Your account data and API responses are never stored in this offline page.</p><p>The installed app opens the complete web application when you reconnect. If its plugin was disabled or removed, the ordinary website remains available.</p><button type="button" id="retry">Try again</button><p><a href="/settings/administration/plugins">Open plugin settings when online</a></p></main>
 <script>document.getElementById('retry').addEventListener('click',()=>location.reload());window.addEventListener('online',()=>location.reload());</script></body></html>

@@ -47,7 +47,7 @@ export default async function globalSetup(config: FullConfig) {
           "Synthetic record for the navigation acceptance checks. ".repeat(
             1 + (n % 9),
           ),
-        status: ["playing", "backlog", "beaten", "wishlist"][n % 4],
+        status: ["PLAYING", "BACKLOG", "BEATEN", "WISHLIST"][n % 4],
       },
     });
     if (!created.ok()) throw new Error(`seed ${created.status()}`);

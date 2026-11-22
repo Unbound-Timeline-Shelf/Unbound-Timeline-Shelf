@@ -34,7 +34,13 @@ DEFAULTS: dict[str, Any] = {
     "keyboard_shortcuts_enabled": True,
     "keyboard_shortcut_overrides": {},
     "home_widgets": [],
+    # the person chose their Home widgets (even none); until then a library with games
+    # shows the suggested widgets instead of an empty Home (UX-AUDIT-APP A22)
+    "home_widgets_customized": False,
     "home_widget_config": {},
+    # one-time tips this account has dismissed, so they stay gone on every browser
+    # and device (UX-AUDIT-APP A24)
+    "dismissed_tips": [],
     "calendar_game_releases": True,
     "calendar_game_history": True,
     "calendar_default_view": "month",
@@ -386,6 +392,21 @@ def _validate_notification_routes(value: Any) -> dict[str, dict[str, dict[str, A
     return clean
 
 
+_TIP_ID = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
+_MAX_DISMISSED_TIPS = 64
+
+
+def _validate_dismissed_tips(value: Any) -> list[str]:
+    """Bounded, unique tip identifiers; the frontend owns what each one means."""
+    if not isinstance(value, list) or len(value) > _MAX_DISMISSED_TIPS:
+        raise ValueError(f"dismissed_tips must be a list of at most {_MAX_DISMISSED_TIPS} tips")
+    if any(not isinstance(item, str) or not _TIP_ID.fullmatch(item) for item in value):
+        raise ValueError("dismissed_tips must contain short lowercase tip identifiers")
+    if len(set(value)) != len(value):
+        raise ValueError("dismissed_tips must not repeat a tip")
+    return list(value)
+
+
 _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "notification_url": normalize_public_url,
     "notification_types": _validate_notification_mapping,
@@ -394,6 +415,7 @@ _VALUE_VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "notification_timing": normalize_timing,
     "ui_theme_package": _validate_theme_package,
     "home_widgets": _validate_home_widgets,
+    "dismissed_tips": _validate_dismissed_tips,
     "home_widget_config": _validate_widget_config,
     "ui_custom_palette": _validate_custom_palette,
     "keyboard_shortcut_overrides": validate_shortcut_overrides,
