@@ -6,10 +6,10 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from src.core.cache_metrics import cache_entries, cache_eviction, cache_refresh, cache_request
@@ -28,7 +28,13 @@ from .configuration import UNRANKED
 from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
-from .provider_reports import is_unassignable, provider_identities, provider_relations
+from .provider_reports import (
+    is_unassignable,
+    provider_identities,
+    provider_relations,
+    provider_values,
+    source_labels,
+)
 from .providers import Operation, PluginMetadataProvider
 from .refresh_identity import provider_id_claims, unverified_providers, verified_record
 
@@ -408,6 +414,14 @@ class MetadataHandler:
 
     @staticmethod
     def _metadata(session: SearchSession, members: Sequence[Source]) -> dict[str, Any]:
+        return MetadataHandler._merged(session, members)[0]
+
+    @staticmethod
+    def _merged(
+        session: SearchSession, members: Sequence[Source]
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        """The merged metadata of `members`, and the provider id each single-valued field
+        came from (a refresh records it as that field's source, #348)."""
         priorities = {provider.id: provider.priority for provider in session.providers}
         patches = sorted(
             (
@@ -420,6 +434,7 @@ class MetadataHandler:
             key=lambda item: (item[0], item[1]),
         )
         metadata: dict[str, Any] = {}
+        origins: dict[str, str] = {}
         fallback_times: dict[str, Any] = {}
         for _, provider_id, patch in patches:
             for name, value in patch.model_dump(mode="json").items():
@@ -431,21 +446,30 @@ class MetadataHandler:
                     if provider_id == "core.igdb":
                         fallback_times.setdefault(name, value)
                         continue
-                if name in {"provider_ids", "scores", "titles", "custom"}:
-                    for namespace, external_id in value.items():
-                        metadata.setdefault(name, {}).setdefault(namespace, external_id)
-                elif name == "episodes":
-                    MetadataHandler._merge_episodes(metadata.setdefault(name, {}), value)
-                else:
-                    metadata.setdefault(name, value)
+                MetadataHandler._place(metadata, origins, provider_id, name, value)
         for name, value in fallback_times.items():
-            metadata.setdefault(name, value)
+            MetadataHandler._place(metadata, origins, "core.igdb", name, value)
         if "episodes" in metadata:
             metadata["episodes"] = sorted(
                 metadata["episodes"].values(),
                 key=lambda episode: (episode.get("season_number") or 0, episode["episode_number"]),
             )
-        return metadata
+        return metadata, origins
+
+    @staticmethod
+    def _place(
+        metadata: dict[str, Any], origins: dict[str, str], provider_id: str, name: str, value: Any
+    ) -> None:
+        """Add one provider's value unless a higher-priority provider already set it; maps
+        (ids, scores, titles, custom values) and episodes are merged entry by entry."""
+        if name in {"provider_ids", "scores", "titles", "custom"}:
+            for namespace, external_id in value.items():
+                metadata.setdefault(name, {}).setdefault(namespace, external_id)
+        elif name == "episodes":
+            MetadataHandler._merge_episodes(metadata.setdefault(name, {}), value)
+        elif name not in metadata:
+            metadata[name] = value
+            origins[name] = provider_id
 
     @staticmethod
     def _merge_episodes(entries: dict[tuple, dict], episodes: list[dict]) -> None:
@@ -518,7 +542,8 @@ class MetadataHandler:
 
     def _record(self, session: SearchSession, group: list[str], rank: int) -> dict[str, Any]:
         representative = self._identity(session, session.sources[group[0]])
-        metadata = self._metadata(session, [session.sources[key] for key in group])
+        metadata, origins = self._merged(session, [session.sources[key] for key in group])
+        provider_names = source_labels(session.providers)
         provider_ids: dict[str, str] = {}
         for key in group:
             for namespace, external_id in identities(
@@ -539,6 +564,12 @@ class MetadataHandler:
             "rank": rank,
             "provider_ids": provider_ids,
             "metadata": metadata,
+            # field -> the name of the provider whose value the merged record holds
+            "field_providers": {
+                name: provider_names[provider_id]
+                for name, provider_id in origins.items()
+                if provider_id in provider_names
+            },
             "providers": sorted({session.sources[key].candidate.provider for key in group}),
             "assets": [],
         }
@@ -593,8 +624,8 @@ class MetadataHandler:
 
     @staticmethod
     def provider_reports(session: SearchSession, group_id: str | None) -> dict[str, Any]:
-        """Identity verdicts and game relations, per registered provider (Plugin API 1.1.20)."""
-        group = session.groups.get(group_id or "", ())
+        """Identity verdicts, game relations and preferable field values, per provider."""
+        group, labels = session.groups.get(group_id or "", ()), source_labels(session.providers)
         namespaces = {
             provider.id: provider.declaration.identifier_namespace for provider in session.providers
         }
@@ -605,6 +636,7 @@ class MetadataHandler:
         return {
             "provider_identities": provider_identities(session.sources, group, namespaces),
             "provider_relations": provider_relations(session.sources, group, namespaces, contracts),
+            "provider_values": provider_values(session.sources, group, labels),
         }
 
     def _rank(self, session: SearchSession) -> None:
@@ -906,10 +938,8 @@ class MetadataHandler:
                 "provider_id_claims": claims,
                 "unverified_providers": sorted(unverified),
                 **self.provider_reports(session, session.selected),
-                # kept so a route that locks the game row after this lookup ran can redo the
-                # verification against the row it actually applies to (review finding 4);
-                # `session` outlives this call (`cancel`/the session-id pop below do not clear
-                # its data), so this costs nothing beyond keeping the reference alive.
+                # lets a locking route redo verification later (finding 4, see
+                # service.reverify_record)
                 "_reverify": (session, group, assets),
             }
             if unverified:
@@ -918,7 +948,8 @@ class MetadataHandler:
                         session.sources,
                         group,
                         unverified,
-                        metadata_of=lambda members: self._metadata(session, members),
+                        merged_of=lambda members: self._merged(session, members),
+                        provider_names=source_labels(session.providers),
                         asset_providers=session.asset_providers,
                         assets=assets,
                     )
@@ -931,48 +962,6 @@ class MetadataHandler:
         self.cancel(session)
         self.sessions.pop(session.id, None)
         return record, failures
-
-    @staticmethod
-    def reverify(record: dict[str, Any], held: Mapping[str, str]) -> dict[str, Any]:
-        """Redo verification against ``held``, the game's provider ids as the route's locked
-        row actually has them, rather than trusting the verdict `enrich` computed against the
-        ids the lookup started with (review finding 4).
-
-        While a provider request is in flight, an editor can change the game's id in a
-        namespace; the provider whose own claim no longer matches the row it is about to write
-        to must not keep being treated as verified just because it was, against ids that no
-        longer hold. Returns the same ``unverified_providers``/``verified_*`` shape `enrich`
-        already adds to a record, recomputed; ``{}`` when there is nothing to redo (the lookup
-        found no candidate, or the record predates this fix)."""
-        context = record.get("_reverify")
-        if not context:
-            return {}
-        session, group, assets = cast(
-            tuple[SearchSession, Sequence[str], list[dict[str, Any]]], context
-        )
-        claims = record.get("provider_id_claims", {})
-        unverified = unverified_providers(
-            session.sources,
-            group,
-            session.providers,
-            dict(held),
-            claims,
-            asset_providers=session.asset_providers,
-            assets=assets,
-        )
-        result: dict[str, Any] = {"unverified_providers": sorted(unverified)}
-        if unverified:
-            result.update(
-                verified_record(
-                    session.sources,
-                    group,
-                    unverified,
-                    metadata_of=lambda members: MetadataHandler._metadata(session, members),
-                    asset_providers=session.asset_providers,
-                    assets=assets,
-                )
-            )
-        return result
 
     def select(self, session: SearchSession, selected_id: str) -> dict[str, Any]:
         """Selection succeeds immediately; media provider failure cannot undo it."""
