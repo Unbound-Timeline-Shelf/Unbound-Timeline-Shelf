@@ -671,7 +671,10 @@ Choose **Edit** on the game page and open the **Play** tab. Tick **Playable with
 others** and save to mark multiplayer without supplying extra details. Exact
 player limits remain unknown. Enable **Set known player limits** to enter both
 minimum and maximum, or choose a common range. Session duration and confirmed
-crossplay are optional. These details are self-reported. They live in the Edit
+crossplay are optional. Crossplay is saved as yes, partial, no or unknown: a provider can
+report that only some platforms play together (partial), and leaving the box unticked means
+unknown rather than "no". Ticking or unticking the box keeps a provider's "partial" or "no"
+when it agrees with your choice. These details are self-reported. They live in the Edit
 form only; the Overview no longer carries a multiplayer panel.
 
 

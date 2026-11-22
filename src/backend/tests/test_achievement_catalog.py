@@ -54,7 +54,7 @@ def test_patch_accepts_a_bounded_achievement_list():
         {"name": ""},
         {"name": "x" * 201},
         {"kind": "grind"},
-        {"tier": "platinum"},
+        {"tier": "diamond"},  # platinum is valid from 1.1.20 (test_plugin_api_1120_contract)
         {"points": -1},
         {"global_percent": 100.5},
         {"global_percent": float("nan")},

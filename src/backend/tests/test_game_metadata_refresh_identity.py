@@ -961,6 +961,38 @@ def test_classify_rejection_ignores_ids_the_game_holds():
     assert (rejected.tier, rejected.rejected) == ("rejected", {"atlas": "a"})
 
 
+@pytest.mark.parametrize("verdict", ["id", "redirect", "crosswalk"])
+def test_an_identity_verdict_alone_confirms_the_game(verdict):
+    """unverified_providers() already treats an id/redirect/crosswalk verdict as confirmation
+    even without a shared namespace (#500 review); classify() must agree, or the refresh route
+    answers no-match/title for a result the rest of the system considers genuinely verified
+    (review finding 5). A renamed game is the sharpest case: no reported title matches, so only
+    the verdict can establish identity."""
+    claims = {"atlas": {"atlas": "new-id"}}
+    identities = {"atlas": {"match": verdict}}
+    result = classify(
+        {"steam": "1"},
+        claims,
+        game_title="Old title",
+        reported_title="Renamed",
+        identities=identities,
+    )
+    assert result.tier == "id"
+
+
+def test_an_ambiguous_or_conflicting_verdict_does_not_confirm_the_game():
+    claims = {"atlas": {"atlas": "new-id"}}
+    for verdict in ("ambiguous", "conflict"):
+        result = classify(
+            {"steam": "1"},
+            claims,
+            game_title="Old title",
+            reported_title="Different title",
+            identities={"atlas": {"match": verdict}},
+        )
+        assert result.tier in {"none", "conflict"}
+
+
 # --- id match: only corroborated sources apply automatically (#492 review) -------------------
 
 

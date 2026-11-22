@@ -18,7 +18,6 @@ import asyncio
 import dataclasses
 import re
 import time
-from datetime import date
 from typing import Literal
 from uuid import UUID
 
@@ -72,6 +71,7 @@ from src.features.imports.game_progression import apply_provider_progress
 from src.features.imports.library_games import LibraryIndex
 from src.features.imports.library_games import get_or_create_game as _get_or_create_game
 from src.features.imports.steam_achievements import SteamAchievementData, fetch_steam_achievements
+from src.features.metadata.game_releases import sync_release_updates
 from src.features.metadata.games import steam
 from src.features.metadata.games.psn import PSNClient, PSNError
 from src.features.metadata.games.retroachievements import (
@@ -264,12 +264,8 @@ async def _enrich_new_game(
             apply_metadata_updates(game, {field: value})
     if match.get("series"):
         _add_to_series_collection(game, match["series"])
-    release_date = match.get("release_date")
-    if release_date:
-        try:
-            apply_metadata_updates(game, {"release_date": date.fromisoformat(release_date)})
-        except ValueError:
-            pass
+    # a Plugin API 1.1.20 first_release keeps its precision (C5.4), as a refresh stores it
+    apply_metadata_updates(game, sync_release_updates(game, match))
     return await _fetch_missing_artwork(game, match, max_image_bytes, outcome, overwrite=True)
 
 
