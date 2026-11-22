@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../../utils/dates";
 import { computed } from "vue";
 import {
   mergeGames,
@@ -56,7 +57,7 @@ async function mergeAnyway(d: IdentityDecision): Promise<void> {
   const [first, second] = [d.first_game_id, d.second_game_id];
   await props.act(() => mergeGames(first, second, true));
 }
-const when = (t: number) => new Date(t * 1000).toLocaleDateString();
+const when = (t: number) => formatInstant(t, { time: false });
 </script>
 
 <template>

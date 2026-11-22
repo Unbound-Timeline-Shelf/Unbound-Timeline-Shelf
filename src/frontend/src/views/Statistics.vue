@@ -8,6 +8,7 @@
 // counter), plus one more pass through those for each logged rewatch; a season counts as completed only when every one of
 // its episodes is watched. Anything with no runtime on record is reported
 // in a note, never given a guessed length.
+import { monthName, formatInstant, formatDay } from "../utils/dates";
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import AppTopBar from "../components/AppTopBar.vue";
@@ -77,10 +78,8 @@ function pct(a: number, b: number): string {
   return b ? `${Math.round((a / b) * 100)}%` : "0%";
 }
 function shortMonth(key: string): string {
-  const [y, m] = key.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString(undefined, {
-    month: "short",
-  });
+  const m = Number(key.split("-")[1]);
+  return monthName(m, "short");
 }
 
 // ---- chart inputs ----
@@ -239,11 +238,7 @@ function secondsRows(rows: { name: string; seconds: number }[]) {
   }));
 }
 function fmtDate(epoch: number): string {
-  return new Date(epoch * 1000).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatInstant(epoch, { time: false });
 }
 
 // the TV and Anime tabs share one layout
@@ -468,7 +463,8 @@ const episodic = computed<EpisodicStats | null>(() => {
                 :timezone="stats.overview.activity.timezone"
               />
               <p v-if="stats.overview.activity.busiest_day" class="note">
-                Busiest day: {{ stats.overview.activity.busiest_day.date }} with
+                Busiest day:
+                {{ formatDay(stats.overview.activity.busiest_day.date) }} with
                 {{ busiestDayText }}.
               </p>
             </section>

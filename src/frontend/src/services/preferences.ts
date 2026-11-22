@@ -1,6 +1,7 @@
 // Server-side per-user preferences. Defaults live on the server; this only carries the shape.
 import { DEFAULT_PAGE_SETTINGS } from "../utils/gamePage";
 import type { PageSettings } from "../utils/gamePage";
+import type { DateStyle, TimeFormat } from "../utils/dates";
 
 export type TimingMode =
   "inherit" | "immediate" | "coalesce" | "digest" | "mute";
@@ -96,10 +97,15 @@ export interface Preferences {
   library_relationship_display: Record<string, "link" | "nest" | "hidden">;
   lists_default_sort: "custom" | "name" | "count" | "recent";
   title_language: "english" | "romaji" | "native";
-  // release dates: the browser's language or the stored value as written
-  date_display: "locale" | "iso";
-  // a month known without its day: "April 2011" (long) or "Apr 2011" (short)
-  partial_date_style: "short" | "long";
+  // how every date is shown (utils/dates.ts): 17/09/2020, 17 September
+  // 2020, 09/17/2020 or 2020-09-17; stored and sent as ISO either way
+  date_format: DateStyle;
+  // null is 24h, except month/day/year which reads as 12h
+  time_format: TimeFormat | null;
+  // the person picked a date format themselves
+  date_format_chosen: boolean;
+  // the one-time first-visit format offer was shown and answered
+  date_format_offered: boolean;
   stats_include_plan: boolean;
   anilist_import_username: string;
   anilist_import_update_existing: boolean;
@@ -162,8 +168,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   library_relationship_display: {},
   lists_default_sort: "custom",
   title_language: "english",
-  date_display: "locale",
-  partial_date_style: "long",
+  date_format: "dmy",
+  time_format: null,
+  date_format_chosen: false,
+  date_format_offered: false,
   stats_include_plan: true,
   anilist_import_username: "",
   anilist_import_update_existing: false,

@@ -1,3 +1,4 @@
+import { formatInstant } from "../utils/dates";
 import { computed, ref, watch } from "vue";
 import {
   listGameProfiles,
@@ -261,11 +262,7 @@ export function useGameProfiles(
       await loadStatHistory();
   }
   function formatSnapshotDate(epochSeconds: number): string {
-    return new Date(epochSeconds * 1000).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    return formatInstant(epochSeconds, { time: false });
   }
 
   // "on this day" gains, each snapshot compared against the next-older one

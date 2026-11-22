@@ -1,3 +1,4 @@
+import { deviceTimeZone } from "../utils/dates";
 // Library statistics (see backend api/routes/media_stats.py). Everything
 // is exact or absent: watch time is the sum of real runtimes, and titles
 // or episodes with no runtime on record are counted separately, never
@@ -280,7 +281,7 @@ let generation = 0;
 // server places every achievement on the same local day in both views.
 export function viewerTimeZone(): string {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    return deviceTimeZone();
   } catch {
     return "UTC";
   }

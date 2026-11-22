@@ -521,7 +521,7 @@ keep your palette, custom colors, light or dark mode and phone layout:
 | Playtime (hours) | Your own total, to one decimal place. Leave it empty for none. |
 | Where you left off | Up to 2,000 characters; also shown and editable on the Overview. |
 | Region, Language | Edition details, used by the library's Region and Language filters. |
-| Release date | A date a provider knew only to the year or month shows as the first day of that period, with a note; a date you pick is saved as a day. |
+| Release date | Typed in your date format: a full day, a month (`04/2011`, `April 2011`) or a year (`2011`). The placeholder shows the expected order and a "Read as" line confirms how it was understood; a date that reads two ways (`03/04/2011`) asks which was meant before the game can be saved. |
 | Currency | Chosen from the currencies the server accepts. |
 
 Clearing a field and saving clears it. A blank sorting name sorts by the
@@ -644,11 +644,28 @@ period, so a game released on 19 April 2011 comes before one known only as "2011
 ### Release dates
 
 Some providers know only a game's release year or month. Such a date is shown as
-known: **2011** or **April 2011**, never "1 January 2011". Under **Settings › Media
-Preferences › Release dates**, choose **My language** (the default; months as
-"April 2011" or "Apr 2011") or **As stored** (`2011`, `2011-04`, `2011-04-19`). In the
-edit dialog the date field shows the first day of the period with a note saying
-what is known; picking a date there saves it as that day.
+known: **2011** or **April 2011** (or `2011-04` with ISO), never "1 January
+2011" and never a numeric `04/2011`. Month names are in English. Every date in the app follows one setting, **Settings › Media
+Preferences › Date format**:
+
+| Format | A day | A month | A time |
+| --- | --- | --- | --- |
+| dd/mm/yyyy (default) | 14/03/2011 | March 2011 | 14:05 |
+| dd Month yyyy | 14 March 2011 | March 2011 | 14:05 |
+| mm/dd/yyyy | 03/14/2011 | March 2011 | 2:05 PM |
+| ISO | 2011-03-14 | 2011-03 | 14:05 |
+
+**Time format** chooses 24-hour or 12-hour clocks; **Automatic** uses 12-hour
+with mm/dd/yyyy and 24-hour otherwise. Dates are stored and sent as ISO whatever
+is chosen. On the first visit from a browser set to US English or a US time zone,
+the app asks once which format to use, after the welcome dialog and any quick
+tour; closing that dialog keeps dd/mm/yyyy and it is not shown again on any
+device. If the app cannot save that answer, the dialog still closes and is offered
+again on a later visit. Accounts that had chosen **As stored** under the
+old Release dates setting now use ISO.
+
+In the edit dialog the release date is typed in the chosen order, as a day, a
+month or only a year (see the field table above).
 
 The game page shows the date the same way as **Released** on the Overview. When a
 provider lists regional, platform or edition releases, **More details › Releases**

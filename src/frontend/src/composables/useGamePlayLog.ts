@@ -1,3 +1,4 @@
+import { formatInstant } from "../utils/dates";
 import { ref, type Ref } from "vue";
 import { setPlaytimeSeconds } from "../services/games";
 import {
@@ -76,7 +77,7 @@ export function useGamePlayLog(game: Ref<Game | null>) {
         game.value.platforms = updated.platforms;
       }
       finish(attempt);
-      const day = new Date(logged.playedAt * 1000).toLocaleDateString();
+      const day = formatInstant(logged.playedAt, { time: false });
       playLogMessage.value =
         minutes > 0
           ? `Logged ${minutes} min played on ${day}.`

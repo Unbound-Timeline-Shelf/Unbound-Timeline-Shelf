@@ -7,12 +7,6 @@ export interface MediaTrackingFact {
   value: string;
 }
 
-const DATE_FORMAT: Intl.DateTimeFormatOptions = {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-};
-
 // Priority and the personal start / finish dates, in one shape for the movie,
 // TV and anime detail pages. Priority, like for games, only matters while
 // there is something left to watch, so it is left out for Completed and
@@ -31,12 +25,12 @@ export function mediaTrackingFacts(media: {
   if (media.startDate)
     facts.push({
       label: "Started",
-      value: formatDisplayDate(media.startDate, DATE_FORMAT),
+      value: formatDisplayDate(media.startDate),
     });
   if (media.endDate)
     facts.push({
       label: "Finished",
-      value: formatDisplayDate(media.endDate, DATE_FORMAT),
+      value: formatDisplayDate(media.endDate),
     });
   return facts;
 }

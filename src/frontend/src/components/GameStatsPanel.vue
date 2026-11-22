@@ -6,7 +6,14 @@
 // changed, media added. An entry shows the date and a one line summary; open
 // it for the details. Entries that happened together are grouped.
 import { ref, computed } from "vue";
-import { parseDisplayDate } from "../utils/dates";
+import {
+  parseDisplayDate,
+  formatInstant,
+  formatTime,
+  formatMonthYear,
+  monthName,
+  dayKey,
+} from "../utils/dates";
 import { isUnlocked } from "../utils/achievements";
 import { computeScore } from "../utils/scoring";
 import type { Game } from "../types/game";
@@ -52,21 +59,11 @@ function when(iso: string | null | undefined): number | null {
   const t = parseDisplayDate(iso).getTime();
   return Number.isNaN(t) ? null : t;
 }
-const dayFmt = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
-const timeFmt = new Intl.DateTimeFormat(undefined, {
-  hour: "numeric",
-  minute: "2-digit",
-});
-const monthFmt = new Intl.DateTimeFormat(undefined, {
-  month: "long",
-  year: "numeric",
-});
+// times here are milliseconds
+const dayText = (ms: number) => formatInstant(new Date(ms), { time: false });
+const timeText = (ms: number) => formatTime(new Date(ms));
 function day(ms: number | null): string {
-  return ms === null ? "N/A" : dayFmt.format(ms);
+  return ms === null ? "N/A" : dayText(ms);
 }
 
 const firstUnlock = computed(() =>
@@ -87,7 +84,7 @@ const rarest = computed(() => {
 const busiest = computed(() => {
   const perDay = new Map<string, number>();
   for (const u of dated.value) {
-    const k = new Date(u.at).toDateString();
+    const k = dayKey(new Date(u.at));
     perDay.set(k, (perDay.get(k) ?? 0) + 1);
   }
   let top: { key: string; n: number } | null = null;
@@ -181,7 +178,7 @@ const facts = computed(() => {
   if (busiest.value && props.showAchievements)
     list.push({
       label: "Busiest day",
-      value: dayFmt.format(new Date(busiest.value.key)),
+      value: dayText(parseDisplayDate(busiest.value.key).getTime()),
       note: `${busiest.value.n} achievements`,
     });
   if (props.game.timeToBeatHours)
@@ -214,9 +211,7 @@ const monthly = computed(() => {
       key: k,
       n,
       pct: Math.max(8, Math.round((n / max) * 100)),
-      label: new Date(y, m - 1, 1).toLocaleDateString(undefined, {
-        month: "short",
-      }),
+      label: monthName(m, "short"),
       year: y,
     };
   });
@@ -284,7 +279,7 @@ function readable(field: string, value: string | null): string {
   if (field.endsWith("_date")) {
     const n = Number(value);
     const ms = /^\d{9,}$/.test(value) ? n * 1000 : when(value);
-    return ms === null ? value : dayFmt.format(ms);
+    return ms === null ? value : dayText(ms);
   }
   return value.length > 160 ? `${value.slice(0, 160)}…` : value;
 }
@@ -377,7 +372,7 @@ const entries = computed<Entry[]>(() => {
   // achievements, one entry per day
   const perDay = new Map<string, typeof dated.value>();
   for (const u of dated.value) {
-    const k = new Date(u.at).toDateString();
+    const k = dayKey(new Date(u.at));
     perDay.set(k, [...(perDay.get(k) ?? []), u]);
   }
   for (const [k, group] of perDay) {
@@ -401,7 +396,7 @@ const entries = computed<Entry[]>(() => {
         name: u.a.name,
         icon: u.a.iconUrl ?? undefined,
         note: [
-          timeFmt.format(u.at),
+          timeText(u.at),
           typeof u.a.rarityPercent === "number"
             ? `${u.a.rarityPercent}% of players`
             : "",
@@ -497,7 +492,7 @@ const entries = computed<Entry[]>(() => {
   // media, one entry per day and kind
   const mediaGroups = new Map<string, MediaItem[]>();
   for (const m of props.media) {
-    const k = `${new Date(m.created_at * 1000).toDateString()}|${m.kind}`;
+    const k = `${dayKey(new Date(m.created_at * 1000))}|${m.kind}`;
     mediaGroups.set(k, [...(mediaGroups.get(k) ?? []), m]);
   }
   const NOUN: Record<string, [string, string]> = {
@@ -584,7 +579,11 @@ const months = computed(() => {
     const key = `${d.getFullYear()}-${d.getMonth()}`;
     let g = groups[groups.length - 1];
     if (!g || g.key !== key) {
-      g = { key, label: monthFmt.format(d), items: [] };
+      g = {
+        key,
+        label: formatMonthYear(d.getFullYear(), d.getMonth() + 1),
+        items: [],
+      };
       groups.push(g);
     }
     g.items.push(e);
@@ -726,10 +725,10 @@ const ICONS: Record<string, string> = {
                 }}</span>
               </span>
               <span class="gs-row-when">
-                <span>{{ dayFmt.format(e.at) }}</span>
+                <span>{{ dayText(e.at) }}</span>
                 <span
                   v-if="!['added', 'purchased', 'completed'].includes(e.id)"
-                  >{{ timeFmt.format(e.at) }}</span
+                  >{{ timeText(e.at) }}</span
                 >
               </span>
               <svg

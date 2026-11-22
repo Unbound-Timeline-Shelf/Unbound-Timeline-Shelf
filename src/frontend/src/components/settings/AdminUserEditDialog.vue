@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../utils/dates";
 import { computed, onMounted, ref } from "vue";
 import UiModal from "../UiModal.vue";
 import PasswordInput from "../PasswordInput.vue";
@@ -152,7 +153,7 @@ const resend = () =>
   });
 
 function when(seconds: number) {
-  return new Date(seconds * 1000).toLocaleString();
+  return formatInstant(seconds);
 }
 </script>
 

@@ -42,6 +42,37 @@ export default tseslint.config(
   },
 
   {
+    // every date goes through utils/dates.ts so it follows the person's date
+    // format (SPEC-UI-POLISH-PASS §6.6); tests/noHardcodedDateFormats.test.ts
+    // is the full guard CI keeps, this flags new code in the editor
+    files: ["src/**/*.{ts,vue}"],
+    ignores: ["src/utils/dates.ts", "src/tests/**"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          property: "toLocaleDateString",
+          message: "Use formatDay/formatInstant from utils/dates.",
+        },
+        {
+          property: "toLocaleTimeString",
+          message: "Use formatTime/formatInstant from utils/dates.",
+        },
+        {
+          property: "toDateString",
+          message: "Use dayKey or formatInstant from utils/dates.",
+        },
+        {
+          object: "Intl",
+          property: "DateTimeFormat",
+          message:
+            "Use utils/dates (formatInstant, deviceTimeZone) instead of Intl.DateTimeFormat.",
+        },
+      ],
+    },
+  },
+
+  {
     // top-level route views, not reusable components — named after the
     // page they render (Login, Settings, Inbox...), so a single word is
     // the natural name here, unlike a component dropped into arbitrary

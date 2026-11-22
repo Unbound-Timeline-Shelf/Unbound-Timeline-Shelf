@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatInstant } from "../../../utils/dates";
 import { computed, ref } from "vue";
 import {
   changeRelationship,
@@ -336,7 +337,7 @@ function kindChanged(
             {{ titleOf(data, r.from_id) }}
             {{ kindName(r.kind, r.label).toLowerCase() }}
             {{ titleOf(data, r.to_id) }}, ended
-            {{ new Date((r.ended_at ?? 0) * 1000).toLocaleDateString() }}
+            {{ formatInstant(r.ended_at ?? 0, { time: false }) }}
           </li>
         </ul>
       </details>
