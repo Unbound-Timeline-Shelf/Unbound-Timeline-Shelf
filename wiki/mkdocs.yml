@@ -162,3 +162,6 @@ nav:
       - External ICS Subscriptions: development/design/ics-subscriptions.md
       - AFK-time Observations: development/design/afk-time-observations.md
       - Tag Catalogue: development/design/tag-catalogue.md
+      - Selective Home Improvements: development/design/home-improvements.md
+      - Custom Achievements: development/design/custom-achievements.md
+      - Durable Steam Imports: development/design/durable-steam-import.md

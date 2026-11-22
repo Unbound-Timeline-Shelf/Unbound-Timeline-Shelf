@@ -114,6 +114,10 @@ const {
   saveResumeNote,
   loggingPlaytime,
   logPlaytime,
+  logPlayNow,
+  playLogMessage,
+  playLogError,
+  playedOn,
   similarGames,
   toggleFavorite,
   favoriteError,
@@ -869,15 +873,49 @@ async function onFieldSourceChanged() {
               </div>
             </li>
           </ul>
-          <button
-            type="button"
-            class="read-more-btn"
-            :disabled="loggingPlaytime"
-            title="Log a session just played, without editing the total by hand"
-            @click="logPlaytime(30)"
-          >
-            + Log 30 min just played
-          </button>
+        </div>
+
+        <div class="more-block">
+          <h3 class="more-title">Log play</h3>
+          <div class="play-log" role="group" aria-label="Log play">
+            <button
+              type="button"
+              class="read-more-btn"
+              :disabled="loggingPlaytime"
+              title="Record that you played; the total playtime is not changed"
+              @click="logPlayNow"
+            >
+              Log play
+            </button>
+            <button
+              type="button"
+              class="read-more-btn"
+              :disabled="loggingPlaytime"
+              title="Record a play and add 30 minutes to the total"
+              @click="logPlaytime(30)"
+            >
+              + Log 30 min played
+            </button>
+            <label class="play-log-date">
+              <span>Played on</span>
+              <input
+                v-model="playedOn"
+                type="date"
+                :max="new Date().toLocaleDateString('en-CA')"
+                aria-describedby="play-log-hint"
+              />
+            </label>
+            <p id="play-log-hint" class="play-log-hint">
+              Leave the date empty for today. Correcting the total playtime is
+              not a play and does not change Last played.
+            </p>
+            <p v-if="playLogMessage" role="status" class="play-log-hint">
+              {{ playLogMessage }}
+            </p>
+            <p v-if="playLogError" role="alert" class="play-log-error">
+              {{ playLogError }}
+            </p>
+          </div>
         </div>
 
         <div v-if="ratingParts.length" class="more-block">

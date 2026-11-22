@@ -88,6 +88,9 @@ DEFAULTS: dict[str, Any] = {
     "metadata_providers_enabled": {},
     # what every game page shows (tabs, buttons); a game can override it
     "game_page": DEFAULT_PAGE_SETTINGS,
+    # the client a game's Play button uses on every device (#319); "" keeps the automatic
+    # choice: the client last used in this browser, then the one the game came from
+    "launch_default_client": "",
 }
 
 _CHOICES: dict[str, tuple[Any, ...]] = {
@@ -104,6 +107,7 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
     "title_language": ("english", "romaji", "native"),
     "date_display": ("locale", "iso"),
     "partial_date_style": ("short", "long"),
+    "launch_default_client": ("", "playnite", "steam", "gog"),
 }
 
 # Days a trashed movie/show/anime stays before the scheduled sweep deletes it.

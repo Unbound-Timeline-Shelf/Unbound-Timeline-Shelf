@@ -489,7 +489,8 @@ async def _sync_steam_library(
         if "playtime_forever" in entry:
             game.playtime_seconds = entry["playtime_forever"] * 60
         if entry.get("rtime_last_played"):
-            game.last_played_at = int(entry["rtime_last_played"])
+            # forward only: a play the user logged after Steam's last report is kept (#467)
+            game.last_played_at = max(game.last_played_at or 0, int(entry["rtime_last_played"]))
         games_added += created
         games_updated += not created
         synced_titles.append(title)

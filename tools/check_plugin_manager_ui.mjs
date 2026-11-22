@@ -35,7 +35,14 @@ const server = createServer(async (incoming, outgoing) => {
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
-const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
+// Pinned to a non-US locale/timezone so the one-time date-format offer modal
+// (shown to browsers that look American; see src/frontend/src/utils/dates.ts)
+// never intercepts clicks meant for the plugin manager UI under test.
+const context = await browser.newContext({
+  viewport: { width: 1440, height: 1050 },
+  locale: "en-GB",
+  timezoneId: "Europe/London",
+});
 const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));

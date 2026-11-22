@@ -114,6 +114,21 @@ full editor discards them. Offered search covers are in the full editor's
 Artwork tab. Opening a game from its own page or a collection still goes
 straight to the full editor.
 
+## Logging play
+
+Under **More details > Log play** on a game's page, **Log play** records that you
+played the game. **+ Log 30 min played** records a play and adds 30 minutes to the
+total. Leave **Played on** empty for today, or pick an earlier date to log a past
+session (a date is kept on that calendar day in your timezone). Each log moves
+**Last played** forward to that time and never back: logging an older session
+after a newer one keeps the newer one.
+
+Correcting the total playtime is different. Editing the total, a store reporting
+a larger lifetime total on its next sync, and changing the status to Playing are
+not plays: they do not change Last played, Continue playing on Home or the
+"games played" count in This week. A retried log (for example after a dropped
+connection) is recorded once.
+
 ## Completion estimates
 
 The full editor's **Play** tab has four estimates in hours: **Main story**,
@@ -343,6 +358,16 @@ same rule, so a game already marked Played stays Played. When **Sync now** in
 Settings defers achievements, it saves Steam's playtime first and waits for the
 game's achievement batch to choose between Played and Mastered. Optional store plugins
 using the public game-import operation share the host's ownership/playtime policy.
+
+Plugin connections synced with **Sync now** in Settings > Connections, or from
+**Sync / import** on the Games page, run on the server, so leaving the page does
+not stop them. One sync runs at most 25 saved steps. When a plugin still has saved
+work after that, the connection reads "More to sync" and the button becomes
+**Continue sync** (Games: **Continue syncing**), which runs the next 25 steps from
+the plugin's checkpoint. Continuing never turns autosync on; with autosync on, the
+schedule also picks up the rest. A service that is limiting requests is reported as
+such rather than as a failed sync, and a paused task or a removed permission is
+shown instead of a sync button that cannot run.
 
 Provider settings show each source's active library game count and the time of
 its last successful sync. Trashed games are excluded; restoring them returns
@@ -706,9 +731,12 @@ example a Steam import on one copy and Playnite on another, once they are merged
 **Open in GOG Galaxy** (opens the game's page in Galaxy; it does not start it) and **Open Steam store
 page**.
 
-The button's default is chosen in this order: the client you used last time on this browser, the
-library the copy was added from (for example a Steam import), then Playnite (it launches games from every
-library), then Steam, then GOG. A store page is the default only when nothing can be launched.
+The button's default is chosen in this order: the client you chose for your account under
+**Settings → Game page → Play button opens games in** (when the game can be opened with it), the
+client you used last time on this browser, the library the copy was added from (for example a Steam
+import), then Playnite (it launches games from every library), then Steam, then GOG. The account
+choice follows you to every browser you sign in to; **Automatic** (the default) skips it. A store
+page is the default only when nothing can be launched.
 
 A wishlisted game is not owned yet, so it only offers its store page, which opens in a new tab.
 

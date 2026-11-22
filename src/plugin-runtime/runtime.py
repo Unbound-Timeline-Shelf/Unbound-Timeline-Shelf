@@ -23,7 +23,7 @@ import time
 import zipfile
 import zlib
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -72,6 +72,12 @@ _MAX_PACKAGE_ENTRIES = 1000
 _MAX_PACKAGE_FILE_BYTES = 16 * 1024 * 1024
 _MAX_PACKAGE_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 _MAX_PACKAGE_COMPRESSION_RATIO = 100.0
+# One protocol line (a gateway request or the action result) and one stderr line. A plugin
+# could otherwise grow a single unterminated line until the memory rlimit (#398); results are
+# capped again after decoding (64 KiB, or 4 MiB for public app work).
+_MAX_PROTOCOL_LINE_BYTES = 16 * 1024 * 1024
+_MAX_LOG_LINE_BYTES = 64 * 1024
+_OVERSIZED_LINE = b"\x00oversized"
 _PACKAGE_ARCHIVE = ".runtime-state-package.utp"
 _BACKEND_ROUTE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 _BACKEND_ROUTE_SEGMENT = re.compile(r"^(?:[a-z0-9][a-z0-9._-]*|\{[a-z_][a-z0-9_]*\})$")
@@ -186,6 +192,25 @@ def validated_gateway_url(value: str) -> str:
     if parsed.port is not None and not 1 <= parsed.port <= 65535:
         raise ValueError("invalid gateway port")
     return value.rstrip("/")
+
+
+def read_bounded_lines(stream: Any, limit: int) -> Iterator[bytes]:
+    """Lines of at most `limit` bytes; a longer line yields `_OVERSIZED_LINE` once and is skipped.
+
+    `readline(limit + 1)` never buffers more than the limit, so a plugin cannot make the
+    runtime hold an unbounded line in memory."""
+    while True:
+        line = stream.readline(limit + 1)
+        if not line:
+            return
+        if len(line) <= limit or line.endswith(b"\n"):
+            yield line
+            continue
+        yield _OVERSIZED_LINE
+        while True:  # discard the rest of the oversized line
+            rest = stream.readline(limit + 1)
+            if not rest or rest.endswith(b"\n"):
+                break
 
 
 def gateway_error_response(exc: Exception, request: Any) -> dict[str, Any]:
@@ -424,7 +449,15 @@ class PluginSupervisor:
         stdout = getattr(process, "stdout", None)
         if stdout is None:
             return
-        for raw in iter(stdout.readline, b""):
+        for raw in read_bounded_lines(stdout, _MAX_PROTOCOL_LINE_BYTES):
+            if raw is _OVERSIZED_LINE:
+                self._log(
+                    plugin_id,
+                    "Gateway request line exceeds 16 MiB and was dropped.",
+                    level="error",
+                    event="gateway.request_too_large",
+                )
+                continue
             line = raw.decode("utf-8", errors="replace").strip()
             if not line:
                 continue
@@ -460,7 +493,9 @@ class PluginSupervisor:
         stderr = getattr(process, "stderr", None)
         if stderr is None:
             return
-        for raw in iter(stderr.readline, b""):
+        for raw in read_bounded_lines(stderr, _MAX_LOG_LINE_BYTES):
+            if raw is _OVERSIZED_LINE:
+                raw = b"[a log line over 64 KiB was dropped]"
             line = raw.decode("utf-8", errors="replace").rstrip()
             if line:
                 self._log(
@@ -1071,7 +1106,10 @@ class PluginSupervisor:
             lines: queue.Queue[tuple[str, bytes | None]] = queue.Queue()
 
             def read_stream(name: str, stream: Any) -> None:
-                for line in iter(stream.readline, b""):
+                limit = (
+                    _MAX_PROTOCOL_LINE_BYTES if name == "stdout" else _MAX_LOG_LINE_BYTES
+                )
+                for line in read_bounded_lines(stream, limit):
                     lines.put((name, line))
                 lines.put((name, None))
 
@@ -1101,6 +1139,12 @@ class PluginSupervisor:
                     if stream_name == "stdout":
                         stdout_closed = True
                     continue
+                if line is _OVERSIZED_LINE:
+                    if stream_name == "stdout":
+                        raise RuntimePolicyError(
+                            "plugin action output line exceeds 16 MiB"
+                        )
+                    line = b"[a log line over 64 KiB was dropped]"
                 if stream_name == "stderr":
                     message = line.decode("utf-8", errors="replace").rstrip()
                     if message:

@@ -288,10 +288,12 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/game-identity/games/{game_id}/achievements` | user | Own manual tracking; foreign identifiers are refused. |
 | GET | `/api/game-identity/games/{game_id}/completion` | user | Own manual tracking; foreign identifiers are refused. |
 | GET | `/api/game-identity/games/{game_id}/completion/history` | user | Own manual tracking; foreign identifiers are refused. |
+| GET | `/api/game-identity/games/{game_id}/plays` | user | Own logged plays; foreign identifiers are refused. |
 | GET | `/api/game-identity/games/{game_id}/tracking` | user | Own manual tracking; foreign identifiers are refused. |
 | GET | `/api/game-identity/manual-achievements/{achievement_id}/icon` | user | Own manual tracking; foreign identifiers are refused. |
 | PATCH | `/api/game-identity/manual-achievements/{achievement_id}` | user | Own manual tracking; foreign identifiers are refused. |
 | POST | `/api/game-identity/games/{game_id}/manual-achievements` | user | Own manual tracking; foreign identifiers are refused. |
+| POST | `/api/game-identity/games/{game_id}/plays` | user | Own logged plays; foreign identifiers are refused. |
 | PUT | `/api/game-identity/games/{game_id}/completion` | user | Own manual tracking; foreign identifiers are refused. |
 | PUT | `/api/game-identity/manual-achievements/{achievement_id}/earned` | user | Own manual tracking; foreign identifiers are refused. |
 
@@ -509,6 +511,7 @@ are redacted. Validation errors never echo submitted values.
 | DELETE | `/api/lists/{list_id}/items/{item_id}` | user | List owned by caller; added media must also be the caller's. |
 | PUT | `/api/lists/{list_id}/order` | user | List owned by caller; added media must also be the caller's. |
 | GET | `/api/media` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
+| GET | `/api/media-image/{media_type}/episodes/{episode_id}/still` | user | Episode joined to a show owned by the caller; fetched through the public-address image cache. |
 | GET | `/api/media-image/{media_type}/{item_id}/{which}` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-stats` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |
 | GET | `/api/media-stats/activity/day` | user | Rows queried with `user_id == caller`; any child ID must also belong to that parent. |

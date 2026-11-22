@@ -828,6 +828,21 @@ export function requireUserActivation(action: UiAction): void {
 }
 
 /**
+ * A plugin frame can also post "save my secret" or "save my settings" at any time. It may only
+ * change its own values, but with no gesture it could silently replace stored credentials, so
+ * those saves must follow a real click or key press in the page (#398). Browsers that cannot
+ * tell are given the benefit of the doubt, as for external navigation.
+ */
+export function requireSaveActivation(): void {
+  const activation =
+    typeof navigator === "undefined" ? undefined : navigator.userActivation;
+  if (activation && !activation.isActive)
+    throw new Error(
+      "A plugin can only save its settings or secrets after you click or press a key.",
+    );
+}
+
+/**
  * Reserve a blank tab for a declared external navigation action. It must be
  * opened while the click's user activation is still valid, i.e. before the
  * action's request; the plugin frame itself never gains popup permission.

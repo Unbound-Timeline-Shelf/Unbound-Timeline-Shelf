@@ -5,6 +5,7 @@ import type { LaunchDevice } from "../../services/remoteLaunch";
 import type { Game } from "../../types/game";
 import { useRemoteLaunch } from "../../composables/useRemoteLaunch";
 import { fetchIdentitySources } from "../../services/gameIdentity";
+import { preferences } from "../../state/preferences";
 import {
   defaultTarget,
   launchTargets,
@@ -28,7 +29,12 @@ const remembered = ref<string | null>(readRemembered());
 const observations = ref<LaunchObservation[]>([]);
 const targets = computed(() => launchTargets(props.game, observations.value));
 const primary = computed(() =>
-  defaultTarget(targets.value, props.game, remembered.value),
+  defaultTarget(
+    targets.value,
+    props.game,
+    remembered.value,
+    preferences.value.launch_default_client || null,
+  ),
 );
 // Library imports keep their store IDs on the game's sources; a failed lookup just means fewer options.
 watch(

@@ -382,6 +382,55 @@ export async function adjustPlaytime(
   });
 }
 
+export interface PlayLogResult {
+  playedAt: number;
+  lastPlayedAt: number | null;
+}
+
+/** A fresh id per user action, so a retried request records the play once. */
+export function newPlayRequestId(): string {
+  const random =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  return random.replace(/[^A-Za-z0-9_-]/g, "");
+}
+
+/**
+ * Log that the game was played: now, or at an earlier time (unix seconds). This is activity
+ * and moves "last played" forward; it is not a playtime correction (#467).
+ */
+export async function logPlay(
+  gameId: string,
+  options: { playedAt?: number; requestId?: string } = {},
+): Promise<PlayLogResult> {
+  const response = await call(`/games/${gameId}/plays`, "POST", {
+    ...(options.playedAt === undefined ? {} : { played_at: options.playedAt }),
+    request_id: options.requestId ?? newPlayRequestId(),
+  });
+  const raw = await response.json();
+  return {
+    playedAt: raw.event.played_at,
+    lastPlayedAt:
+      typeof raw.last_played_at === "number" ? raw.last_played_at : null,
+  };
+}
+
+/** Local noon of a date-only "played on" choice, so no timezone moves it to another day. */
+export function playedOnDate(isoDate: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return null;
+  const when = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    12,
+  );
+  return Number.isNaN(when.getTime())
+    ? null
+    : Math.floor(when.getTime() / 1000);
+}
+
 export async function clearAdjustment(counterId: string): Promise<void> {
   await call(`/counters/${counterId}/adjustment`, "DELETE");
 }
