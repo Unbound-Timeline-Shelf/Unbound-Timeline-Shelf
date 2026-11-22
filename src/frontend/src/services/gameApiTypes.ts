@@ -1,5 +1,25 @@
 import type { GameLink, GameRelationshipType } from "../types/game";
 import type { PageOverrides } from "../utils/gamePage";
+import type { RefreshMetadataMatch, RefreshMetadataResult } from "./games";
+
+// What the backend's refresh endpoint returns, before games.ts maps it to the
+// camelCase RefreshMetadataOutcome/RefreshMetadataPreview shapes the UI uses.
+export interface BackendMetadataRefreshResponse {
+  status: RefreshMetadataResult;
+  match?: RefreshMetadataMatch;
+  candidate?: {
+    title: string | null;
+    provider_ids: Record<string, string>;
+  } | null;
+  provider: string | null;
+  provider_errors: string[];
+  changed_fields: string[];
+  skipped_locked_fields: string[];
+  would_add_key_art: boolean;
+  would_add_banner: boolean;
+  game_updated_at: number;
+  unverified_sources?: Record<string, Record<string, unknown>>;
+}
 
 // FastAPI's full game response. Keep this separate from the UI model and
 // compact collection index so a partial record cannot overwrite detail fields.

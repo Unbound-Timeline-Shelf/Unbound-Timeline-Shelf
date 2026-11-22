@@ -6,10 +6,10 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Iterable, Sequence
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
 from src.core.cache_metrics import cache_entries, cache_eviction, cache_refresh, cache_request
@@ -29,6 +29,7 @@ from .core import CoreMetadataProvider
 from .deadlines import bounded
 from .identity import candidate_id, identities, rank_key, same_entity
 from .providers import Operation, PluginMetadataProvider
+from .refresh_identity import provider_id_claims, unverified_providers, verified_record
 
 logger = logging.getLogger(__name__)
 PRELOAD_CONCURRENCY = 5
@@ -868,7 +869,40 @@ class MetadataHandler:
             session.emit("provider_failed", message="Metadata providers are unavailable")
         record = session.candidates.get(session.selected or "", {})
         if record:
-            record = {**record, "contributors": self.contributors(session, session.selected)}
+            group = session.groups.get(session.selected or "", ())
+            assets = session.candidates.get(session.selected or "", {}).get("assets", [])
+            claims = provider_id_claims(session.sources, group, session.providers)
+            unverified = unverified_providers(
+                session.sources,
+                group,
+                session.providers,
+                dict(candidate.provider_ids),
+                claims,
+                asset_providers=session.asset_providers,
+                assets=assets,
+            )
+            record = {
+                **record,
+                "contributors": self.contributors(session, session.selected),
+                "provider_id_claims": claims,
+                "unverified_providers": sorted(unverified),
+                # kept so a route that locks the game row after this lookup ran can redo the
+                # verification against the row it actually applies to (review finding 4);
+                # `session` outlives this call (`cancel`/the session-id pop below do not clear
+                # its data), so this costs nothing beyond keeping the reference alive.
+                "_reverify": (session, group, assets),
+            }
+            if unverified:
+                record.update(
+                    verified_record(
+                        session.sources,
+                        group,
+                        unverified,
+                        metadata_of=lambda members: self._metadata(session, members),
+                        asset_providers=session.asset_providers,
+                        assets=assets,
+                    )
+                )
         failures = list(
             dict.fromkeys(
                 event["message"] for event in session.events if event["event"] == "provider_failed"
@@ -877,6 +911,48 @@ class MetadataHandler:
         self.cancel(session)
         self.sessions.pop(session.id, None)
         return record, failures
+
+    @staticmethod
+    def reverify(record: dict[str, Any], held: Mapping[str, str]) -> dict[str, Any]:
+        """Redo verification against ``held``, the game's provider ids as the route's locked
+        row actually has them, rather than trusting the verdict `enrich` computed against the
+        ids the lookup started with (review finding 4).
+
+        While a provider request is in flight, an editor can change the game's id in a
+        namespace; the provider whose own claim no longer matches the row it is about to write
+        to must not keep being treated as verified just because it was, against ids that no
+        longer hold. Returns the same ``unverified_providers``/``verified_*`` shape `enrich`
+        already adds to a record, recomputed; ``{}`` when there is nothing to redo (the lookup
+        found no candidate, or the record predates this fix)."""
+        context = record.get("_reverify")
+        if not context:
+            return {}
+        session, group, assets = cast(
+            tuple[SearchSession, Sequence[str], list[dict[str, Any]]], context
+        )
+        claims = record.get("provider_id_claims", {})
+        unverified = unverified_providers(
+            session.sources,
+            group,
+            session.providers,
+            dict(held),
+            claims,
+            asset_providers=session.asset_providers,
+            assets=assets,
+        )
+        result: dict[str, Any] = {"unverified_providers": sorted(unverified)}
+        if unverified:
+            result.update(
+                verified_record(
+                    session.sources,
+                    group,
+                    unverified,
+                    metadata_of=lambda members: MetadataHandler._metadata(session, members),
+                    asset_providers=session.asset_providers,
+                    assets=assets,
+                )
+            )
+        return result
 
     def select(self, session: SearchSession, selected_id: str) -> dict[str, Any]:
         """Selection succeeds immediately; media provider failure cannot undo it."""

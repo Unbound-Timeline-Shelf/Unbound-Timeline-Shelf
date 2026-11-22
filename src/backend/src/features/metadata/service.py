@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -247,6 +248,14 @@ async def resolve_owned_record(
     """Import and scheduler jobs resolve identities with their owner's context."""
     async with SessionLocal() as db:
         return await resolve_library_record(db, user_id, candidate, include_media=include_media)
+
+
+def reverify_record(record: dict[str, Any], held: Mapping[str, str]) -> dict[str, Any]:
+    """Redo a record's id-match verification against ``held`` (review finding 4): a route that
+    locks the game row after this record's lookup ran must check providers' claims against the
+    ids that row actually has, not the ones the lookup started with. See
+    ``MetadataHandler.reverify``."""
+    return handler.reverify(record, held)
 
 
 def media_result(record: dict[str, Any], media_type: MediaType) -> dict[str, Any]:
