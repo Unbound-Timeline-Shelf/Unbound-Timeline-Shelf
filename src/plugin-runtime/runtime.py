@@ -47,6 +47,9 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 PLUGIN_API_CONTRACT_VERSION = "1.1.20"
+# api_contract_max exists from this contract on (the host's UNIFIED_CONTRACT).
+_CONTRACT_RANGE_SINCE = (1, 1, 20)
+_SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)")
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
 # Linux parent-death signals follow the spawning thread. HTTP request threads
 # end after their response, while supervised workers must live until shutdown.
@@ -132,9 +135,49 @@ def plugin_contract_compatibility_reason(
             f"Plugin API contract {declared} is v1.0-only. Limited compatibility is available "
             "for shipped examples and already-installed plugins; new plugins must target v1.1."
         )
-    if not (1, 1, 0) <= version <= tuple(map(int, PLUGIN_API_CONTRACT_VERSION.split("."))):
+    host = tuple(int(part) for part in PLUGIN_API_CONTRACT_VERSION.split("."))
+    maximum = manifest.get("api_contract_max")
+    if maximum is not None:
+        # C16 22.6: the plugin also supports contracts up to this one. It needs 1.1.20 (older
+        # hosts refuse the unknown manifest field) and runs at min(maximum, host).
+        if not isinstance(maximum, str) or not _SEMVER.fullmatch(maximum):
+            return "Plugin API contract maximum is invalid."
+        top = tuple(int(part) for part in maximum.split("."))
+        if version < _CONTRACT_RANGE_SINCE or top[0] != version[0] or top < version:
+            return f"Plugin API contract range {declared}-{maximum} is invalid."
+        if not (1, 1, 0) <= version <= host:
+            return (
+                f"Plugin API contract range {declared}-{maximum} is not supported by this host "
+                f"(1.1.0-{PLUGIN_API_CONTRACT_VERSION})."
+            )
+        return None
+    if not (1, 1, 0) <= version <= host:
         return f"Plugin API contract {declared} is not supported by this host ({PLUGIN_API_CONTRACT_VERSION})."
     return None
+
+
+def negotiated_contract(manifest: Mapping[str, Any]) -> str:
+    """The contract a compatible plugin runs at: min(api_contract_max, host maximum).
+
+    Without ``api_contract_max`` it is the declared version, exactly as before the range."""
+    declared = str(manifest.get("api_contract_version", "1.0.0"))
+    maximum = manifest.get("api_contract_max")
+    if not isinstance(maximum, str) or not _SEMVER.fullmatch(maximum):
+        return declared
+    top = tuple(int(part) for part in maximum.split("."))
+    host = tuple(int(part) for part in PLUGIN_API_CONTRACT_VERSION.split("."))
+    return ".".join(map(str, min(top, host)))
+
+
+def contract_environment(manifest: Mapping[str, Any]) -> dict[str, str]:
+    """What a worker learns about the contract it runs under (C16 22.6 init context)."""
+    return {
+        "PLUGIN_API_CONTRACT": negotiated_contract(manifest),
+        "PLUGIN_API_HOST_MIN": "1.0.0"
+        if str(manifest.get("api_contract_version", "1.0.0")).startswith("1.0.")
+        else "1.1.0",
+        "PLUGIN_API_HOST_MAX": PLUGIN_API_CONTRACT_VERSION,
+    }
 
 
 class RuntimeGatewayError(RuntimePolicyError):
@@ -1822,6 +1865,15 @@ class PluginRegistry:
             "release_notes": distribution.get("release_notes"),
             "version": data.get("version", "0.0.0"),
             "api_contract_version": data.get("api_contract_version", "1.0.0"),
+            "api_contract_max": data.get("api_contract_max"),
+            # C16 22.6: the contract the host validates this plugin against, and its own range.
+            "negotiated_api_contract": negotiated_contract(data)
+            if contract_error is None
+            else None,
+            "plugin_api": {
+                "min": "1.0.0" if legacy else "1.1.0",
+                "max": PLUGIN_API_CONTRACT_VERSION,
+            },
             "host_api_contract_version": PLUGIN_API_CONTRACT_VERSION,
             "sdk_version_range": data.get("sdk_version_range"),
             "application_version_range": data.get("application_version_range"),
@@ -2735,7 +2787,12 @@ class PluginRegistry:
             )
             try:
                 self.supervisor.start(
-                    PluginSpec(plugin_id, self._command(manifest)), package
+                    PluginSpec(
+                        plugin_id,
+                        self._command(manifest),
+                        contract_environment(manifest),
+                    ),
+                    package,
                 )
             except Exception as exc:
                 self._transition(
@@ -3031,7 +3088,9 @@ class PluginRegistry:
             ) from exc
         package, manifest = self.package(plugin_id)
         output = self.supervisor.execute(
-            PluginSpec(plugin_id, self._action_command(handler)),
+            PluginSpec(
+                plugin_id, self._action_command(handler), contract_environment(manifest)
+            ),
             package,
             payload,
             user_id=user_id,

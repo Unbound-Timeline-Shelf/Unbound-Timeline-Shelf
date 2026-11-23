@@ -194,6 +194,7 @@ export function bookInputToBody(
     ["seriesName", "series_name"],
     ["seriesPosition", "series_position"],
     ["coverUrl", "cover_url"],
+    ["providerIds", "provider_ids"],
     ["priority", "priority"],
     ["favorite", "favorite"],
     ["note", "note"],

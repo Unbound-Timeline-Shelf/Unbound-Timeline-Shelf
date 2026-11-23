@@ -192,6 +192,8 @@ def test_the_contract_enums_are_the_shared_vocabulary():
         "relation_type",
         "date_precision",
         "release_category",
+        "book_format",
+        "book_creator_role",
     }
 
 
