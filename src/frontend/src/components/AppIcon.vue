@@ -11,6 +11,7 @@ const paths: Record<string, string> = {
   media: "M3 5h18v15H3z M3 9h18 M7 5v4 M12 5v4 M17 5v4 M10 12l5 3-5 3z",
   tv: "M3 6h18v13H3z M8 22h8 M12 19v3 M8 2l4 4 4-4",
   anime: "M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z",
+  book: "M4 4h11a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3V4Z M4 17a3 3 0 0 1 3-3h11",
   lists: "M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01",
   bounties:
     "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0 M12 12h.01",

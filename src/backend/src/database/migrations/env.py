@@ -20,6 +20,7 @@ from src.database.models import (
     anime,  # noqa: F401
     app_integration_settings,  # noqa: F401
     auth,  # noqa: F401
+    book,  # noqa: F401
     calendar_event,  # noqa: F401
     calendar_source,  # noqa: F401
     delegation,  # noqa: F401

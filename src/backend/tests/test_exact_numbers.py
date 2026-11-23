@@ -1228,10 +1228,11 @@ async def test_a_library_export_restores_movies_shows_and_anime_with_progress_an
 
             exported = json.loads((await export_library(db, source)).model_dump_json())
             first = await restore_media(db, target.scratch_id, exported)
-            assert first["created"] == {"movies": 1, "tv_shows": 1, "anime": 1}, first
+            # a format-3 export always carries a (here empty) books section
+            assert first["created"] == {"movies": 1, "tv_shows": 1, "anime": 1, "books": 0}, first
             again = await restore_media(db, target.scratch_id, exported)
-            assert again["created"] == {"movies": 0, "tv_shows": 0, "anime": 0}
-            assert again["skipped"] == {"movies": 1, "tv_shows": 1, "anime": 1}
+            assert again["created"] == {"movies": 0, "tv_shows": 0, "anime": 0, "books": 0}
+            assert again["skipped"] == {"movies": 1, "tv_shows": 1, "anime": 1, "books": 0}
 
             restored = (
                 (await db.execute(select(Anime).where(Anime.user_id == target.scratch_id)))

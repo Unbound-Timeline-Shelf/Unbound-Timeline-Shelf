@@ -56,7 +56,7 @@ it("splits the page into export, import, restore and backups, each reachable by 
 
   await tabs(wrapper)[2].trigger("click");
   expect(headings(wrapper)).toEqual([
-    "Restore movies, TV shows and anime",
+    "Restore movies, TV shows, anime and books",
     "Import games",
   ]);
 
@@ -96,7 +96,9 @@ it("opens the tab a link or a search result asks for", async () => {
     props: { initialTab: "restore" },
   });
   await flushPromises();
-  expect(headings(restore)[0]).toBe("Restore movies, TV shows and anime");
+  expect(headings(restore)[0]).toBe(
+    "Restore movies, TV shows, anime and books",
+  );
   const unknown = mount(ExportImportSection, { props: { initialTab: "nope" } });
   await flushPromises();
   expect(headings(unknown)[0]).toBe("Export");

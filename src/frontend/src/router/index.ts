@@ -189,6 +189,18 @@ const router = createRouter({
       component: () => import("../views/AnimeDetail.vue"),
     },
     {
+      path: "/books",
+      name: "book-library",
+      meta: { title: "Books", keepsScroll: true },
+      component: () => import("../views/BookLibrary.vue"),
+    },
+    {
+      path: "/books/:id",
+      name: "book-detail",
+      meta: { title: "Book" },
+      component: () => import("../views/BookDetail.vue"),
+    },
+    {
       path: "/calendar",
       name: "calendar",
       meta: { title: "Calendar", keepsScroll: true },

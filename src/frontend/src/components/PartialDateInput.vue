@@ -22,9 +22,12 @@ const props = withDefaults(
     precision?: DatePrecision | null;
     // false: a full day only
     partial?: boolean;
+    // the years a typed date may fall in (a book's first publication can be
+    // centuries old); the formatter's own range when left out
+    years?: [number, number];
     id?: string;
   }>(),
-  { precision: null, partial: true, id: undefined },
+  { precision: null, partial: true, years: undefined, id: undefined },
 );
 const emit = defineEmits<{
   "update:date": [value: string];
@@ -76,7 +79,12 @@ function publish(value: PartialValue | null) {
 }
 
 function read(input: string) {
-  const parsed = parseEntry(input, undefined, { partial: props.partial });
+  const parsed = parseEntry(input, undefined, {
+    partial: props.partial,
+    ...(props.years
+      ? { partialYears: props.years, dayYears: props.years }
+      : {}),
+  });
   result.value = parsed;
   picked.value = null;
   if (parsed.kind === "ok") publish(parsed.value);
