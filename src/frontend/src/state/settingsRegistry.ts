@@ -427,6 +427,12 @@ const TAB_ENTRIES: {
   },
   {
     section: "export",
+    tab: "import",
+    label: "Import books",
+    keywords: ["goodreads", "storygraph", "isbn", "books", "reading list"],
+  },
+  {
+    section: "export",
     tab: "restore",
     label: "Restore from an export",
     keywords: ["restore", "import games", "json"],

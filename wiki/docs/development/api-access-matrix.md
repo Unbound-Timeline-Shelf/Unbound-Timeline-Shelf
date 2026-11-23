@@ -501,6 +501,8 @@ are redacted. Validation errors never echo submitted values.
 | GET | `/api/export/backup-status` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | GET | `/api/export/library` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | GET | `/api/export/media.csv` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
+| POST | `/api/import/books` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
+| POST | `/api/import/books/preview` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | POST | `/api/import/library` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | POST | `/api/import/list` | user | Only the caller's library; imported rows are stamped with the caller's ID. |
 | POST | `/api/import/list/preview` | user | Only the caller's library; imported rows are stamped with the caller's ID. |

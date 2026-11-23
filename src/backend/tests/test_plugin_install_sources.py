@@ -109,7 +109,9 @@ def package_bytes(
         if broken == "traversal":
             archive.writestr("payload/../../escape", b"escape")
         if broken == "duplicate":
-            archive.writestr("payload/plugin.py", b"duplicate")
+            # The duplicate entry is the point of this package, so zipfile's warning is asserted.
+            with pytest.warns(UserWarning, match="Duplicate name"):
+                archive.writestr("payload/plugin.py", b"duplicate")
         if broken == "symlink":
             link = zipfile.ZipInfo("payload/link")
             link.external_attr = stat.S_IFLNK << 16

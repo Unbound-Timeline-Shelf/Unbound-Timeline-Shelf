@@ -11,6 +11,7 @@ from src.plugin_api.base_contracts import PLUGIN_API_CONTRACT_VERSION
 from src.plugin_api.metadata_contracts import (
     MetadataProviderRegistration,
     MetadataProviderRequest,
+    MetadataResolveRequest,
     ProviderResponse,
 )
 
@@ -20,6 +21,7 @@ def export(destination: Path) -> None:
     for name, model in (
         ("metadata-registration-v1", MetadataProviderRegistration),
         ("metadata-request-v1", MetadataProviderRequest),
+        ("metadata-resolve-request-v1", MetadataResolveRequest),
         ("metadata-response-v1", ProviderResponse),
     ):
         schema = model.model_json_schema()

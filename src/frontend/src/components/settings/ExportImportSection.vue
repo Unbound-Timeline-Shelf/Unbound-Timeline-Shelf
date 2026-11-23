@@ -9,6 +9,9 @@ import { EXPORT_SETTINGS_TABS as TABS } from "../../state/settingsRegistry";
 const AniListImportSection = defineAsyncComponent(
   () => import("./AniListImportSection.vue"),
 );
+const BookImportSection = defineAsyncComponent(
+  () => import("./BookImportSection.vue"),
+);
 
 // Four workflows instead of one long page. Each keeps its own preview, busy and
 // error state while you switch between them, so nothing is lost mid-import.
@@ -562,6 +565,8 @@ async function onFileSelected(e: Event) {
         />
       </label>
     </div>
+
+    <BookImportSection v-if="tab === 'import'" />
 
     <AniListImportSection v-if="tab === 'import'" />
 
