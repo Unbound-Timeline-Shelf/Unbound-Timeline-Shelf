@@ -20,6 +20,7 @@ export const MEDIA_TYPE_LABELS: Record<MetadataMediaType, string> = {
   movie: "Movies",
   tv_show: "TV",
   anime: "Anime",
+  book: "Books",
 };
 
 // The backend ranks a provider missing from a saved order after every listed one.
